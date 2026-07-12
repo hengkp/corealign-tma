@@ -1,5 +1,5 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-const release = `${repo}/releases/tag/v1.2.1`;
+const release = `${repo}/releases/tag/v1.3.0`;
 const tutorialVideo = `${repo}/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4`;
 import SiteHeader from "./site-header";
 
@@ -14,8 +14,8 @@ const validation = [
 ];
 
 const steps = [
-  { icon: "ri-layout-grid-line", number: "01", title: "Choose the array", text: "Set rows, columns, and core size. Download one config file." },
-  { icon: "ri-play-circle-line", number: "02", title: "Run in QuPath", text: "Open the slide and CoreAlign.groovy. Check the detected grid." },
+  { icon: "ri-folder-open-line", number: "01", title: "Put two files together", text: "Place the slide and CoreAlign.groovy in one folder. Config is optional." },
+  { icon: "ri-play-circle-line", number: "02", title: "Press Run", text: "CoreAlign detects rows, columns, and the array automatically." },
   { icon: "ri-crop-2-line", number: "03", title: "Review and export", text: "Each core is rotated first, cropped second, and saved automatically." },
 ];
 
@@ -49,10 +49,10 @@ export default function Home() {
           </div>
           <div className="heroSummaryActions">
             <div className="heroActions">
-              <a className="button" href={path("/config-builder/")}>Build config <i className="ri-arrow-right-line" /></a>
-              <a className="button ghost" href={release}><i className="ri-download-2-line" /> Download</a>
+              <a className="button" href={release}><i className="ri-download-2-line" /> Download</a>
+              <a className="button ghost" href={path("/config-builder/")}><i className="ri-settings-3-line" /> Optional config</a>
             </div>
-            <div className="quickStart"><i className="ri-file-code-line" /><div><b>Two files</b><span>CoreAlign.groovy + corealign.config.json</span></div></div>
+            <div className="quickStart"><i className="ri-file-code-line" /><div><b>One script</b><span>Slide + CoreAlign.groovy</span></div></div>
           </div>
         </div>
       </section>
@@ -104,7 +104,7 @@ export default function Home() {
         <div className="tutorialCopy">
           <p className="eyebrow">Video tutorial</p>
           <h2>Watch the complete workflow in four minutes.</h2>
-          <p>Download, configure, run, review, and export. The tutorial also shows the required preflight check before detection.</p>
+          <p>Download, press Run, review, and export. Version 1.3 removes row and column setup; the video remains useful for QuPath review and export steps.</p>
           <a className="button" href={tutorialVideo}><i className="ri-play-line" /> Watch or download</a>
         </div>
       </section>
@@ -122,10 +122,10 @@ export default function Home() {
       </section>
 
       <section className="finalCta">
-        <div><p className="eyebrow">Start here</p><h2>Build a config, then run one file in QuPath.</h2></div>
+        <div><p className="eyebrow">Start here</p><h2>Download one script and press Run in QuPath.</h2></div>
         <div>
-          <a className="button light" href={path("/config-builder/")}>Build config <i className="ri-arrow-right-line" /></a>
-          <a className="button outlineLight" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
+          <a className="button light" href={release}>Download CoreAlign <i className="ri-arrow-right-line" /></a>
+          <a className="button outlineLight" href={path("/config-builder/")}>Optional config</a>
         </div>
       </section>
 

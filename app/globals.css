@@ -480,6 +480,14 @@ footer a:hover { color: var(--blue); }
 .presetHint i { margin-top: 1px; color: #087e91; font-size: 17px; }
 :root[data-theme="dark"] .presetHint { border-color: #276674; background: #12343c; color: #a8e8ef; }
 :root[data-theme="dark"] .presetHint i { color: #7ee6ef; }
+.autoGeometryCard { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px; border: 1px solid #74d6c2; border-radius: 16px; background: linear-gradient(135deg, #effffb, #f3fbff); }
+.autoGeometryCard > span { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 15px; background: #cef8ed; color: #087763; font-size: 25px; }
+.autoGeometryCard h3 { margin: 0; color: var(--ink); font-size: 17px; }
+.autoGeometryCard p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.autoGeometryCard em { display: flex; align-items: center; gap: 6px; color: #087763; font-size: 13px; font-style: normal; font-weight: 800; white-space: nowrap; }
+:root[data-theme="dark"] .autoGeometryCard { border-color: #287968; background: linear-gradient(135deg, #123b33, #142f3e); }
+:root[data-theme="dark"] .autoGeometryCard > span { background: #194f43; color: #76ead1; }
+:root[data-theme="dark"] .autoGeometryCard em { color: #76ead1; }
 .geometryEditor { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 18px; padding: 20px; border-radius: 14px; background: linear-gradient(135deg, var(--surface-accent), var(--blue-pale)); }
 .geometryFields { display: flex; align-items: end; gap: 10px; min-width: 0; }
 .numberField > span, .diameterField > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
@@ -588,6 +596,9 @@ footer a:hover { color: var(--blue); }
   .builderHero { align-items: flex-start; flex-direction: column; padding-top: 40px; }
   .builderSteps { max-width: 100%; overflow-x: auto; }
   .presetButtons, .fieldGrid.two, .fieldGrid.three, .toggleGrid { grid-template-columns: 1fr; }
+  .autoGeometryCard { grid-template-columns: 44px 1fr; }
+  .autoGeometryCard > span { width: 44px; height: 44px; }
+  .autoGeometryCard em { grid-column: 2; }
   .outputChoices { grid-template-columns: 1fr; }
   .geometryEditor { align-items: stretch; flex-direction: column; }
   .geometryFields { flex-wrap: wrap; }

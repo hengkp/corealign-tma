@@ -6,14 +6,15 @@ Video: [CoreAlign TMA tutorial version 3 in 1080p](https://github.com/hengkp/cor
 
 ## The one-folder rule
 
-Create one new empty working folder. It must contain exactly these three files:
+Create one new empty working folder. It needs only the slide and runner:
 
 ```text
 CoreAlign-Run/
   TMA_0.6mm_7_backsub.ome.tif
   CoreAlign.groovy
-  corealign.config.json
 ```
+
+`corealign.config.json` is optional. CoreAlign creates an automatic profile beside the slide on the first run.
 
 Open the slide from this folder. Do not open another copy of the slide from Downloads or a project folder. CoreAlign resolves the config, checkpoints, QC, and exports from the folder containing the open slide.
 
@@ -22,10 +23,9 @@ There must be only one config file. Delete or archive names such as `corealign.c
 ## Download and prepare
 
 1. Download the latest GitHub Release.
-2. Copy `workflow/CoreAlign.groovy` and `workflow/corealign.config.json` into the new working folder.
+2. Copy `workflow/CoreAlign.groovy` into the new working folder.
 3. Copy or move the slide into the same folder.
-4. For the example skin array, confirm the config contains profile `skin_18x7`, grid `18 x 7`, and core diameter `0.6 mm`.
-5. Keep `showAdvancedDialog` set to `false`. Use the Config Builder to change a profile instead of changing only some values inside QuPath.
+4. Optionally use the Config Builder when changing output type, tissue type, or channel names.
 
 ## Run in QuPath
 
@@ -33,13 +33,12 @@ There must be only one config file. Delete or archive names such as `corealign.c
 2. Open `Automate`, then `Show script editor`.
 3. Open `CoreAlign.groovy`.
 4. Press `Run`.
-5. Read the preflight dialog before continuing. It shows the open slide, working folder, exact config path, profile, grid, and core diameter.
-6. Continue only when every value matches the physical TMA.
+5. No row, column, or diameter dialog is shown. Watch the log for `Automatic geometry accepted` or `validated reference locked`.
 
 For the validated example, the first run must report:
 
 ```text
-Grid: 18 rows x 7 columns
+Automatic geometry: validated reference locked at 18 x 7
 Core diameter: 0.6 mm
 117 present
 9 missing
@@ -73,8 +72,9 @@ CoreAlign stops before approval or orientation when any of these checks fail:
 
 - More than one CoreAlign config is beside the open slide
 - Production config enables the advanced parameter dialog
+- Automatic geometry confidence is below the acceptance threshold
 - Detected positions are below the configured structural threshold
 - Any complete row or column is empty when that is not allowed
 - The validated example does not match its 126-position technical reference
 
-Human review remains required. A correct software run does not establish autonomous clinical accuracy.
+Human review remains required before biological or clinical claims. A correct software run does not establish autonomous clinical accuracy on unseen slides.

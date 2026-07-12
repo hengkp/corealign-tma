@@ -8,7 +8,6 @@ type DetailMode = "fast" | "balanced" | "high";
 type TissueMode = "skin" | "generic";
 
 type FormState = {
-  preset: string;
   tissue: TissueMode;
   profile: string;
   description: string;
@@ -21,62 +20,10 @@ type FormState = {
   epidermis: string;
 };
 
-const presetOptions: Array<{ id: string; title: string; note: string; icon: string; values: Partial<FormState> }> = [
-  {
-    id: "skin18",
-    title: "Skin 18 x 7",
-    note: "126 positions, 0.6 mm cores",
-    icon: "ri-focus-3-line",
-    values: {
-      tissue: "skin",
-      profile: "skin_18x7",
-      description: "0.6 mm skin CyCIF TMA",
-      rows: 18,
-      columns: 7,
-      diameter: 0.6,
-      nuclear: "dapi, hoechst, nuclear",
-      epidermis: "keratin, cytokeratin, panck, epcam",
-    },
-  },
-  {
-    id: "skin12",
-    title: "Skin 12 x 8",
-    note: "96 positions, 1.0 mm cores",
-    icon: "ri-layout-grid-line",
-    values: {
-      tissue: "skin",
-      profile: "skin_12x8",
-      description: "1.0 mm skin TMA",
-      rows: 12,
-      columns: 8,
-      diameter: 1,
-      nuclear: "dapi, hoechst, nuclear",
-      epidermis: "keratin, cytokeratin, panck, epcam",
-    },
-  },
-  {
-    id: "custom",
-    title: "Other TMA",
-    note: "Enter your own layout",
-    icon: "ri-edit-box-line",
-    values: {
-      tissue: "generic",
-      profile: "custom_tma",
-      description: "Custom TMA",
-      rows: 10,
-      columns: 10,
-      diameter: 1,
-      nuclear: "dapi, hoechst, nuclear",
-      epidermis: "keratin, cytokeratin, panck, epcam",
-    },
-  },
-];
-
 const initial: FormState = {
-  preset: "skin18",
   tissue: "skin",
-  profile: "skin_18x7",
-  description: "0.6 mm skin CyCIF TMA",
+  profile: "auto",
+  description: "Automatic TMA geometry",
   rows: 18,
   columns: 7,
   diameter: 0.6,
@@ -107,11 +54,13 @@ function makeConfig(form: FormState) {
           rowScheme: "1, 2, 3...",
           columnScheme: "A, B, C...",
           showAdvancedDialog: false,
+          autoDetectGeometry: true,
+          autoInferLayout: true,
           useExistingGridUnlessRectangleSelected: true,
           trustNondefaultExistingGrid: true,
         },
         detection: {
-          algorithmVersion: generic ? "generic-tma-detect-1" : "skin-tma-detect-2.3-preflight-guard",
+          algorithmVersion: generic ? "generic-tma-detect-1" : "skin-tma-detect-2.4-auto-geometry",
           channelMode: "nuclear",
           customChannels: "",
           downsample: 8,
@@ -176,7 +125,6 @@ export default function ConfigBuilder() {
   const [form, setForm] = useState<FormState>(initial);
   const config = useMemo(() => makeConfig(form), [form]);
   const json = useMemo(() => JSON.stringify(config, null, 2), [config]);
-  const total = Math.max(0, form.rows * form.columns);
   const errors = [
     ...(form.rows < 1 || form.rows > 100 ? ["Rows must be between 1 and 100"] : []),
     ...(form.columns < 1 || form.columns > 100 ? ["Columns must be between 1 and 100"] : []),
@@ -188,10 +136,6 @@ export default function ConfigBuilder() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function choosePreset(id: string, values: Partial<FormState>) {
-    setForm((current) => ({ ...current, ...values, preset: id }));
-  }
-
   return (
     <main className="builderPage">
       <SiteHeader />
@@ -200,10 +144,10 @@ export default function ConfigBuilder() {
         <div>
           <p className="kicker"><i className="ri-magic-line" /> Config Builder</p>
           <h1>Create your TMA config in under a minute.</h1>
-          <p>Choose the array size and output. CoreAlign fills in the safe processing settings.</p>
+          <p>Choose the output only. CoreAlign detects rows and columns from the slide.</p>
         </div>
         <div className="builderSteps" aria-label="Three builder steps">
-          <span className="active"><b>1</b> TMA</span><i className="ri-arrow-right-s-line" />
+          <span className="active"><b>1</b> Auto detect</span><i className="ri-arrow-right-s-line" />
           <span><b>2</b> Output</span><i className="ri-arrow-right-s-line" />
           <span><b>3</b> Download</span>
         </div>
@@ -212,40 +156,13 @@ export default function ConfigBuilder() {
       <section className="builderLayout">
         <div className="builderForm">
           <section className="formCard presetCard">
-            <StepHeading number="1" title="Choose your TMA" text="Start with the closest layout. You can change the numbers below." />
-            <div className="presetButtons">
-              {presetOptions.map((preset, index) => {
-                const selected = form.preset === preset.id;
-                return (
-                  <button
-                    type="button"
-                    key={preset.id}
-                    className={selected ? "selected" : ""}
-                    aria-pressed={selected}
-                    onClick={() => choosePreset(preset.id, preset.values)}
-                  >
-                    <span className={`presetIcon presetColor${index + 1}`}><i className={preset.icon} /></span>
-                    <span className="presetText"><b>{preset.title}</b><small>{preset.note}</small></span>
-                    <i className={selected ? "ri-checkbox-circle-fill" : "ri-checkbox-blank-circle-line"} />
-                  </button>
-                );
-              })}
+            <StepHeading number="1" title="Geometry is automatic" text="No row count, column count, or layout preset is required." />
+            <div className="autoGeometryCard">
+              <span><i className="ri-radar-line" /></span>
+              <div><h3>Automatic TMA detection is on</h3><p>CoreAlign finds the array, estimates rows and columns, removes stray tissue, and validates the result before processing cores.</p></div>
+              <em><i className="ri-checkbox-circle-fill" /> Ready</em>
             </div>
-            <p className="presetHint"><i className="ri-information-line" /> For <b>TMA_0.6mm_7_backsub.ome.tif</b>, choose <b>Skin 18 x 7</b>.</p>
-
-            <div className="geometryEditor">
-              <div className="geometryFields">
-                <NumberField label="Rows" value={form.rows} min={1} max={100} step={1} onChange={(value) => set("rows", value)} />
-                <span className="mathSign">x</span>
-                <NumberField label="Columns" value={form.columns} min={1} max={100} step={1} onChange={(value) => set("columns", value)} />
-                <span className="mathSign">=</span>
-                <div className="positionTotal"><strong>{total}</strong><span>positions</span></div>
-              </div>
-              <label className="diameterField">
-                <span>Core diameter</span>
-                <div><input type="number" min="0.1" step="0.1" value={form.diameter} onChange={(event) => set("diameter", Number(event.target.value))} /><b>mm</b></div>
-              </label>
-            </div>
+            <p className="presetHint"><i className="ri-shield-check-line" /> Ambiguous slides stop safely instead of creating a guessed grid. The validated example is recognized automatically.</p>
           </section>
 
           <section className="formCard outputCard">
@@ -267,6 +184,12 @@ export default function ConfigBuilder() {
             <summary><span><i className="ri-settings-3-line" /> Advanced settings</span><small>Optional</small></summary>
             <div className="advancedBody">
               <div className="fieldGrid two">
+                <Field label="Tissue type" hint="Skin enables epidermis-up orientation">
+                  <select value={form.tissue} onChange={(event) => set("tissue", event.target.value as TissueMode)}>
+                    <option value="skin">Skin</option>
+                    <option value="generic">Other tissue</option>
+                  </select>
+                </Field>
                 <Field label="Profile name" hint="Used in reports and checkpoints">
                   <input value={form.profile} onChange={(event) => set("profile", event.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))} />
                 </Field>
@@ -283,6 +206,9 @@ export default function ConfigBuilder() {
                 <Field label="Epidermis marker names" hint="Optional helper markers such as keratin or PanCK">
                   <input value={form.epidermis} onChange={(event) => set("epidermis", event.target.value)} />
                 </Field>
+                <NumberField label="Fallback rows" value={form.rows} min={1} max={100} step={1} onChange={(value) => set("rows", value)} />
+                <NumberField label="Fallback columns" value={form.columns} min={1} max={100} step={1} onChange={(value) => set("columns", value)} />
+                <NumberField label="Core-size seed in mm" value={form.diameter} min={0.1} max={5} step={0.1} onChange={(value) => set("diameter", value)} />
               </div>
             </div>
           </details>
@@ -292,9 +218,9 @@ export default function ConfigBuilder() {
           <div className={`builderSummary ${errors.length ? "hasError" : "isReady"}`}>
             <div className="summaryTop"><span><i className={errors.length ? "ri-error-warning-fill" : "ri-checkbox-circle-fill"} /></span><div><p>Your config</p><h2>{errors.length ? "Check the highlighted fields" : "Ready to download"}</h2></div></div>
             <dl>
-              <div><dt>Array</dt><dd>{form.rows} x {form.columns}</dd></div>
-              <div><dt>Core size</dt><dd>{form.diameter} mm</dd></div>
-              <div><dt>Positions</dt><dd>{total}</dd></div>
+              <div><dt>Array</dt><dd>Auto detect</dd></div>
+              <div><dt>Rows and columns</dt><dd>No input</dd></div>
+              <div><dt>Safety</dt><dd>Confidence checked</dd></div>
               <div><dt>Output</dt><dd>{form.output === "presentation" ? "PNG" : "PNG + OME-TIFF"}</dd></div>
               <div><dt>Review</dt><dd>Human check included</dd></div>
             </dl>
@@ -311,7 +237,7 @@ export default function ConfigBuilder() {
           <div className="afterDownload">
             <p>Next in QuPath</p>
             <ol>
-              <li><span>1</span><p>Put the config, slide, and <b>CoreAlign.groovy</b> in one folder.</p></li>
+              <li><span>1</span><p>Put the slide and <b>CoreAlign.groovy</b> in one folder. Config is optional.</p></li>
               <li><span>2</span><p>Open that slide copy in QuPath.</p></li>
               <li><span>3</span><p>Run <b>CoreAlign.groovy</b> and check the preview.</p></li>
             </ol>
