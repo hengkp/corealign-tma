@@ -2,7 +2,9 @@
 
 Validated on 12 July 2026 with QuPath 0.7.0 on the example `TMA_0.6mm_7_backsub.ome.tif` slide.
 
-Video: [CoreAlign TMA tutorial version 3 in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4)
+The previous video is intentionally not linked because it no longer matches the current workflow. Follow this written guide until the privacy-safe v1.4 video is recorded and approved.
+
+Production brief for the replacement video: [VIDEO_SCRIPT.md](VIDEO_SCRIPT.md)
 
 ## The one-folder rule
 

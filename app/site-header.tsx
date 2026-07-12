@@ -13,7 +13,6 @@ export default function SiteHeader() {
       <nav aria-label="Main navigation">
         <a href={`${basePath}/#workflow`}>How it works</a>
         <a href={`${basePath}/#outputs`}>Outputs</a>
-        <a href={`${basePath}/#tutorial`}>Tutorial</a>
         <a href={`${basePath}/#review`}>Safety</a>
       </nav>
       <div className="headerActions">

@@ -14,7 +14,7 @@ Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma
 
 Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/)
 
-Complete tutorial: [validated written tutorial](tutorial/README.md) and [version 3 video in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4)
+Tutorial: [validated written guide](tutorial/README.md). The previous video has been removed from the website while a privacy-safe v1.4 recording is produced.
 
 ## What it does
 
@@ -50,9 +50,7 @@ Complete tutorial: [validated written tutorial](tutorial/README.md) and [version
 
 Follow [the current tutorial](tutorial/README.md). It includes the one-folder rule, the exact preflight checks, expected results for the example slide, review gates, resume behavior, and realistic PNG and OME-TIFF timing.
 
-The [version 3 video](https://github.com/hengkp/corealign-tma/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4) is 4 minutes 9 seconds and contains the simplified Config Builder, English narration, and selectable English and Thai subtitle tracks.
-
-Tutorial version 1 is retained only under `_archieved/tutorial-v1` because it did not prevent a wrong profile and core diameter from being mixed in QuPath.
+Use [the production prompt](tutorial/VIDEO_SCRIPT.md) for the next screen recording. It locks the real click sequence, English narration, privacy setup, captions, and acceptance checks to the v1.4 workflow.
 
 ## Optional config choices
 

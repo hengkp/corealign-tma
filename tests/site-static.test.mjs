@@ -12,11 +12,12 @@ test("exports the home page and config builder", async () => {
 
 test("keeps the public website concise and English only", async () => {
   const html = await readFile(new URL("out/index.html", root), "utf8");
-  assert.match(html, /Prepare TMA cores for analysis and presentation/);
+  assert.match(html, /Turn one TMA slide into aligned core images/);
   assert.match(html, /corealign-hero-light\.webp/);
   assert.match(html, /corealign-hero-dark\.webp/);
-  assert.match(html, /CoreAlign-TMA-tutorial-v3-1080p\.mp4/);
-  assert.match(html, /finds the array, core size, rows, columns, and channels/);
+  assert.match(html, /corealign-workflow-v1\.webp/);
+  assert.match(html, /finds the array, core size, rows, columns, and useful channels/);
+  assert.doesNotMatch(html, /<video|\.mp4|Watch or download|Video tutorial/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
 });
@@ -26,6 +27,7 @@ test("exports generated example images", async () => {
   await access(new URL("out/images/synthetic-core-grid.webp", root));
   await access(new URL("out/images/corealign-hero-light.webp", root));
   await access(new URL("out/images/corealign-hero-dark.webp", root));
+  await access(new URL("out/images/corealign-workflow-v1.webp", root));
 });
 
 test("includes persistent navigation and a theme control on both pages", async () => {
@@ -39,7 +41,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Toggle color theme/);
   assert.match(builder, /How it works/);
   assert.match(builder, /Outputs/);
-  assert.match(builder, /Tutorial/);
+  assert.doesNotMatch(builder, />Tutorial</);
   assert.match(builder, /Safety/);
   assert.match(builder, /Build config/);
   assert.match(builder, /Choose two things\. CoreAlign handles the rest/);
