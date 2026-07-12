@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import ThemeToggle from "../theme-toggle";
+import SiteHeader from "../site-header";
 
 type FormState = {
   profile: string;
@@ -19,8 +19,6 @@ type FormState = {
   gridApproval: boolean;
   orientationApproval: boolean;
 };
-
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const presets: Record<string, Partial<FormState>> = {
   "Skin 18 by 7": {
@@ -180,23 +178,13 @@ export default function ConfigBuilder() {
 
   return (
     <main className="builderPage">
-      <header className="builderHeader">
-        <a className="siteBrand" href={`${basePath}/`}>
-          <span className="brandIcon"><i className="ri-focus-3-line" /></span>
-          <span>CoreAlign <b>TMA</b></span>
-        </a>
-        <div className="builderHeaderTitle"><span>Config Builder</span><small>Create a ready to use profile</small></div>
-        <div className="builderHeaderActions">
-          <ThemeToggle />
-          <a className="textLink" href="https://github.com/hengkp/corealign-tma"><i className="ri-github-fill" /> GitHub</a>
-        </div>
-      </header>
+      <SiteHeader />
 
       <section className="builderHero">
         <div>
           <p className="kicker"><i className="ri-settings-4-line" /> Visual configuration</p>
-          <h1>Describe your array. Download the config.</h1>
-          <p>Use plain language fields. The JSON updates instantly and stays in your browser.</p>
+          <h1>CoreAlign configuration</h1>
+          <p>Set up an analysis profile with plain language fields, live checks, and a ready to use JSON download.</p>
         </div>
         <div className={`builderStatus ${errors.length ? "error" : "ready"}`}>
           <i className={errors.length ? "ri-error-warning-line" : "ri-checkbox-circle-fill"} />
@@ -205,20 +193,8 @@ export default function ConfigBuilder() {
       </section>
 
       <section className="builderLayout">
-        <aside className="builderRail" aria-label="Configuration sections">
-          {[
-            ["01", "Profile", "ri-profile-line"],
-            ["02", "Array", "ri-layout-grid-line"],
-            ["03", "Channels", "ri-contrast-drop-2-line"],
-            ["04", "Output", "ri-save-3-line"],
-          ].map(([number, label, icon]) => (
-            <a key={number} href={`#section-${number}`}><span>{number}</span><i className={icon} />{label}</a>
-          ))}
-          <div className="railNote"><i className="ri-lock-2-line" /><p><b>Local by design</b> No slide data is uploaded.</p></div>
-        </aside>
-
         <div className="builderForm">
-          <section className="formCard presetCard">
+          <section className="formCard presetCard" id="section-preset">
             <div className="formHeading"><div><p>Start here</p><h2>Choose a preset</h2></div><i className="ri-sparkling-2-line" /></div>
             <div className="presetButtons">
               {Object.entries(presets).map(([name, value]) => (
@@ -277,12 +253,35 @@ export default function ConfigBuilder() {
           </section>
         </div>
 
-        <aside className="jsonPanel">
-          <div className="jsonHeader"><div><p>Live output</p><h2>corealign.config.json</h2></div><span>{new Blob([json]).size.toLocaleString()} bytes</span></div>
-          {errors.length > 0 && <div className="errorList">{errors.map((error) => <p key={error}><i className="ri-error-warning-line" /> {error}</p>)}</div>}
-          <pre>{json}</pre>
-          <button className="downloadButton" disabled={errors.length > 0} onClick={download}><i className="ri-download-2-line" /> Download config</button>
-          <p className="jsonFoot"><i className="ri-shield-check-line" /> Validated in your browser</p>
+        <aside className="builderAside" aria-label="Configuration progress">
+          <div className="builderTocCard">
+            <div className="tocHeader">
+              <div><p>On this page</p><h2>Configuration</h2></div>
+              <span className={errors.length ? "needsAttention" : "isReady"}>{errors.length ? "Check fields" : "Ready"}</span>
+            </div>
+            <div className="tocProgress" aria-label={`${errors.length ? 75 : 100} percent complete`}>
+              <span style={{ width: `${errors.length ? 75 : 100}%` }} />
+            </div>
+            <nav className="tocNav" aria-label="Configuration sections">
+              {[
+                ["section-preset", "Preset", "ri-sparkling-2-line"],
+                ["section-01", "Profile", "ri-profile-line"],
+                ["section-02", "Array geometry", "ri-layout-grid-line"],
+                ["section-03", "Channel mapping", "ri-contrast-drop-2-line"],
+                ["section-04", "Output and review", "ri-save-3-line"],
+              ].map(([id, label, icon]) => (
+                <a key={id} href={`#${id}`}><i className={icon} /><span>{label}</span><i className="ri-arrow-right-s-line" /></a>
+              ))}
+            </nav>
+            {errors.length > 0 && <div className="errorList">{errors.map((error) => <p key={error}><i className="ri-error-warning-line" /> {error}</p>)}</div>}
+            <div className="tocNote"><i className="ri-lock-2-line" /><p><b>Local by design</b><span>No slide data is uploaded.</span></p></div>
+            <button className="downloadButton" disabled={errors.length > 0} onClick={download}><i className="ri-download-2-line" /> Download config</button>
+            <p className="jsonFoot"><i className="ri-shield-check-line" /> Validated in your browser</p>
+            <details className="jsonDetails">
+              <summary><span><i className="ri-code-s-slash-line" /> View generated JSON</span><small>{new Blob([json]).size.toLocaleString()} bytes</small></summary>
+              <pre>{json}</pre>
+            </details>
+          </div>
         </aside>
       </section>
     </main>
