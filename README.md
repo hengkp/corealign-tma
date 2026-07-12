@@ -8,6 +8,8 @@ Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma
 
 Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/)
 
+Complete tutorial: [CoreAlign TMA complete tutorial in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.0.0/CoreAlign-TMA-complete-tutorial-1080p.mp4)
+
 ## What it does
 
 - Runs from one production script: `workflow/CoreAlign.groovy`
@@ -35,6 +37,12 @@ Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.g
 7. Review the detected grid and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
 9. Approve the final reviewed result to create the presentation package.
+
+## Video tutorial
+
+The complete 3 minute 54 second walkthrough contains ten chapters from GitHub download through QuPath review and final exports. It includes ElevenLabs narration, an original ElevenLabs Music soundtrack, embedded English subtitles, and embedded Thai subtitles enabled by default.
+
+The reproducible render recipe is in `tutorial/render_video.sh`. Narration and raw screen recordings remain local and are excluded from Git. The finished video is distributed as a GitHub Release asset.
 
 ## Important config fields
 

@@ -1,5 +1,6 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-import ThemeToggle from "./theme-toggle";
+const tutorialVideo = `${repo}/releases/download/v1.0.0/CoreAlign-TMA-complete-tutorial-1080p.mp4`;
+import SiteHeader from "./site-header";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -50,56 +51,32 @@ export default function Home() {
     <main>
       <a className="skipLink" href="#content">Skip to content</a>
 
-      <header className="siteHeader">
-        <a className="siteBrand" href={path("/")} aria-label="CoreAlign TMA home">
-          <span className="brandIcon"><i className="ri-focus-3-line" /></span>
-          <span>CoreAlign <b>TMA</b></span>
-        </a>
-        <nav aria-label="Main navigation">
-          <a href="#workflow">Workflow</a>
-          <a href="#review">Human review</a>
-          <a href="#outputs">Outputs</a>
-          <a href="#validation">Validation</a>
-        </nav>
-        <div className="headerActions">
-          <ThemeToggle />
-          <a className="textLink" href={repo}>GitHub</a>
-          <a className="button small" href={path("/config-builder/")}>Build a config</a>
-        </div>
-      </header>
+      <SiteHeader />
 
-      <section className="hero" id="content">
-        <div className="heroCopy reveal">
-          <p className="kicker"><i className="ri-microscope-line" /> QuPath workflow for skin TMA orientation</p>
-          <h1>Detect, rotate, and crop every core with review built in.</h1>
-          <p className="heroLead">
-            CoreAlign TMA turns a full tissue microarray into consistent individual core images.
-            It keeps skin epidermis at the top, saves work after every core, and sends uncertain
-            results to a focused review queue.
-          </p>
-          <div className="heroActions">
-            <a className="button" href={path("/config-builder/")}>
-              Create a config <i className="ri-arrow-right-line" />
-            </a>
-            <a className="button ghost" href={repo}>
-              <i className="ri-github-fill" /> View on GitHub
-            </a>
-          </div>
-          <div className="quickStart">
-            <i className="ri-time-line" />
-            <div><b>Start with two files</b><span>CoreAlign.groovy and corealign.config.json</span></div>
-          </div>
-        </div>
-
-        <figure className="heroFigure reveal delayOne">
-          {/* Generated WebP is already optimized and must stay portable on GitHub Pages. */}
+      <section className="brandHero" id="content">
+        <h1 className="srOnly">CoreAlign TMA. Rotate first. Crop second.</h1>
+        <figure className="brandHeroFrame reveal">
+          {/* Both illustrations are generated and contain no real specimen data. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={path("/images/synthetic-array-hero.webp")}
-            alt="Generated illustration of unordered TMA cores becoming an aligned array"
-          />
+          <img className="heroLightImage" src={path("/images/corealign-hero-light.webp")} alt="Generated CoreAlign TMA illustration for light mode" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="heroDarkImage" src={path("/images/corealign-hero-dark.webp")} alt="Generated CoreAlign TMA illustration for dark mode" />
           <figcaption><i className="ri-sparkling-2-line" /> Generated illustration. No real specimen data.</figcaption>
         </figure>
+        <div className="heroSummary reveal delayOne">
+          <div>
+            <p className="kicker"><i className="ri-microscope-line" /> QuPath workflow for skin TMA orientation</p>
+            <h2>Detect, rotate, and crop every core with review built in.</h2>
+            <p>Keep epidermis at the top, save after every core, and send uncertain results to a focused review queue.</p>
+          </div>
+          <div className="heroSummaryActions">
+            <div className="heroActions">
+              <a className="button" href={path("/config-builder/")}>Create a config <i className="ri-arrow-right-line" /></a>
+              <a className="button ghost" href={repo}><i className="ri-github-fill" /> View on GitHub</a>
+            </div>
+            <div className="quickStart"><i className="ri-time-line" /><div><b>Start with two files</b><span>CoreAlign.groovy and corealign.config.json</span></div></div>
+          </div>
+        </div>
       </section>
 
       <section className="validationStrip" aria-label="Reference validation result">
@@ -176,6 +153,27 @@ export default function Home() {
           />
           <figcaption><span><i className="ri-checkbox-circle-fill" /> Epidermis aligned at the top</span><span>Generated example</span></figcaption>
         </figure>
+      </section>
+
+      <section className="section tutorialSection" id="tutorial">
+        <div className="tutorialPlayer">
+          <video controls preload="metadata" poster={path("/images/corealign-hero-dark.webp")}>
+            <source src={tutorialVideo} type="video/mp4" />
+            Your browser does not support embedded video.
+          </video>
+          <div><span><i className="ri-play-circle-line" /> 3 minutes 54 seconds</span><span>English narration with Thai and English subtitle tracks</span></div>
+        </div>
+        <div className="tutorialCopy">
+          <p className="eyebrow">Complete video tutorial</p>
+          <h2>Follow the workflow from download to reviewed exports.</h2>
+          <p>The tutorial covers repository download, visual configuration, QuPath setup, grid review, per-core rotate then crop processing, selective resume, and presentation outputs.</p>
+          <ul>
+            <li><i className="ri-movie-2-line" /><span><b>Ten chapters</b> Jump directly to the step you need.</span></li>
+            <li><i className="ri-translate-2" /><span><b>Two subtitle tracks</b> Thai is enabled by default and English is included.</span></li>
+            <li><i className="ri-music-2-line" /><span><b>Production audio</b> ElevenLabs narration and original ElevenLabs Music.</span></li>
+          </ul>
+          <a className="button" href={tutorialVideo}><i className="ri-download-2-line" /> Download the 1080p tutorial</a>
+        </div>
       </section>
 
       <section className="section outputSection" id="outputs">
