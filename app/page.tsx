@@ -1,5 +1,5 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-const release = `${repo}/releases/tag/v1.3.0`;
+const release = `${repo}/releases/latest`;
 const tutorialVideo = `${repo}/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4`;
 import SiteHeader from "./site-header";
 
@@ -14,9 +14,10 @@ const validation = [
 ];
 
 const steps = [
-  { icon: "ri-folder-open-line", number: "01", title: "Put two files together", text: "Place the slide and CoreAlign.groovy in one folder. Config is optional." },
-  { icon: "ri-play-circle-line", number: "02", title: "Press Run", text: "CoreAlign detects rows, columns, and the array automatically." },
-  { icon: "ri-crop-2-line", number: "03", title: "Review and export", text: "Each core is rotated first, cropped second, and saved automatically." },
+  { icon: "ri-folder-open-line", number: "01", title: "Open your slide", text: "Place the slide and CoreAlign.groovy in one folder. Config is optional." },
+  { icon: "ri-play-circle-line", number: "02", title: "Press Run", text: "CoreAlign finds the array, core size, rows, columns, and channels." },
+  { icon: "ri-eye-line", number: "03", title: "Review exceptions", text: "Confirm the detected grid and inspect only cores that are flagged." },
+  { icon: "ri-crop-2-line", number: "04", title: "Use your files", text: "Each core is rotated first, cropped second, and saved at source quality." },
 ];
 
 const outputs = [
@@ -45,7 +46,7 @@ export default function Home() {
           <div>
             <p className="kicker"><i className="ri-microscope-line" /> TMA preparation in QuPath</p>
             <h2>Prepare TMA cores for analysis and presentation.</h2>
-            <p>Detect every core, rotate skin with epidermis at the top, and crop at source resolution. Review only the results that need attention.</p>
+            <p>Automatically detect the array, align each core, and crop at source resolution. Review only results that need attention.</p>
           </div>
           <div className="heroSummaryActions">
             <div className="heroActions">
@@ -65,9 +66,9 @@ export default function Home() {
       <section className="section workflowSection" id="workflow">
         <div className="sectionIntro compactIntro">
           <p className="eyebrow">Simple workflow</p>
-          <h2>From slide to aligned cores in three steps.</h2>
+          <h2>From slide to aligned cores in four clear steps.</h2>
         </div>
-        <div className="stepGrid threeSteps">
+        <div className="stepGrid fourSteps">
           {steps.map((step) => (
             <article className="stepCard" key={step.number}>
               <div><span>{step.number}</span><i className={step.icon} /></div>
@@ -99,12 +100,12 @@ export default function Home() {
             <source src={tutorialVideo} type="video/mp4" />
             Your browser does not support embedded video.
           </video>
-          <div><span><i className="ri-play-circle-line" /> 4 minutes 9 seconds</span><span>English narration, English and Thai subtitles</span></div>
+          <div><span><i className="ri-play-circle-line" /> 4 minutes 9 seconds</span><span>English narration and captions</span></div>
         </div>
         <div className="tutorialCopy">
           <p className="eyebrow">Video tutorial</p>
           <h2>Watch the complete workflow in four minutes.</h2>
-          <p>Download, press Run, review, and export. Version 1.3 removes row and column setup; the video remains useful for QuPath review and export steps.</p>
+          <p>Download, press Run, review, and export. Version 1.4 also estimates core size automatically; the video remains useful for QuPath review and export steps.</p>
           <a className="button" href={tutorialVideo}><i className="ri-play-line" /> Watch or download</a>
         </div>
       </section>
@@ -115,7 +116,7 @@ export default function Home() {
           <h2>Automation does the repetitive work. A person confirms the result.</h2>
         </div>
         <div className="validationCopy">
-          <p>CoreAlign pauses after grid detection and flags uncertain orientations. Completed cores are saved, so corrections do not restart the full array.</p>
+          <p>CoreAlign checks geometry and orientation confidence, then pauses only for confirmation or uncertain cores. Completed work is saved after every core.</p>
           <div><i className="ri-eye-line" /><span><b>Quick review</b> Check the grid and flagged cores only.</span></div>
           <div><i className="ri-save-3-line" /><span><b>Safe resume</b> Continue from the last completed core.</span></div>
         </div>

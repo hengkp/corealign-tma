@@ -16,7 +16,7 @@ test("keeps the public website concise and English only", async () => {
   assert.match(html, /corealign-hero-light\.webp/);
   assert.match(html, /corealign-hero-dark\.webp/);
   assert.match(html, /CoreAlign-TMA-tutorial-v3-1080p\.mp4/);
-  assert.match(html, /detects rows, columns, and the array automatically/);
+  assert.match(html, /finds the array, core size, rows, columns, and channels/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
 });
@@ -42,12 +42,14 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Tutorial/);
   assert.match(builder, /Safety/);
   assert.match(builder, /Build config/);
-  assert.match(builder, /Create your TMA config in under a minute/);
+  assert.match(builder, /Choose two things\. CoreAlign handles the rest/);
   assert.match(builder, /Presentation images/);
-  assert.match(builder, /Geometry is automatic/);
-  assert.match(builder, /No row count, column count, or layout preset is required/);
+  assert.match(builder, /Detection is fully automatic/);
+  assert.match(builder, /No array geometry or punch size is required/);
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
-  assert.match(builder, /Advanced settings/);
+  assert.match(builder, /%22autoEstimateCoreDiameter%22%3A%20true/);
+  assert.match(builder, /Channel name helper/);
+  assert.doesNotMatch(builder, /Fallback rows|Fallback columns|Core-size seed|Profile name/);
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
   assert.doesNotMatch(builder, /On this page/);
@@ -71,7 +73,7 @@ test("ships one guarded production workflow", async () => {
     readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
   ]);
   const config = JSON.parse(configText);
-  const profile = config.profiles.skin_18x7;
+  const profile = config.profiles.automatic;
 
   assert.match(groovy, /PREFLIGHT_BLOCKED: multiple config files/);
   assert.match(groovy, /Gson represents JSON integers as doubles/);
@@ -81,17 +83,22 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.match(groovy, /STRUCTURAL QC:/);
   assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
-  assert.equal(profile.grid.rows, 18);
-  assert.equal(profile.grid.columns, 7);
-  assert.equal(profile.grid.coreDiameterMM, 0.6);
+  assert.equal(config.schemaVersion, 2);
+  assert.equal(profile.grid.rows, undefined);
+  assert.equal(profile.grid.columns, undefined);
+  assert.equal(profile.grid.coreDiameterMM, undefined);
   assert.equal(profile.grid.showAdvancedDialog, false);
   assert.equal(profile.grid.autoDetectGeometry, true);
+  assert.equal(profile.grid.autoEstimateCoreDiameter, true);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
+  assert.equal(profile.detection.autoRetryMergedChannels, true);
 
   const payload = groovy.match(/def step1 = new EmbeddedWorkflowScript\(name: '01_build_tma_grid\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(payload, "Step 1 payload should be embedded");
   const embeddedDetector = gunzipSync(Buffer.from(payload[1], "base64")).toString("utf8");
   assert.equal(embeddedDetector, detectorSource);
   assert.match(embeddedDetector, /Automatic geometry accepted/);
+  assert.match(embeddedDetector, /Automatic core-size estimate/);
+  assert.match(embeddedDetector, /Automatic merged-channel retry/);
   assert.match(embeddedDetector, /AUTO_GEOMETRY_BLOCKED/);
 });

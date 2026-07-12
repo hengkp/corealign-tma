@@ -4,13 +4,11 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Latest release: v1.3.0
+## Current workflow: v1.4.0
 
-Version 1.3.0 automatically detects rows and columns. A config file is optional: CoreAlign creates a safe automatic profile when none is present. Known validated slides use their locked reference geometry, while new slides require a high-confidence two-dimensional layout estimate before any grid is created.
+Version 1.4.0 estimates the array region, physical core size, rows, columns, and usable detection channels from the slide. A config file is optional. New slides must pass structural confidence checks before CoreAlign creates or approves a grid.
 
-[Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/?v=1.3.0) | [Download release v1.3.0](https://github.com/hengkp/corealign-tma/releases/tag/v1.3.0)
-
-![CoreAlign TMA automatic Config Builder version 1.3](docs/images/config-builder-v1.3.png)
+[Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
 Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma/)
 
@@ -21,14 +19,14 @@ Complete tutorial: [validated written tutorial](tutorial/README.md) and [version
 ## What it does
 
 - Runs from one production script: `workflow/CoreAlign.groovy`
-- Detects row and column counts without operator input
+- Estimates core diameter, row count, and column count without operator input
 - Creates an automatic config when no config is supplied
 - Detects the grid and asks for review before processing
 - Refines, orients, rotates, checks, and crops each core in that order
 - Saves an atomic checkpoint after every core
 - Resumes only failed or corrected cores
 - Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
-- Supports profiles for other arrays, stains, scanners, and experiments
+- Supports skin and other TMA tissues without array geometry input
 
 ## Requirements
 
@@ -43,7 +41,7 @@ Complete tutorial: [validated written tutorial](tutorial/README.md) and [version
 3. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
 4. Open `Automate`, then `Show script editor`.
 5. Open `CoreAlign.groovy` and press `Run`.
-6. CoreAlign creates a config if needed, detects the geometry, and writes the QC result without asking for rows or columns.
+6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Review the detected grid and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
 9. Approve the final reviewed result to create the presentation package.
@@ -56,21 +54,15 @@ The [version 3 video](https://github.com/hengkp/corealign-tma/releases/download/
 
 Tutorial version 1 is retained only under `_archieved/tutorial-v1` because it did not prevent a wrong profile and core diameter from being mixed in QuPath.
 
-## Important config fields
+## Optional config choices
 
-| Key | Purpose |
+| Choice | Purpose |
 |---|---|
-| `grid.autoDetectGeometry` | Infer rows and columns automatically |
-| `grid.rows`, `grid.columns` | Fallback seed values used only when needed |
-| `grid.coreDiameterMM` | Physical punch diameter |
-| `nuclearChannelTokens` | Words used to find DAPI like channels |
-| `epidermisChannelTokens` | Markers that support skin orientation |
-| `exportDownsample: 1` | Preserve source pixel dimensions |
-| `saveFullResolutionPng` | Save a rotated lossless RGB PNG |
-| `saveRotatedMultichannelOmeTiff` | Apply the accepted rotation to every original channel |
-| `postRotationToleranceDeg` | Residual angle that triggers review |
+| Tissue | Use epidermis-up rotation for skin or peripheral-edge rotation for other tissue |
+| Output | Create presentation PNG only or PNG plus multichannel OME-TIFF |
+| Channel words | Optional help for unusual channel names |
 
-For a new experiment, automatic geometry is the default. Use the Config Builder only when output mode, tissue type, channel tokens, or fallback geometry needs to change. Do not copy slide-specific missing positions into a new profile.
+Rows, columns, punch size, and layout are automatic. Use the Config Builder only when tissue type, output format, or unusual channel names need to change.
 
 ## Human overrides
 

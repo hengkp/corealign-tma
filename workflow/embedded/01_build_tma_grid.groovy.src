@@ -141,6 +141,8 @@ def classNameOf = { obj ->
 // Change SHOW_ADVANCED_DIALOG to true only when troubleshooting a new TMA layout.
 boolean SHOW_ADVANCED_DIALOG = cfgBool('tma.grid.showAdvancedDialog', false)
 boolean AUTO_DETECT_GEOMETRY = cfgBool('tma.grid.autoDetectGeometry', true)
+boolean AUTO_ESTIMATE_CORE_DIAMETER = cfgBool('tma.grid.autoEstimateCoreDiameter', true)
+boolean AUTO_RETRY_MERGED_CHANNELS = cfgBool('tma.detection.autoRetryMergedChannels', true)
 boolean REFERENCE_GEOMETRY_LOCKED = cfgBool('tma.grid.referenceLocked', false)
 boolean USE_EXISTING_GRID_UNLESS_RECTANGLE_SELECTED =
     cfgBool('tma.grid.useExistingGridUnlessRectangleSelected', false)
@@ -964,12 +966,95 @@ def autoDetectArrayRegion = { double diamPx ->
     return [x: x1, y: y1, w: x2 - x1, h: y2 - y1, source: 'auto-detected']
 }
 
+// Estimate the physical core diameter from a low-resolution overview before
+// any core crop is created. This makes the normal workflow independent of the
+// punch size and keeps the configured diameter as a safe fallback only.
+def autoEstimateCoreDiameter = {
+    int imgW = server.getWidth()
+    int imgH = server.getHeight()
+    double ds = Math.max(16.0d, AUTO_SEARCH_DOWNSAMPLE / 2.0d)
+    double overviewPixels = (imgW / ds) * (imgH / ds)
+    if (overviewPixels > MAX_DETECTION_TILE_PIXELS)
+        ds = Math.ceil(Math.sqrt((imgW * (double) imgH) / MAX_DETECTION_TILE_PIXELS))
+
+    println "Estimating core size from slide overview at downsample ${ds}"
+    def reg = readProjection(server, ds, 0.0d, 0.0d,
+        (double) imgW, (double) imgH, selectedChannelIndices)
+    reg.proj = gaussianBlur(reg.proj, reg.w, reg.h, 1.5d)
+    double threshold = otsuThreshold(reg.proj) * 0.60d
+    def raw = detectBlobs(reg.proj, reg.w, reg.h, threshold)
+    double maxArea = reg.w * (double) reg.h * 0.025d
+    double maxDiameter = Math.min(reg.w, reg.h) * 0.18d
+    def candidates = raw.findAll { blob ->
+        double width = (double) blob.maxX - (double) blob.minX + 1.0d
+        double height = (double) blob.maxY - (double) blob.minY + 1.0d
+        double aspect = Math.max(width, height) / Math.max(1.0d, Math.min(width, height))
+        double equivalentDiameter = 2.0d * Math.sqrt((double) blob.count / Math.PI)
+        blob.count >= 12 && blob.count <= maxArea && aspect <= 3.5d &&
+            equivalentDiameter >= 4.0d && equivalentDiameter <= maxDiameter
+    }
+    if (candidates.size() < 6) {
+        println "Automatic core-size estimate unavailable: only ${candidates.size()} overview components; using the safe seed."
+        return null
+    }
+
+    def diameters = candidates.collect { blob ->
+        2.0d * Math.sqrt((double) blob.count / Math.PI)
+    }
+    def nearest = []
+    for (int i = 0; i < candidates.size(); i++) {
+        double best = Double.POSITIVE_INFINITY
+        for (int j = 0; j < candidates.size(); j++) {
+            if (i == j) continue
+            double dx = (double) candidates[i].cx - (double) candidates[j].cx
+            double dy = (double) candidates[i].cy - (double) candidates[j].cy
+            double distance = Math.sqrt(dx * dx + dy * dy)
+            if (distance > 0.0d && distance < best) best = distance
+        }
+        if (Double.isFinite(best)) nearest << best
+    }
+
+    double componentDiameter = (double) quantile(diameters, 0.65d)
+    double neighborPitch = nearest.isEmpty() ? componentDiameter * 1.5d :
+        (double) quantile(nearest, 0.50d)
+    // Connected overview tissue is usually slightly wider than the useful
+    // circular punch footprint after low-resolution blur. A conservative
+    // estimate avoids merging adjacent cores during the high-resolution pass.
+    double estimatedDiameterDS = Math.min(componentDiameter * 0.90d, neighborPitch * 0.68d)
+    double estimatedMM = estimatedDiameterDS * ds * umPerPx / 1000.0d
+    double q25 = (double) quantile(diameters, 0.25d)
+    double q75 = (double) quantile(diameters, 0.75d)
+    double dispersion = (q75 - q25) / Math.max(1.0d, componentDiameter)
+    double countScore = Math.min(1.0d, candidates.size() / 36.0d)
+    double confidence = 0.55d * countScore +
+        0.45d * Math.max(0.0d, 1.0d - dispersion)
+    boolean plausible = estimatedMM >= 0.15d && estimatedMM <= 5.0d &&
+        estimatedDiameterDS >= 4.0d && confidence >= 0.45d
+
+    println "Automatic core-size estimate: ${String.format('%.3f', estimatedMM)} mm " +
+        "from ${candidates.size()} components; confidence ${String.format('%.3f', confidence)}"
+    if (!plausible) {
+        println 'Automatic core-size estimate was not plausible; using the safe seed.'
+        return null
+    }
+    System.setProperty('tma.geometry.coreDiameterMM', estimatedMM.toString())
+    System.setProperty('tma.geometry.coreDiameterConfidence', confidence.toString())
+    return estimatedMM
+}
+
 // =========================================================
 // === Main: detect or use-existing ========================
 // =========================================================
 
 if (mode == MODE_DETECT) {
     println "Mode: DETECT cores"
+    if (AUTO_ESTIMATE_CORE_DIAMETER && !REFERENCE_GEOMETRY_LOCKED) {
+        def estimatedCoreMM = autoEstimateCoreDiameter()
+        if (estimatedCoreMM != null) {
+            println "Using automatically estimated core diameter ${String.format('%.3f', estimatedCoreMM)} mm instead of seed ${coreDiameterMM} mm."
+            coreDiameterMM = estimatedCoreMM as double
+        }
+    }
     double diamPx = coreDiameterMM * 1000.0d / umPerPx
     println "Core diameter: ${diamPx} px (full res)"
 
@@ -1087,6 +1172,30 @@ if (mode == MODE_DETECT) {
         coreBlobs = blobs.findAll { it.count >= minArea && it.count <= maxArea }
         println "Filtered to ${coreBlobs.size()} core-sized blobs (area in [${minArea}, ${maxArea}] px²)"
 
+        // A named DAPI channel can exist but be too sparse for grid discovery.
+        // Retry once with non-autofluorescence tissue channels and keep it only
+        // when it produces a materially stronger core candidate set.
+        if (AUTO_RETRY_MERGED_CHANNELS && coreBlobs.size() < MIN_REVIEWED_ANNOTATIONS_FOR_AUTO_LAYOUT &&
+                !sameIndexList(selectedChannelIndices, mergedChannelIndices)) {
+            def alternateReg = readProjection(server, effectiveDetectDownsample,
+                readX, readY, readW, readH, mergedChannelIndices)
+            if (sigmaDS > 0.5d)
+                alternateReg.proj = gaussianBlur(alternateReg.proj,
+                    alternateReg.w, alternateReg.h, sigmaDS)
+            double alternateThreshold = otsuThreshold(alternateReg.proj) * thresholdScale
+            def alternateRaw = detectBlobs(alternateReg.proj,
+                alternateReg.w, alternateReg.h, alternateThreshold)
+            def alternateBlobs = alternateRaw.findAll {
+                it.count >= minArea && it.count <= maxArea
+            }
+            boolean materiallyStronger = alternateBlobs.size() >= 6 &&
+                alternateBlobs.size() >= Math.ceil(coreBlobs.size() * 1.25d) &&
+                alternateBlobs.size() <= 500
+            println "Automatic merged-channel retry: ${alternateBlobs.size()} candidates " +
+                "versus ${coreBlobs.size()} nuclear candidates; accepted=${materiallyStronger}."
+            if (materiallyStronger) coreBlobs = alternateBlobs
+        }
+
         def rescueReg = reg
         float[] mergedSupportProj = primarySupportProj
         if (!sameIndexList(selectedChannelIndices, mergedChannelIndices)) {
@@ -1198,19 +1307,20 @@ if (mode == MODE_DETECT) {
         int[] provisionalCounts = new int[inferredRows]
         provisionalRows.assignments.each { rowIndex -> provisionalCounts[rowIndex as int]++ }
         int rawInferredRows = inferredRows
-        // A curved row can create a tiny one-core band between two real rows.
-        // Iteratively merge such weak bands before estimating the column count.
-        while (inferredRows > 2) {
-            def positiveCounts = provisionalCounts.findAll { it > 0 }.collect { it as double }
-            double upperOccupancy = positiveCounts.isEmpty() ? 0.0d :
-                (quantile(positiveCounts, 0.75d) as double)
-            int minimumReliableBand = Math.max(2, (int) Math.floor(upperOccupancy * 0.35d))
-            int weakBands = 0
-            for (int bandCount : provisionalCounts) {
-                if (bandCount > 0 && bandCount < minimumReliableBand) weakBands++
-            }
-            if (weakBands == 0) break
-            inferredRows--
+        // Curvature can split a real row into a few one-core bands. Count those
+        // outlier bands once, then recluster once. Repeated decrement/recluster
+        // can cascade and collapse a valid 18-row array into only two rows.
+        def initialPositiveCounts = provisionalCounts.findAll { it > 0 }.collect { it as double }
+        double initialUpperOccupancy = initialPositiveCounts.isEmpty() ? 0.0d :
+            (quantile(initialPositiveCounts, 0.75d) as double)
+        int minimumReliableBand = Math.max(2, (int) Math.floor(initialUpperOccupancy * 0.35d))
+        int weakBands = 0
+        for (int bandCount : provisionalCounts) {
+            if (bandCount > 0 && bandCount < minimumReliableBand) weakBands++
+        }
+        println "Automatic row-band cleanup: ${weakBands} weak bands below ${minimumReliableBand} cores from ${rawInferredRows} raw bands."
+        if (weakBands > 0 && inferredRows - weakBands >= 2) {
+            inferredRows -= weakBands
             provisionalRows = assignByLargestGaps(
                 coreBlobs.collect { it.rotY }, inferredRows)
             provisionalCounts = new int[inferredRows]
@@ -1218,7 +1328,7 @@ if (mode == MODE_DETECT) {
         }
         def nonemptyCounts = provisionalCounts.findAll { it > 0 }.collect { it as double }
         int inferredCols = nonemptyCounts.isEmpty() ? 1 :
-            Math.max(1, Math.min(100, (int) Math.round(quantile(nonemptyCounts, 0.75d) as double)))
+            Math.max(1, Math.min(100, (int) Math.round(quantile(nonemptyCounts, 0.90d) as double)))
         int inferredCells = inferredRows * inferredCols
         double detectionToCellRatio = nB / Math.max(1.0d, (double) inferredCells)
         int supportedRowCount = 0
