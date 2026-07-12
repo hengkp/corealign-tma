@@ -11,12 +11,14 @@
         "cropPaddingFactor": 1.75,
         "rowScheme": "1, 2, 3...",
         "columnScheme": "A, B, C...",
-        "showAdvancedDialog": false,
-        "useExistingGridUnlessRectangleSelected": true,
+                "showAdvancedDialog": false,
+                "autoDetectGeometry": true,
+                "autoInferLayout": true,
+                "useExistingGridUnlessRectangleSelected": true,
         "trustNondefaultExistingGrid": true
       },
       "detection": {
-        "algorithmVersion": "skin-tma-detect-2.3-preflight-guard",
+        "algorithmVersion": "skin-tma-detect-2.4-auto-geometry",
         "channelMode": "nuclear",
         "customChannels": "",
         "downsample": 8.0,

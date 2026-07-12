@@ -5,7 +5,9 @@
 ```text
 OME-TIFF
   -> DAPI/OpenCV primary detection
-  -> PCA + row-wise lattice indexing
+  -> PCA + nearest-neighbor automatic row/column inference
+  -> confidence gate or validated-reference geometry lock
+  -> row-wise lattice indexing
   -> coverage validation
   -> independent unblurred-DAPI rescue + recenter
   -> grid QC + targeted review queue
@@ -20,12 +22,14 @@ OME-TIFF
   -> final human approval (orientation-result hash)
 ```
 
-workflow ทั้งหมดถูก bundle อยู่ใน `00_run_skin_tma_auto_pipeline.groovy` ไฟล์เดียว
+workflow ทั้งหมดถูก bundle อยู่ใน `CoreAlign.groovy` ไฟล์เดียว
 ขั้น `01–06` เป็น embedded payload และไม่ถูกอ่านจาก disk ขณะใช้งานปกติ
 
 ## Fail-safe และ recovery
 
 - detector ไม่รันซ้ำเมื่อมี current approved checkpoint
+- ไม่ต้องกรอกจำนวน row หรือ column; ระบบรับเฉพาะ geometry ที่ confidence ผ่านเกณฑ์
+- known reference ใช้ geometry ที่ validate แล้วโดยอัตโนมัติ
 - detector version ใหม่ invalidate เฉพาะ non-human test checkpoint เก่า
 - live grid ที่มี human correction ไม่ถูกเขียนทับอัตโนมัติ
 - Step 2 ปฏิเสธ grid ที่ hash ไม่ตรงก่อนอ่านภาพ

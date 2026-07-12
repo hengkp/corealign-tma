@@ -4,13 +4,13 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Latest release: v1.2.1
+## Latest release: v1.3.0
 
-Version 1.2.1 fixes JSON grid dimensions being forwarded to QuPath as decimal strings, verifies the detector's runtime values before reading pixels, and blocks the wrong preset for the validated example slide. The Config Builder now identifies the correct preset for `TMA_0.6mm_7_backsub.ome.tif`.
+Version 1.3.0 automatically detects rows and columns. A config file is optional: CoreAlign creates a safe automatic profile when none is present. Known validated slides use their locked reference geometry, while new slides require a high-confidence two-dimensional layout estimate before any grid is created.
 
-[Open the live Config Builder](https://hengkp.github.io/corealign-tma/config-builder/?v=1.2.1) | [Download release v1.2.1](https://github.com/hengkp/corealign-tma/releases/tag/v1.2.1)
+[Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/?v=1.3.0) | [Download release v1.3.0](https://github.com/hengkp/corealign-tma/releases/tag/v1.3.0)
 
-![CoreAlign TMA Config Builder version 1.2](docs/images/config-builder-v1.2.png)
+![CoreAlign TMA automatic Config Builder version 1.3](docs/images/config-builder-v1.3.png)
 
 Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma/)
 
@@ -21,6 +21,8 @@ Complete tutorial: [validated written tutorial](tutorial/README.md) and [version
 ## What it does
 
 - Runs from one production script: `workflow/CoreAlign.groovy`
+- Detects row and column counts without operator input
+- Creates an automatic config when no config is supplied
 - Detects the grid and asks for review before processing
 - Refines, orients, rotates, checks, and crops each core in that order
 - Saves an atomic checkpoint after every core
@@ -37,12 +39,12 @@ Complete tutorial: [validated written tutorial](tutorial/README.md) and [version
 ## Quick start
 
 1. Download the latest release and create a new empty working folder.
-2. Open the [Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) and download `corealign.config.json`.
-3. Put the slide, `workflow/CoreAlign.groovy`, and exactly one file named `corealign.config.json` in that folder.
-4. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
-5. Open `Automate`, then `Show script editor`.
-6. Open `CoreAlign.groovy` and press `Run`.
-7. Verify the preflight path, profile, grid, and core diameter. Review the detected grid and run the same file again.
+2. Put the slide and `workflow/CoreAlign.groovy` in that folder. A config is optional.
+3. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
+4. Open `Automate`, then `Show script editor`.
+5. Open `CoreAlign.groovy` and press `Run`.
+6. CoreAlign creates a config if needed, detects the geometry, and writes the QC result without asking for rows or columns.
+7. Review the detected grid and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
 9. Approve the final reviewed result to create the presentation package.
 
@@ -58,7 +60,8 @@ Tutorial version 1 is retained only under `_archieved/tutorial-v1` because it di
 
 | Key | Purpose |
 |---|---|
-| `grid.rows`, `grid.columns` | Array dimensions |
+| `grid.autoDetectGeometry` | Infer rows and columns automatically |
+| `grid.rows`, `grid.columns` | Fallback seed values used only when needed |
 | `grid.coreDiameterMM` | Physical punch diameter |
 | `nuclearChannelTokens` | Words used to find DAPI like channels |
 | `epidermisChannelTokens` | Markers that support skin orientation |
@@ -67,7 +70,7 @@ Tutorial version 1 is retained only under `_archieved/tutorial-v1` because it di
 | `saveRotatedMultichannelOmeTiff` | Apply the accepted rotation to every original channel |
 | `postRotationToleranceDeg` | Residual angle that triggers review |
 
-For a new experiment, duplicate a profile, change `activeProfile`, and update the array geometry and channel tokens. Do not copy slide specific missing positions into a new profile.
+For a new experiment, automatic geometry is the default. Use the Config Builder only when output mode, tissue type, channel tokens, or fallback geometry needs to change. Do not copy slide-specific missing positions into a new profile.
 
 ## Human overrides
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 
 const root = new URL("../", import.meta.url);
 
@@ -15,7 +16,7 @@ test("keeps the public website concise and English only", async () => {
   assert.match(html, /corealign-hero-light\.webp/);
   assert.match(html, /corealign-hero-dark\.webp/);
   assert.match(html, /CoreAlign-TMA-tutorial-v3-1080p\.mp4/);
-  assert.match(html, /required preflight check/);
+  assert.match(html, /detects rows, columns, and the array automatically/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
 });
@@ -43,14 +44,16 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Build config/);
   assert.match(builder, /Create your TMA config in under a minute/);
   assert.match(builder, /Presentation images/);
-  assert.match(builder, /TMA_0\.6mm_7_backsub\.ome\.tif/);
+  assert.match(builder, /Geometry is automatic/);
+  assert.match(builder, /No row count, column count, or layout preset is required/);
+  assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
   assert.match(builder, /Advanced settings/);
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
   assert.doesNotMatch(builder, /On this page/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
-  assert.match(css, /\.presetButtons button\s*\{[\s\S]*?min-width:\s*0/);
+  assert.match(css, /\.autoGeometryCard\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
 });
 
@@ -62,9 +65,10 @@ test("keeps the website runtime lightweight", async () => {
 });
 
 test("ships one guarded production workflow", async () => {
-  const [groovy, configText] = await Promise.all([
+  const [groovy, configText, detectorSource] = await Promise.all([
     readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
     readFile(new URL("workflow/corealign.config.json", root), "utf8"),
+    readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
   ]);
   const config = JSON.parse(configText);
   const profile = config.profiles.skin_18x7;
@@ -73,11 +77,21 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /Gson represents JSON integers as doubles/);
   assert.match(groovy, /TMA runtime config verified/);
   assert.match(groovy, /known slide.*requires/);
+  assert.match(groovy, /CoreAlign adopted automatic geometry/);
+  assert.match(groovy, /AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.match(groovy, /STRUCTURAL QC:/);
   assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
   assert.equal(profile.grid.rows, 18);
   assert.equal(profile.grid.columns, 7);
   assert.equal(profile.grid.coreDiameterMM, 0.6);
   assert.equal(profile.grid.showAdvancedDialog, false);
+  assert.equal(profile.grid.autoDetectGeometry, true);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
+
+  const payload = groovy.match(/def step1 = new EmbeddedWorkflowScript\(name: '01_build_tma_grid\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
+  assert.ok(payload, "Step 1 payload should be embedded");
+  const embeddedDetector = gunzipSync(Buffer.from(payload[1], "base64")).toString("utf8");
+  assert.equal(embeddedDetector, detectorSource);
+  assert.match(embeddedDetector, /Automatic geometry accepted/);
+  assert.match(embeddedDetector, /AUTO_GEOMETRY_BLOCKED/);
 });
