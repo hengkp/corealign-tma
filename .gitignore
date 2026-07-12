@@ -5,6 +5,8 @@ dist/
 out/
 .wrangler/
 .DS_Store
+__pycache__/
+*.pyc
 *.ome.tif
 *.ome.tiff
 *.svs

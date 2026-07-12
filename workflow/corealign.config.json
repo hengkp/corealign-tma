@@ -11,12 +11,12 @@
         "cropPaddingFactor": 1.75,
         "rowScheme": "1, 2, 3...",
         "columnScheme": "A, B, C...",
-        "showAdvancedDialog": true,
+        "showAdvancedDialog": false,
         "useExistingGridUnlessRectangleSelected": true,
         "trustNondefaultExistingGrid": true
       },
       "detection": {
-        "algorithmVersion": "skin-tma-detect-2.2-nuclear-rescue",
+        "algorithmVersion": "skin-tma-detect-2.3-preflight-guard",
         "channelMode": "nuclear",
         "customChannels": "",
         "downsample": 8.0,
@@ -25,7 +25,21 @@
         "minBlobAreaFraction": 0.05,
         "maxBlobAreaFraction": 5.0,
         "minAssignedFractionToBuildGrid": 0.3,
-        "maxMissingFractionToPreserve": 0.06
+        "minAssignedFractionForReview": 0.75,
+        "requireEveryRowAndColumn": true,
+        "maxMissingFractionToPreserve": 0.06,
+        "technicalReferenceImageStem": "TMA_0.6mm_7_backsub",
+        "technicalReferenceMissing": [
+          "5-D",
+          "6-G",
+          "11-G",
+          "12-E",
+          "14-E",
+          "14-G",
+          "15-G",
+          "16-F",
+          "16-G"
+        ]
       },
       "orientation": {
         "algorithmVersion": "skin-epidermis-orient-3.7-rotated-multichannel",
@@ -295,7 +309,7 @@
         "cropPaddingFactor": 1.4,
         "rowScheme": "1, 2, 3...",
         "columnScheme": "A, B, C...",
-        "showAdvancedDialog": true,
+        "showAdvancedDialog": false,
         "useExistingGridUnlessRectangleSelected": true,
         "trustNondefaultExistingGrid": true
       },
@@ -306,7 +320,9 @@
         "blurSigmaFraction": 0.25,
         "otsuThresholdScale": 0.7,
         "minBlobAreaFraction": 0.05,
-        "maxBlobAreaFraction": 5.0
+        "maxBlobAreaFraction": 5.0,
+        "minAssignedFractionForReview": 0.75,
+        "requireEveryRowAndColumn": true
       },
       "orientation": {
         "algorithmVersion": "generic-peripheral-orient-3.7-rotated-multichannel",

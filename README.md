@@ -8,7 +8,7 @@ Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma
 
 Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/)
 
-Complete tutorial: [CoreAlign TMA complete tutorial in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.0.0/CoreAlign-TMA-complete-tutorial-1080p.mp4)
+Complete tutorial: [validated written tutorial](tutorial/README.md) and [version 2 video in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.1.0/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4)
 
 ## What it does
 
@@ -28,21 +28,23 @@ Complete tutorial: [CoreAlign TMA complete tutorial in 1080p](https://github.com
 
 ## Quick start
 
-1. Download this repository as a ZIP file and extract it.
+1. Download the latest release and create a new empty working folder.
 2. Open the [Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) and download `corealign.config.json`.
-3. Copy `workflow/CoreAlign.groovy` and the config file beside the slide.
-4. Open the slide in QuPath.
+3. Put the slide, `workflow/CoreAlign.groovy`, and exactly one file named `corealign.config.json` in that folder.
+4. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
 5. Open `Automate`, then `Show script editor`.
 6. Open `CoreAlign.groovy` and press `Run`.
-7. Review the detected grid and run the same file again.
+7. Verify the preflight path, profile, grid, and core diameter. Review the detected grid and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
 9. Approve the final reviewed result to create the presentation package.
 
-## Video tutorial
+## Validated tutorial
 
-The complete 3 minute 54 second walkthrough contains ten chapters from GitHub download through QuPath review and final exports. It includes ElevenLabs narration, an original ElevenLabs Music soundtrack, embedded English subtitles, and embedded Thai subtitles enabled by default.
+Follow [the current tutorial](tutorial/README.md). It includes the one-folder rule, the exact preflight checks, expected results for the example slide, review gates, resume behavior, and realistic PNG and OME-TIFF timing.
 
-The reproducible render recipe is in `tutorial/render_video.sh`. Narration and raw screen recordings remain local and are excluded from Git. The finished video is distributed as a GitHub Release asset.
+The [validated version 2 video](https://github.com/hengkp/corealign-tma/releases/download/v1.1.0/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4) is 4 minutes 9 seconds and contains English narration plus selectable English and Thai subtitle tracks.
+
+Tutorial version 1 is retained only under `_archieved/tutorial-v1` because it did not prevent a wrong profile and core diameter from being mixed in QuPath.
 
 ## Important config fields
 

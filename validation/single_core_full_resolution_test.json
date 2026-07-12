@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "validatedAt": "2026-07-12T17:58:39+07:00",
+  "image": "TMA_0.6mm_7_backsub.ome.tif",
+  "core": "1-A",
+  "algorithmVersion": "skin-epidermis-orient-3.7-rotated-multichannel",
+  "gridHash": "8efe041f08d4799a153b11e41a2d2a36622e35cc4f1dd4e1c203150059639eb5",
+  "processingOrder": ["source_support_window", "rotate", "final_crop"],
+  "status": "ok",
+  "orientationConfidence": 0.847685945456706,
+  "postRotationResidualDeg": 0.13140656190796382,
+  "outputWidthPx": 2606,
+  "outputHeightPx": 2606,
+  "rotatedFullResolutionPng": true,
+  "rotatedMultichannelOmeTiff": {
+    "reopenedInQuPath": true,
+    "pixelType": "UINT16",
+    "channelCount": 19,
+    "channels": ["AF1", "AF2", "AF3", "DAPI1", "CPDs", "Nrf2", "8OHdG", "DAPI2", "Ki67", "HO1", "p53", "DAPI3", "CD1a", "MMP1", "H2AX", "DAPI4", "AF4", "Tryptase", "CD31"]
+  },
+  "reviewStatus": "technical_visual_QC; pathologist_adjudication_required_for_clinical_claim"
+}

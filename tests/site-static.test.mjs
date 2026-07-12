@@ -14,7 +14,8 @@ test("keeps the public website concise and English only", async () => {
   assert.match(html, /Detect, rotate, and crop every core/);
   assert.match(html, /corealign-hero-light\.webp/);
   assert.match(html, /corealign-hero-dark\.webp/);
-  assert.match(html, /CoreAlign-TMA-complete-tutorial-1080p\.mp4/);
+  assert.match(html, /CoreAlign-TMA-validated-tutorial-v2-1080p\.mp4/);
+  assert.match(html, /Mandatory preflight/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
 });
@@ -43,4 +44,22 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /:root\[data-theme="dark"\]/);
+});
+
+test("ships one guarded production workflow", async () => {
+  const [groovy, configText] = await Promise.all([
+    readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
+    readFile(new URL("workflow/corealign.config.json", root), "utf8"),
+  ]);
+  const config = JSON.parse(configText);
+  const profile = config.profiles.skin_18x7;
+
+  assert.match(groovy, /PREFLIGHT_BLOCKED: multiple config files/);
+  assert.match(groovy, /STRUCTURAL QC:/);
+  assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
+  assert.equal(profile.grid.rows, 18);
+  assert.equal(profile.grid.columns, 7);
+  assert.equal(profile.grid.coreDiameterMM, 0.6);
+  assert.equal(profile.grid.showAdvancedDialog, false);
+  assert.equal(profile.detection.requireEveryRowAndColumn, true);
 });

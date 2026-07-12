@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "stage": "before_grid_approval",
+  "image": "TMA_0.6mm_7_backsub.ome.tif",
+  "profile": "skin_18x7",
+  "rows": 18,
+  "columns": 7,
+  "present": 117,
+  "missing": 9,
+  "assignedFraction": 0.9285714285714286,
+  "minimumAssignedFraction": 0.75,
+  "emptyRows": [],
+  "emptyColumns": [],
+  "passed": true
+}

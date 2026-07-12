@@ -12,40 +12,40 @@ title=Download from GitHub
 [CHAPTER]
 TIMEBASE=1/1000
 START=38896
-END=70928
-title=Prepare and verify the working folder
+END=55928
+title=Prepare the working folder
 [CHAPTER]
 TIMEBASE=1/1000
-START=70928
-END=105932
+START=55928
+END=90932
 title=Configure your array
 [CHAPTER]
 TIMEBASE=1/1000
-START=105932
-END=134536
+START=90932
+END=119536
 title=Open, run, and review the grid
 [CHAPTER]
 TIMEBASE=1/1000
-START=134536
-END=159431
+START=119536
+END=144431
 title=Rotate first, crop second
 [CHAPTER]
 TIMEBASE=1/1000
-START=159431
-END=186912
+START=144431
+END=171912
 title=Human review and selective resume
 [CHAPTER]
 TIMEBASE=1/1000
-START=186912
-END=215281
+START=171912
+END=200281
 title=Presentation and archive outputs
 [CHAPTER]
 TIMEBASE=1/1000
-START=215281
-END=238112
+START=200281
+END=223112
 title=Accuracy and approval policy
 [CHAPTER]
 TIMEBASE=1/1000
-START=238112
-END=249423
+START=223112
+END=234423
 title=Reuse with other arrays

@@ -30,13 +30,24 @@ class EmbeddedWorkflowScript {
     String getText(String ignoredEncoding) {
         byte[] compressed = Base64.getMimeDecoder().decode(payload)
         def input = new GZIPInputStream(new ByteArrayInputStream(compressed))
-        try { return input.getText('UTF-8') } finally { input.close() }
+        try {
+            String source = input.getText('UTF-8')
+            if (name == '01_build_tma_grid.groovy') {
+                source = source
+                    .replace('Inspect before Step 2.', 'Inspect before continuing.')
+                    .replace('Run 02_auto_orient_epidermis.groovy next.',
+                        'Review the grid, then run CoreAlign.groovy again.')
+            }
+            return source
+        } finally { input.close() }
     }
 }
 
-String REQUIRED_DETECTION_ALGORITHM_VERSION = 'skin-tma-detect-2.2-nuclear-rescue'
+String REQUIRED_DETECTION_ALGORITHM_VERSION = 'skin-tma-detect-2.3-preflight-guard'
 boolean ALL_IN_ONE_INTEGRATION_TEST = 'true'.equalsIgnoreCase(
     System.getProperty('tma.allInOneAutoTest', 'false'))
+boolean STOP_AFTER_DETECTION = 'true'.equalsIgnoreCase(
+    System.getProperty('tma.stopAfterDetection', 'false'))
 if (ALL_IN_ONE_INTEGRATION_TEST) {
     System.setProperty('tma.approveForTest', 'true')
     System.setProperty('tma.finalApproveForTest', 'true')
@@ -73,13 +84,26 @@ if (imageStem.isEmpty()) imageStem = 'image'
 // stains, layouts, and presentation mappings without editing Groovy code.
 // -------------------------------------------------------------------------
 def configJson = new Gson().newBuilder().setPrettyPrinting().create()
-File configFile = new File(System.getProperty('tma.config',
-    new File(workflowDir, 'corealign.config.json').getAbsolutePath()))
+String explicitConfigPath = System.getProperty('tma.config', '').trim()
+def siblingConfigs = (workflowDir.listFiles() ?: [] as File[]).findAll { candidate ->
+    candidate.isFile() && candidate.getName() ==~ /(?i)corealign\.config.*\.json/
+}
+if (explicitConfigPath.isEmpty() && siblingConfigs.size() > 1) {
+    Dialogs.showErrorMessage('CoreAlign preflight failed',
+        "Found multiple CoreAlign config files beside the open slide:\n" +
+        siblingConfigs.collect { "- ${it.getName()}" }.sort().join('\n') +
+        "\n\nKeep exactly one file named corealign.config.json, then run again.")
+    println "PREFLIGHT_BLOCKED: multiple config files in ${workflowDir.getAbsolutePath()}: ${siblingConfigs*.name}"
+    return
+}
+File configFile = new File(explicitConfigPath.isEmpty() ?
+    new File(workflowDir, 'corealign.config.json').getAbsolutePath() :
+    explicitConfigPath)
 if (!configFile.isFile()) {
     def starterConfig = [schemaVersion: 1, activeProfile: 'edit_me', profiles: [edit_me: [
         description: 'Starter profile created by the one-file runner; edit before using a new array.',
         grid: [rows: 18, columns: 7, coreDiameterMM: 0.6d, cropPaddingFactor: 1.75d,
-            rowScheme: '1, 2, 3...', columnScheme: 'A, B, C...', showAdvancedDialog: true,
+            rowScheme: '1, 2, 3...', columnScheme: 'A, B, C...', showAdvancedDialog: false,
             useExistingGridUnlessRectangleSelected: true, trustNondefaultExistingGrid: true],
         detection: [algorithmVersion: 'generic-tma-detect-1', channelMode: 'nuclear',
             downsample: 8.0d, blurSigmaFraction: 0.25d, otsuThresholdScale: 0.70d,
@@ -153,6 +177,16 @@ if (configuredRows < 1 || configuredColumns < 1 || configuredCoreMM <= 0.0d ||
         "Profile ${profileName} has invalid rows/columns/core diameter or orientation ring limits.")
     return
 }
+boolean advancedDialogRequested = gridConfig.showAdvancedDialog == true
+boolean allowAdvancedDialog = 'true'.equalsIgnoreCase(
+    System.getProperty('tma.allowAdvancedDialog', 'false'))
+if (advancedDialogRequested && !allowAdvancedDialog) {
+    Dialogs.showErrorMessage('CoreAlign preflight failed',
+        "Profile '${profileName}' enables showAdvancedDialog. This can mix values from different presets.\n\n" +
+        'Set grid.showAdvancedDialog to false in the Config Builder and download a fresh config.')
+    println 'PREFLIGHT_BLOCKED: showAdvancedDialog must be false for the production runner.'
+    return
+}
 
 String profileCanonical = configJson.toJson(activeProfile)
 String profileHash = MessageDigest.getInstance('SHA-256')
@@ -188,6 +222,8 @@ def setProp = { String key, value ->
     'tma.detection.minBlobAreaFraction': detectionConfig.minBlobAreaFraction,
     'tma.detection.maxBlobAreaFraction': detectionConfig.maxBlobAreaFraction,
     'tma.detection.minAssignedFractionToBuildGrid': detectionConfig.minAssignedFractionToBuildGrid,
+    'tma.detection.minAssignedFractionForReview': detectionConfig.minAssignedFractionForReview,
+    'tma.detection.requireEveryRowAndColumn': detectionConfig.requireEveryRowAndColumn,
     'tma.detection.maxMissingFractionToPreserve': detectionConfig.maxMissingFractionToPreserve,
     'tma.detection.autoSearchDownsample': detectionConfig.autoSearchDownsample,
     'tma.detection.autoRegionPaddingCores': detectionConfig.autoRegionPaddingCores,
@@ -235,6 +271,23 @@ println "TMA config: ${configFile.getName()} | profile ${profileName} | hash ${p
 if ('true'.equalsIgnoreCase(System.getProperty('tma.configValidateOnly', 'false'))) {
     println 'TMA_CONFIG_VALIDATION_OK'
     return
+}
+def existingGridForPreflight = imageData.getHierarchy().getTMAGrid()
+boolean needsDetectionPreflight = existingGridForPreflight == null ||
+    existingGridForPreflight.getTMACoreList().isEmpty() ||
+    !existingGridForPreflight.getTMACoreList().any { !it.isMissing() }
+if (needsDetectionPreflight && !ALL_IN_ONE_INTEGRATION_TEST && !STOP_AFTER_DETECTION) {
+    String preflightMessage = "Open slide: ${new File(workflowDir, imageName).getAbsolutePath()}\n" +
+        "Working folder: ${workflowDir.getAbsolutePath()}\n" +
+        "Config: ${configFile.getAbsolutePath()}\n" +
+        "Profile: ${profileName}\n" +
+        "Grid: ${configuredRows} rows x ${configuredColumns} columns\n" +
+        "Core diameter: ${configuredCoreMM} mm\n\n" +
+        'Continue only if every value matches the physical TMA.'
+    if (!Dialogs.showConfirmDialog('CoreAlign preflight: verify before detection', preflightMessage)) {
+        println 'PREFLIGHT_CANCELLED: no image processing was started.'
+        return
+    }
 }
 
 def step1 = new EmbeddedWorkflowScript(name: '01_build_tma_grid.groovy', payload: '''
@@ -1416,9 +1469,52 @@ def usableGrid = {
 
 // A technical reference is optional and profile-specific.  It is useful for a
 // validated development slide but is never silently applied to another image.
-def technicalReferenceMissing = detectionConfig.technicalReferenceMissing instanceof List ?
+String technicalReferenceImageStem = detectionConfig.technicalReferenceImageStem?.toString() ?: ''
+def technicalReferenceMissing = detectionConfig.technicalReferenceMissing instanceof List &&
+        technicalReferenceImageStem == imageStem ?
     [(imageStem): detectionConfig.technicalReferenceMissing.collect { it.toString() } as Set] : [:]
 int configuredPositionCount = configuredRows * configuredColumns
+double minAssignedFractionForReview = ((detectionConfig.minAssignedFractionForReview ?: 0.75d) as Number).doubleValue()
+boolean requireEveryRowAndColumn = detectionConfig.requireEveryRowAndColumn != false
+def validateGridStructure = { String stage ->
+    def g = imageData.getHierarchy().getTMAGrid()
+    if (g == null || g.getTMACoreList().size() != configuredPositionCount) {
+        Dialogs.showErrorMessage('CoreAlign structural QC failed',
+            "Expected ${configuredPositionCount} grid positions but found ${g == null ? 0 : g.getTMACoreList().size()}.\n" +
+            'The workflow stopped before approval or orientation.')
+        return false
+    }
+    def cores = g.getTMACoreList()
+    int present = cores.count { !it.isMissing() }
+    double assignedFraction = present / (double) configuredPositionCount
+    def perRow = (0..<configuredRows).collect { row ->
+        cores.subList(row * configuredColumns, (row + 1) * configuredColumns).count { !it.isMissing() }
+    }
+    def perColumn = (0..<configuredColumns).collect { col ->
+        (0..<configuredRows).count { row -> !cores[row * configuredColumns + col].isMissing() }
+    }
+    def emptyRows = (0..<configuredRows).findAll { perRow[it] == 0 }.collect { it + 1 }
+    def emptyColumns = (0..<configuredColumns).findAll { perColumn[it] == 0 }.collect { it + 1 }
+    boolean passed = assignedFraction >= minAssignedFractionForReview &&
+        (!requireEveryRowAndColumn || (emptyRows.isEmpty() && emptyColumns.isEmpty()))
+    def report = [schemaVersion: 1, stage: stage, image: imageName, profile: profileName,
+        rows: configuredRows, columns: configuredColumns, present: present,
+        missing: configuredPositionCount - present, assignedFraction: assignedFraction,
+        minimumAssignedFraction: minAssignedFractionForReview, emptyRows: emptyRows,
+        emptyColumns: emptyColumns, passed: passed]
+    File reportDir = new File(workflowDir, 'tma_grid_qc')
+    reportDir.mkdirs()
+    new File(reportDir, "${imageStem}_structural_qc.json")
+        .setText(configJson.toJson(report) + '\n', 'UTF-8')
+    println "STRUCTURAL QC: ${present}/${configuredPositionCount} present (${String.format(Locale.US, '%.1f', assignedFraction * 100.0d)}%), empty rows ${emptyRows}, empty columns ${emptyColumns}, passed=${passed}"
+    if (!passed) {
+        Dialogs.showErrorMessage('CoreAlign structural QC failed',
+            "Detected ${present}/${configuredPositionCount} present positions. Empty rows: ${emptyRows}; empty columns: ${emptyColumns}.\n\n" +
+            "Required present fraction is ${String.format(Locale.US, '%.0f', minAssignedFractionForReview * 100.0d)}%. " +
+            'Check the selected profile, grid size, core diameter, and QC image. The workflow stopped before approval or orientation.')
+    }
+    return passed
+}
 def validateDetectionAgainstTechnicalReference = { String stage ->
     def expectedMissing = technicalReferenceMissing[imageStem]
     if (expectedMissing == null) {
@@ -1516,6 +1612,7 @@ if (staleTestCheckpoint) {
     println "Detector checkpoint is stale (${savedApproval.detectionAlgorithmVersion ?: 'unknown'}); running the current detector instead of restoring it."
     runWorkflowScript(step1)
     if (!usableGrid()) return
+    if (!validateGridStructure('detector_version_refresh')) return
     if (!validateDetectionAgainstTechnicalReference('detector_version_refresh')) return
     Dialogs.showInfoNotification('Skin TMA — detector updated',
         'A newer detector rebuilt the grid. Inspect the new QC, then run this script again for human approval.')
@@ -1527,6 +1624,7 @@ if (!usableGrid()) {
         println 'No live grid; restoring the approved checkpoint instead of redetecting.'
         runWorkflowScript(step4)
         if (!usableGrid()) return
+        if (!validateGridStructure('restore_approved_checkpoint')) return
         if (!validateDetectionAgainstTechnicalReference('restore_approved_checkpoint')) return
     } else {
         runWorkflowScript(step1)
@@ -1535,7 +1633,12 @@ if (!usableGrid()) {
                 'Detection did not create a usable grid. Inspect the Step 1 QC output.')
             return
         }
+        if (!validateGridStructure('new_detection')) return
         if (!validateDetectionAgainstTechnicalReference('new_detection')) return
+        if (STOP_AFTER_DETECTION) {
+            println 'COREALIGN_DETECTION_TEST_OK'
+            return
+        }
         println '=== PAUSED AT HUMAN REVIEW GATE ==='
         println 'Inspect the live grid and tma_grid_qc output. Add TMA correction / TMA mark missing annotations where needed, then run this one-click script again.'
         Dialogs.showInfoNotification('Skin TMA — review required',
@@ -1543,6 +1646,8 @@ if (!usableGrid()) {
         if (!ALL_IN_ONE_INTEGRATION_TEST) return
     }
 }
+
+if (!validateGridStructure('before_grid_approval')) return
 
 System.clearProperty('tma.review.status')
 runWorkflowScript(step3)
