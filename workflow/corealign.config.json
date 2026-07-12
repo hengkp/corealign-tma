@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "activeProfile": "skin_18x7",
+  "profiles": {
+    "skin_18x7": {
+      "description": "Current 0.6 mm skin CyCIF TMA: 18 rows x 7 columns",
+      "grid": {
+        "rows": 18,
+        "columns": 7,
+        "coreDiameterMM": 0.6,
+        "cropPaddingFactor": 1.75,
+        "rowScheme": "1, 2, 3...",
+        "columnScheme": "A, B, C...",
+        "showAdvancedDialog": true,
+        "useExistingGridUnlessRectangleSelected": true,
+        "trustNondefaultExistingGrid": true
+      },
+      "detection": {
+        "algorithmVersion": "skin-tma-detect-2.2-nuclear-rescue",
+        "channelMode": "nuclear",
+        "customChannels": "",
+        "downsample": 8.0,
+        "blurSigmaFraction": 0.25,
+        "otsuThresholdScale": 0.7,
+        "minBlobAreaFraction": 0.05,
+        "maxBlobAreaFraction": 5.0,
+        "minAssignedFractionToBuildGrid": 0.3,
+        "maxMissingFractionToPreserve": 0.06
+      },
+      "orientation": {
+        "algorithmVersion": "skin-epidermis-orient-3.6-component-region-qc",
+        "analysisDownsample": 4.0,
+        "exportDownsample": 1.0,
+        "previewMaxPixels": 900,
+        "cropScale": 1.05,
+        "rotationSupportScale": 1.45,
+        "regionRefinementEnabled": true,
+        "regionSearchScale": 1.55,
+        "regionMaxCenterShiftFraction": 0.3,
+        "regionTissueMargin": 1.12,
+        "regionMaxCropScale": 1.15,
+        "regionReviewConfidence": 0.12,
+        "saveFullResolutionPng": true,
+        "saveNativeOmeTiff": true,
+        "cropOverrideClassName": "TMA crop override",
+        "postRotationToleranceDeg": 12.0,
+        "postRotationMaxIterations": 2,
+        "angularSectors": 72,
+        "outerRingInner": 0.42,
+        "outerRingOuter": 1.02,
+        "tissueThresholdScale": 0.55,
+        "reviewConfidence": 0.12,
+        "okConfidence": 0.28,
+        "nuclearChannelTokens": [
+          "dapi",
+          "hoechst",
+          "draq",
+          "to-pro",
+          "topro",
+          "syto",
+          "nuclei",
+          "nuclear"
+        ],
+        "epidermisChannelTokens": [
+          "cpd",
+          "h2ax",
+          "p53",
+          "8ohdg",
+          "ki67",
+          "nrf2",
+          "ho1",
+          "mmp1",
+          "keratin",
+          "cytokeratin",
+          "panck",
+          "pan-ck",
+          "krt",
+          "epcam",
+          "e-cadherin",
+          "ecadherin"
+        ],
+        "rgbRedChannelTokens": [
+          "cpd",
+          "h2ax",
+          "p53",
+          "8ohdg",
+          "keratin",
+          "cytokeratin",
+          "panck",
+          "pan-ck",
+          "krt",
+          "epcam",
+          "e-cadherin",
+          "ecadherin"
+        ],
+        "rgbGreenChannelTokens": [
+          "ki67",
+          "nrf2",
+          "ho1",
+          "mmp1"
+        ],
+        "overrideClassName": "Epidermis override"
+      },
+      "quality": {
+        "requireHumanGridApproval": true,
+        "requireHumanOrientationApproval": true,
+        "blockPresentationWhenAnySelectedCoreNeedsReview": true
+      },
+      "presentation": {
+        "enabled": true,
+        "deckTitle": "Automated TMA orientation — epidermis-up RGB composites",
+        "outputWidthPx": 1600,
+        "outputHeightPx": 900,
+        "templatePptx": "update project Skin Apr2026.pptx",
+        "templateSectionSlide": 2,
+        "templateComparisonSlide": 4,
+        "conditions": [
+          {
+            "id": "noUV",
+            "label": "ไม่ฉายแสง",
+            "rows": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "id": "UVA3h",
+            "label": "UVA 3 ชั่วโมง",
+            "rows": [
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "id": "UVA24h",
+            "label": "UVA 24 ชั่วโมง",
+            "rows": [
+              7,
+              8,
+              9
+            ]
+          },
+          {
+            "id": "UVA7d",
+            "label": "UVA 7 วัน",
+            "rows": [
+              10,
+              11,
+              12
+            ]
+          },
+          {
+            "id": "UVB3h",
+            "label": "UVB 3 ชั่วโมง",
+            "rows": [
+              13,
+              14,
+              15
+            ]
+          },
+          {
+            "id": "UVB24h",
+            "label": "UVB 24 ชั่วโมง",
+            "rows": [
+              16,
+              17,
+              18
+            ]
+          }
+        ],
+        "treatmentColumns": [
+          {
+            "id": "none",
+            "label": "ไม่ฉีดอะไรเลย",
+            "gridColumn": 4
+          },
+          {
+            "id": "drug1",
+            "label": "ฉีดยา 1 ครั้ง",
+            "gridColumn": 1
+          },
+          {
+            "id": "drug2",
+            "label": "ฉีดยา 2 ครั้ง",
+            "gridColumn": 2
+          },
+          {
+            "id": "drug3",
+            "label": "ฉีดยา 3 ครั้ง",
+            "gridColumn": 3
+          },
+          {
+            "id": "nss1",
+            "label": "NSS 1 ครั้ง",
+            "gridColumn": 5
+          },
+          {
+            "id": "nss2",
+            "label": "NSS 2 ครั้ง",
+            "gridColumn": 6
+          },
+          {
+            "id": "nss3",
+            "label": "NSS 3 ครั้ง",
+            "gridColumn": 7
+          }
+        ],
+        "comparisons": [
+          {
+            "id": "uva_3h",
+            "topCondition": "noUV",
+            "bottomCondition": "UVA3h",
+            "treatments": [
+              "none",
+              "drug1",
+              "drug2",
+              "drug3"
+            ]
+          },
+          {
+            "id": "uva_24h",
+            "topCondition": "noUV",
+            "bottomCondition": "UVA24h",
+            "treatments": [
+              "none",
+              "drug1",
+              "drug2",
+              "drug3"
+            ]
+          },
+          {
+            "id": "uva_7d",
+            "topCondition": "noUV",
+            "bottomCondition": "UVA7d",
+            "treatments": [
+              "none",
+              "drug1",
+              "drug2",
+              "drug3"
+            ]
+          },
+          {
+            "id": "uvb_3h",
+            "topCondition": "noUV",
+            "bottomCondition": "UVB3h",
+            "treatments": [
+              "none",
+              "drug1",
+              "drug2",
+              "drug3"
+            ]
+          },
+          {
+            "id": "uvb_24h",
+            "topCondition": "noUV",
+            "bottomCondition": "UVB24h",
+            "treatments": [
+              "none",
+              "drug1",
+              "drug2",
+              "drug3"
+            ]
+          },
+          {
+            "id": "nss_control",
+            "topCondition": "noUV",
+            "bottomCondition": "UVB24h",
+            "treatments": [
+              "none",
+              "nss1",
+              "nss2",
+              "nss3"
+            ]
+          }
+        ],
+        "selectionStatusPriority": [
+          "manual_override",
+          "manual_corrected",
+          "approved",
+          "ok",
+          "review",
+          "uncertain"
+        ]
+      }
+    },
+    "generic_example": {
+      "description": "Copy and edit this profile for another array or experiment",
+      "grid": {
+        "rows": 10,
+        "columns": 8,
+        "coreDiameterMM": 1.0,
+        "cropPaddingFactor": 1.4,
+        "rowScheme": "1, 2, 3...",
+        "columnScheme": "A, B, C...",
+        "showAdvancedDialog": true,
+        "useExistingGridUnlessRectangleSelected": true,
+        "trustNondefaultExistingGrid": true
+      },
+      "detection": {
+        "algorithmVersion": "generic-tma-detect-1",
+        "channelMode": "nuclear",
+        "downsample": 8.0,
+        "blurSigmaFraction": 0.25,
+        "otsuThresholdScale": 0.7,
+        "minBlobAreaFraction": 0.05,
+        "maxBlobAreaFraction": 5.0
+      },
+      "orientation": {
+        "algorithmVersion": "generic-peripheral-orient-3.6-component-region-qc",
+        "analysisDownsample": 4.0,
+        "exportDownsample": 1.0,
+        "previewMaxPixels": 900,
+        "cropScale": 1.05,
+        "rotationSupportScale": 1.45,
+        "regionRefinementEnabled": true,
+        "regionSearchScale": 1.55,
+        "regionMaxCenterShiftFraction": 0.3,
+        "regionTissueMargin": 1.12,
+        "regionMaxCropScale": 1.15,
+        "regionReviewConfidence": 0.12,
+        "saveFullResolutionPng": true,
+        "saveNativeOmeTiff": false,
+        "cropOverrideClassName": "TMA crop override",
+        "postRotationToleranceDeg": 12.0,
+        "postRotationMaxIterations": 2,
+        "angularSectors": 72,
+        "outerRingInner": 0.42,
+        "outerRingOuter": 1.02,
+        "tissueThresholdScale": 0.55,
+        "reviewConfidence": 0.12,
+        "okConfidence": 0.28,
+        "nuclearChannelTokens": [
+          "dapi",
+          "hoechst",
+          "nuclear"
+        ],
+        "epidermisChannelTokens": [
+          "keratin",
+          "panck",
+          "epcam"
+        ],
+        "rgbRedChannelTokens": [
+          "keratin",
+          "panck",
+          "epcam"
+        ],
+        "rgbGreenChannelTokens": [],
+        "overrideClassName": "Orientation override"
+      },
+      "quality": {
+        "requireHumanGridApproval": true,
+        "requireHumanOrientationApproval": true,
+        "blockPresentationWhenAnySelectedCoreNeedsReview": true
+      },
+      "presentation": {
+        "enabled": false,
+        "conditions": [],
+        "treatmentColumns": [],
+        "comparisons": []
+      }
+    }
+  }
+}

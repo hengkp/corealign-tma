@@ -1,0 +1,1946 @@
+/**
+ * TMA Rearrangement Tool — Step 1: Detect cores + assign grid (row, col)
+ *
+ * Runs in QuPath 0.7 against the already-loaded OME-TIFF.
+ *
+ * Pipeline (simple DETECT mode):
+ *   1. If a large rectangle is selected, use it; otherwise auto-locate the TMA.
+ *   2. Script reads the region at a heavy downsample.
+ *   3. Builds a normalized nuclear/DAPI projection for core detection.
+ *      A merged non-AF projection is used only to rescue/size missed tissue.
+ *   4. Otsu-thresholds and finds connected-component blobs (each = one core).
+ *   5. Filters blobs by expected core area.
+ *   6. Clusters Y centroids into row-bands.
+ *   7. Estimates global column centers, then refines each row with a local
+ *      lattice so shifted/bent rows do not create empty overlays.
+ *   8. Empty (row, col) cells are filled with a "missing" core at the
+ *      regression-interpolated grid position.
+ *
+ * Result: every detected core sits on actual tissue, with correct (row, col)
+ * indexing; strays are ignored; truly missing positions are explicitly marked.
+ *
+ * Other modes:
+ *   • Use existing — keep whatever grid is already in the hierarchy.
+ *
+ * By default this script shows no parameter dialog. To troubleshoot a new
+ * layout, set SHOW_ADVANCED_DIALOG = true near the top of the script.
+ */
+
+import qupath.lib.plugins.parameters.ParameterList
+import qupath.lib.images.ImageData
+import qupath.lib.objects.PathObjects
+import qupath.lib.objects.hierarchy.DefaultTMAGrid
+import qupath.lib.regions.RegionRequest
+import qupath.opencv.tools.OpenCVTools
+
+import org.bytedeco.opencv.opencv_core.Mat
+
+import javax.imageio.ImageIO
+import java.awt.BasicStroke
+import java.awt.Color
+import java.awt.Font
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+
+import static org.bytedeco.opencv.global.opencv_core.*
+import static org.bytedeco.opencv.global.opencv_imgproc.*
+
+def cfgString = { String key, String fallback -> System.getProperty(key, fallback) }
+def cfgInt = { String key, int fallback ->
+    try { return Integer.parseInt(System.getProperty(key, fallback.toString())) }
+    catch (Throwable ignored) { return fallback }
+}
+def cfgDouble = { String key, double fallback ->
+    try { return Double.parseDouble(System.getProperty(key, fallback.toString())) }
+    catch (Throwable ignored) { return fallback }
+}
+def cfgBool = { String key, boolean fallback ->
+    return Boolean.parseBoolean(System.getProperty(key, fallback.toString()))
+}
+
+String DETECTION_ALGORITHM_VERSION = cfgString('tma.detection.algorithmVersion',
+    'skin-tma-detect-2.2-nuclear-rescue')
+
+// === 1. Sanity checks on the loaded image ===
+def imageData = getCurrentImageData()
+if (imageData == null) {
+    Dialogs.showErrorMessage('TMA Rearrange', 'No image is open. Open the OME-TIFF in QuPath first.')
+    return
+}
+def server = imageData.getServer()
+def cal = server.getPixelCalibration()
+def channelObjs = server.getMetadata().getChannels()
+def channelNames = channelObjs.collect { it.getName() }
+
+double DEFAULT_PIXEL_SIZE_MICRONS = cfgDouble('tma.grid.defaultPixelSizeMicrons', 0.5d)
+double umPerPx = DEFAULT_PIXEL_SIZE_MICRONS
+try {
+    umPerPx = cal == null ? DEFAULT_PIXEL_SIZE_MICRONS : (double) cal.getAveragedPixelSizeMicrons()
+} catch (Throwable ignored) {
+    umPerPx = DEFAULT_PIXEL_SIZE_MICRONS
+}
+if (!(umPerPx > 0.0d) || Double.isNaN(umPerPx) || Double.isInfinite(umPerPx)) {
+    println "WARNING: Image has no usable pixel calibration; assuming ${DEFAULT_PIXEL_SIZE_MICRONS} µm/px for core-size estimates."
+    umPerPx = DEFAULT_PIXEL_SIZE_MICRONS
+}
+
+// Auto-detect nuclear-stain channel indices (case-insensitive).
+// DAPI is common here, but example slides may use Hoechst, DRAQ5, TO-PRO, etc.
+def channelNameLooksNuclear = { String name ->
+    String n = (name ?: '').toLowerCase()
+    return n.contains('dapi') || n.contains('hoechst') || n.contains('draq') ||
+        n.contains('to-pro') || n.contains('topro') || n.contains('syto') ||
+        n.contains('nuclei') || n.contains('nuclear')
+}
+def dapiIndices = []
+channelNames.eachWithIndex { name, i ->
+    if (channelNameLooksNuclear(name)) dapiIndices << i
+}
+
+println "=== TMA Rearrange — Step 1 ==="
+println "Image: ${server.getPath()}"
+println "Dimensions: ${server.getWidth()} × ${server.getHeight()} px"
+println "Pixel size: ${umPerPx} µm/px"
+println "Channels (${channelNames.size()}): ${channelNames}"
+println "Nuclear channels detected at indices: ${dapiIndices} (${dapiIndices.collect { channelNames[it] }})"
+
+def hierarchy = imageData.getHierarchy()
+def selectedAtStart = hierarchy.getSelectionModel().getSelectedObject()
+boolean selectedRegionProvided = false
+if (selectedAtStart != null && selectedAtStart.isAnnotation() && selectedAtStart.getROI() != null) {
+    def sr = selectedAtStart.getROI()
+    double areaFrac = (sr.getBoundsWidth() * sr.getBoundsHeight()) /
+        ((double) server.getWidth() * (double) server.getHeight())
+    selectedRegionProvided = areaFrac > 0.005d &&
+        sr.getBoundsWidth() > server.getWidth() * 0.05d &&
+        sr.getBoundsHeight() > server.getHeight() * 0.05d
+    if (!selectedRegionProvided)
+        println 'Selected annotation is too small to be the full TMA region; ignoring it for Step 1.'
+}
+
+def MODE_DETECT = 'Detect cores in selected rectangle (recommended)'
+def MODE_EXISTING = 'Use existing grid'
+
+def CHANNELS_DAPI = 'Nuclear/DAPI channels only (recommended)'
+def CHANNELS_MERGED = 'Merged non-AF tissue channels (rescue)'
+def CHANNELS_ALL = 'All channels combined'
+def CHANNELS_CUSTOM = 'Custom (specify below)'
+String DETECTED_CLASS_NAME = 'TMA core (detected)'
+
+def classNameOf = { obj ->
+    try {
+        return obj.getPathClass()?.getName()
+    } catch (Throwable ignored) {
+        return null
+    }
+}
+
+// === 2. Operator-free defaults ===
+//
+// The normal lab workflow should not ask the operator to tune parameters.
+// Change SHOW_ADVANCED_DIALOG to true only when troubleshooting a new TMA layout.
+boolean SHOW_ADVANCED_DIALOG = cfgBool('tma.grid.showAdvancedDialog', false)
+boolean USE_EXISTING_GRID_UNLESS_RECTANGLE_SELECTED =
+    cfgBool('tma.grid.useExistingGridUnlessRectangleSelected', false)
+boolean TRUST_NONDEFAULT_EXISTING_GRID = cfgBool('tma.grid.trustNondefaultExistingGrid', true)
+boolean AUTO_INFER_GRID_LAYOUT_IN_SIMPLE_MODE = cfgBool('tma.grid.autoInferLayout', true)
+boolean EXPORT_GRID_QC = cfgBool('tma.grid.exportQc', true)
+double AUTO_SEARCH_DOWNSAMPLE = cfgDouble('tma.detection.autoSearchDownsample', 64.0d)
+double AUTO_REGION_PADDING_CORES = cfgDouble('tma.detection.autoRegionPaddingCores', 2.0d)
+double MIN_CORE_FRACTION_FOR_TRUSTED_GRID = cfgDouble('tma.detection.minTrustedGridFraction', 0.45d)
+double MIN_CORE_FRACTION_FOR_TRUSTED_NONDEFAULT_GRID =
+    cfgDouble('tma.detection.minTrustedNondefaultGridFraction', 0.75d)
+double MIN_CORE_FRACTION_TO_BUILD_GRID =
+    cfgDouble('tma.detection.minAssignedFractionToBuildGrid', 0.30d)
+double MAX_MISSING_FRACTION_FOR_AUTO_PRESERVE =
+    cfgDouble('tma.detection.maxMissingFractionToPreserve', 0.06d)
+double MAX_DETECTION_TILE_PIXELS = 12000000.0d
+int MIN_REVIEWED_ANNOTATIONS_FOR_AUTO_LAYOUT = 36
+double COVERAGE_THRESHOLD_SCALE = 0.40
+double RESCUE_THRESHOLD_SCALE = 0.80
+double FOOTPRINT_MARGIN_FACTOR = 1.42
+double MIN_ASSIGNED_FOOTPRINT_FRACTION = 0.13
+double MIN_ASSIGNED_FOOTPRINT_DIAM_FRACTION = 0.40
+double MAX_ASSIGNED_CENTER_OFFSET_FRACTION = 0.55
+double MAX_ASSIGNED_EXPECTED_OFFSET_FRACTION = 1.80
+double MIN_RESCUE_FOOTPRINT_FRACTION = 0.15
+double MIN_RESCUE_FOOTPRINT_DIAM_FRACTION = 0.38
+double MAX_RESCUE_CENTER_OFFSET_FRACTION = 1.30
+double MIN_RESCUE_DAPI_SUPPORT_FRACTION = 0.008
+double RESCUE_DAPI_THRESHOLD_SCALE = 0.80
+double MIN_RESCUE_MERGED_SUPPORT_FRACTION = 0.050
+double RESCUE_MERGED_THRESHOLD_SCALE = 0.65
+double MAX_SHARED_FOOTPRINT_DISTANCE_FRACTION = 0.62
+double MIN_PRESENT_COVER_DIAM_FRACTION = 0.80
+double MAX_PRESENT_DIAM_SPACING_FRACTION = 0.72
+double MISSING_MARKER_DIAM_FRACTION = 0.05
+
+def mode = MODE_DETECT
+def rows = cfgInt('tma.grid.rows', 18)
+def cols = cfgInt('tma.grid.columns', 7)
+def coreDiameterMM = cfgDouble('tma.grid.coreDiameterMM', 0.6d)
+def cropPaddingFactor = cfgDouble('tma.grid.cropPaddingFactor', 1.75d)
+def rowScheme = cfgString('tma.grid.rowScheme', '1, 2, 3...')
+def colScheme = cfgString('tma.grid.columnScheme', 'A, B, C...')
+String channelModeKey = cfgString('tma.detection.channelMode', 'nuclear').toLowerCase()
+def detectChannelMode = channelModeKey == 'merged' ? CHANNELS_MERGED :
+    channelModeKey == 'all' ? CHANNELS_ALL :
+    channelModeKey == 'custom' ? CHANNELS_CUSTOM : CHANNELS_DAPI
+def customChannelStr = cfgString('tma.detection.customChannels', '')
+def detectDownsample = cfgDouble('tma.detection.downsample', 8.0d)
+def blurSigmaFrac = cfgDouble('tma.detection.blurSigmaFraction', 0.25d)
+def thresholdScale = cfgDouble('tma.detection.otsuThresholdScale', 0.70d)
+def minBlobFrac = cfgDouble('tma.detection.minBlobAreaFraction', 0.05d)
+def maxBlobFrac = cfgDouble('tma.detection.maxBlobAreaFraction', 5.0d)
+
+def reviewedCoreAnnotationsAtStart = hierarchy.getAnnotationObjects()
+    .findAll { classNameOf(it) == DETECTED_CLASS_NAME && it.getROI() != null }
+int expectedCoreCountAtStart = rows * cols
+int minReviewedAnnotationsAtStart = AUTO_INFER_GRID_LAYOUT_IN_SIMPLE_MODE && !SHOW_ADVANCED_DIALOG ?
+    MIN_REVIEWED_ANNOTATIONS_FOR_AUTO_LAYOUT :
+    Math.max(rows, (int) Math.round(expectedCoreCountAtStart * MIN_CORE_FRACTION_FOR_TRUSTED_GRID))
+boolean reviewedAnnotationsLookUsableAtStart =
+    reviewedCoreAnnotationsAtStart.size() >= minReviewedAnnotationsAtStart
+
+def existingGridAtStart = hierarchy.getTMAGrid()
+int existingPresentAtStart = 0
+int existingTotalAtStart = 0
+boolean existingGridDimsExpected = false
+boolean existingMissingAcceptable = false
+if (existingGridAtStart != null) {
+    existingTotalAtStart = existingGridAtStart.getTMACoreList().size()
+    existingPresentAtStart = existingGridAtStart.getTMACoreList().count { !it.isMissing() }
+    existingGridDimsExpected = existingGridAtStart.getGridHeight() == rows &&
+        existingGridAtStart.getGridWidth() == cols
+    existingMissingAcceptable = existingTotalAtStart > 0 &&
+        ((existingTotalAtStart - existingPresentAtStart) / (double) existingTotalAtStart) <=
+            MAX_MISSING_FRACTION_FOR_AUTO_PRESERVE
+}
+def existingGridLooksReal = existingGridAtStart != null &&
+    existingGridDimsExpected &&
+    existingMissingAcceptable &&
+    existingTotalAtStart > 1 &&
+    existingPresentAtStart >= Math.max(existingGridAtStart.getGridHeight(),
+        (int) Math.round(existingTotalAtStart * MIN_CORE_FRACTION_FOR_TRUSTED_GRID))
+def existingNonDefaultGridLooksReal = existingGridAtStart != null &&
+    !existingGridDimsExpected &&
+    TRUST_NONDEFAULT_EXISTING_GRID &&
+    existingMissingAcceptable &&
+    existingTotalAtStart > 1 &&
+    existingPresentAtStart >= Math.max(
+        Math.max(existingGridAtStart.getGridHeight(), existingGridAtStart.getGridWidth()),
+        (int) Math.round(existingTotalAtStart * MIN_CORE_FRACTION_FOR_TRUSTED_NONDEFAULT_GRID))
+if (USE_EXISTING_GRID_UNLESS_RECTANGLE_SELECTED && existingGridLooksReal && !selectedRegionProvided) {
+    mode = MODE_EXISTING
+    rows = existingGridAtStart.getGridHeight()
+    cols = existingGridAtStart.getGridWidth()
+} else if (USE_EXISTING_GRID_UNLESS_RECTANGLE_SELECTED && existingNonDefaultGridLooksReal && !selectedRegionProvided) {
+    mode = MODE_EXISTING
+    rows = existingGridAtStart.getGridHeight()
+    cols = existingGridAtStart.getGridWidth()
+}
+
+if (SHOW_ADVANCED_DIALOG) {
+    def params = new ParameterList()
+        .addChoiceParameter('mode', 'Detection mode',
+            mode, [MODE_DETECT, MODE_EXISTING] as List,
+            'How to establish the TMA grid')
+        .addIntParameter('rows', 'Rows (treatments x replicates)', rows, '',
+            1.0d, 100.0d, 'Number of rows in the TMA grid')
+        .addIntParameter('cols', 'Columns (conditions)', cols, '',
+            1.0d, 100.0d, 'Number of columns in the TMA grid')
+        .addDoubleParameter('coreDiameterMM', 'Core diameter (punch size)', coreDiameterMM, 'mm',
+            0.1d, 5.0d, 'TMA punch diameter - used for blob filtering')
+        .addDoubleParameter('cropPaddingFactor', 'Crop padding', cropPaddingFactor, 'x core diameter',
+            1.0d, 3.0d, 'Placed circle size = padding x core diameter')
+        .addChoiceParameter('rowScheme', 'Row labels',
+            rowScheme, ['1, 2, 3...', 'A, B, C...'] as List,
+            'Numeric or alphabetic row labels')
+        .addChoiceParameter('colScheme', 'Column labels',
+            colScheme, ['1, 2, 3...', 'A, B, C...'] as List,
+            'Numeric or alphabetic column labels')
+        .addChoiceParameter('detectChannels', 'Detection channels',
+            detectChannelMode, [CHANNELS_DAPI, CHANNELS_MERGED, CHANNELS_ALL, CHANNELS_CUSTOM] as List,
+            'Which channels to use for blob detection')
+        .addStringParameter('customChannels', 'Custom channel names (comma-separated)', customChannelStr,
+            'Used only if detection channels = Custom')
+        .addDoubleParameter('detectDownsample', 'Detection downsample', detectDownsample, 'x',
+            1.0d, 64.0d, 'Pixel downsample for the projection')
+        .addDoubleParameter('blurSigmaFrac', 'Blur sigma', blurSigmaFrac, 'x core diameter',
+            0.0d, 1.0d, 'Gaussian blur before thresholding')
+        .addDoubleParameter('thresholdScale', 'Threshold scale', thresholdScale, 'x Otsu',
+            0.1d, 2.0d, 'Lower catches dim/sparse cores; higher is stricter')
+        .addDoubleParameter('minBlobFrac', 'Min blob size', minBlobFrac, 'x expected core area',
+            0.0d, 1.0d, 'Reject blobs smaller than this fraction of an expected core')
+        .addDoubleParameter('maxBlobFrac', 'Max blob size', maxBlobFrac, 'x expected core area',
+            1.0d, 50.0d, 'Reject blobs larger than this fraction')
+
+    if (!qupath.lib.gui.dialogs.Dialogs.showParameterDialog('TMA Step 1 - Detect & assign', params))
+        return
+
+    mode = params.getChoiceParameterValue('mode')
+    rows = params.getIntParameterValue('rows')
+    cols = params.getIntParameterValue('cols')
+    coreDiameterMM = params.getDoubleParameterValue('coreDiameterMM')
+    cropPaddingFactor = params.getDoubleParameterValue('cropPaddingFactor')
+    rowScheme = params.getChoiceParameterValue('rowScheme')
+    colScheme = params.getChoiceParameterValue('colScheme')
+    detectChannelMode = params.getChoiceParameterValue('detectChannels')
+    customChannelStr = params.getStringParameterValue('customChannels')
+    detectDownsample = params.getDoubleParameterValue('detectDownsample')
+    blurSigmaFrac = params.getDoubleParameterValue('blurSigmaFrac')
+    thresholdScale = params.getDoubleParameterValue('thresholdScale')
+    minBlobFrac = params.getDoubleParameterValue('minBlobFrac')
+    maxBlobFrac = params.getDoubleParameterValue('maxBlobFrac')
+} else {
+    println "Simple mode: ${mode}; grid ${rows} x ${cols}; core ${coreDiameterMM} mm; no parameter dialog."
+    if (mode == MODE_EXISTING) {
+        println 'Existing grid found and no rectangle selected, so Step 1 will preserve it.'
+        if (!existingGridDimsExpected)
+            println "Existing grid is ${existingGridAtStart.getGridHeight()} x ${existingGridAtStart.getGridWidth()} instead of the configured ${rows} x ${cols}; preserving it because it looks complete."
+        if (reviewedAnnotationsLookUsableAtStart)
+            println "Reviewed helper annotations are present (${reviewedCoreAnnotationsAtStart.size()}) but will not overwrite the existing grid."
+    } else if (existingGridAtStart != null && !existingGridDimsExpected) {
+        println "Existing grid dimensions are ${existingGridAtStart.getGridHeight()} x ${existingGridAtStart.getGridWidth()}, expected ${rows} x ${cols}; Step 1 will rebuild."
+    } else if (existingGridAtStart != null && !existingMissingAcceptable) {
+        int existingMissingAtStart = existingTotalAtStart - existingPresentAtStart
+        println "Existing grid has many missing positions (${existingMissingAtStart}/${existingTotalAtStart}); Step 1 will rebuild instead of preserving it."
+    } else if (reviewedAnnotationsLookUsableAtStart) {
+        println "Reviewed core annotations found (${reviewedCoreAnnotationsAtStart.size()}); Step 1 will rebuild the grid from them."
+    }
+}
+
+// === 3. Resolve channel selection ===
+def nonAfIndices = []
+channelNames.eachWithIndex { name, i ->
+    String n = (name ?: '').toLowerCase()
+    if (!n.startsWith('af')) nonAfIndices << i
+}
+def mergedChannelIndices = nonAfIndices.isEmpty() ? (0..<channelNames.size()).toList() : nonAfIndices
+def selectedChannelIndices = []
+if (detectChannelMode == CHANNELS_MERGED) {
+    selectedChannelIndices = mergedChannelIndices
+} else if (detectChannelMode == CHANNELS_ALL) {
+    selectedChannelIndices = (0..<channelNames.size()).toList()
+} else if (detectChannelMode == CHANNELS_DAPI) {
+    if (dapiIndices.isEmpty()) {
+        if (!SHOW_ADVANCED_DIALOG) {
+            println 'WARNING: No nuclear/DAPI channels detected; simple mode will use all channels.'
+            selectedChannelIndices = (0..<channelNames.size()).toList()
+        } else {
+            Dialogs.showErrorMessage('TMA Rearrange',
+                'No nuclear/DAPI channels detected. Switch to "All channels" or "Custom".')
+            return
+        }
+    } else {
+        selectedChannelIndices = dapiIndices
+    }
+} else {
+    def wanted = customChannelStr.split(',').collect { it.trim() }.findAll { it }
+    wanted.each { name ->
+        def idx = channelNames.findIndexOf { it.equalsIgnoreCase(name) }
+        if (idx >= 0) selectedChannelIndices << idx
+        else println "WARNING: custom channel '${name}' not found — skipping"
+    }
+    if (selectedChannelIndices.isEmpty()) {
+        Dialogs.showErrorMessage('TMA Rearrange', 'No valid custom channels matched.')
+        return
+    }
+}
+println "Detection channels (${detectChannelMode}): ${selectedChannelIndices.collect { channelNames[it] }}"
+println "Rescue/coverage channels (merged non-AF): ${mergedChannelIndices.collect { channelNames[it] }}"
+
+// === 4. Label helpers ===
+def numericLabelArr = { int n -> (1..n).collect { it.toString() } }
+def alphaLabelArr = { int n ->
+    (0..<n).collect { i ->
+        def sb = new StringBuilder()
+        def x = i
+        while (true) {
+            int code = (((int) ('A' as char)) + (x % 26))
+            sb.insert(0, (char) code)
+            x = x.intdiv(26) - 1
+            if (x < 0) break
+        }
+        sb.toString()
+    }
+}
+def buildLabelArr = { int n, String scheme ->
+    scheme.startsWith('1') ? numericLabelArr(n) : alphaLabelArr(n)
+}
+def rowLabelArr = buildLabelArr(rows, rowScheme)
+def colLabelArr = buildLabelArr(cols, colScheme)
+
+// =========================================================
+// === Detection helpers (closures) ========================
+// =========================================================
+
+// Otsu threshold on a float array.
+def otsuThreshold = { float[] data ->
+    if (data.length == 0) return 0.0d
+    float minV = Float.POSITIVE_INFINITY, maxV = Float.NEGATIVE_INFINITY
+    for (int i = 0; i < data.length; i++) {
+        float v = data[i]
+        if (v < minV) minV = v
+        if (v > maxV) maxV = v
+    }
+    if (maxV <= minV) return (double) maxV
+    int nBins = 256
+    int[] hist = new int[nBins]
+    double range = maxV - minV
+    for (int i = 0; i < data.length; i++) {
+        int bin = (int) Math.min(nBins - 1, Math.max(0, ((data[i] - minV) / range) * (nBins - 1)))
+        hist[bin]++
+    }
+    long total = data.length
+    double sumAll = 0
+    for (int i = 0; i < nBins; i++) sumAll += i * hist[i]
+    long wB = 0
+    double sumB = 0, maxVar = 0
+    int bestBin = 0
+    for (int t = 0; t < nBins; t++) {
+        wB += hist[t]
+        if (wB == 0) continue
+        long wF = total - wB
+        if (wF == 0) break
+        sumB += t * hist[t]
+        double mB = sumB / wB
+        double mF = (sumAll - sumB) / wF
+        double v = wB * (double) wF * (mB - mF) * (mB - mF)
+        if (v > maxVar) { maxVar = v; bestBin = t }
+    }
+    return minV + (bestBin / (double)(nBins - 1)) * range
+}
+
+def percentilePositive = { float[] data, double p ->
+    def vals = []
+    int step = Math.max(1, (int) Math.floor(data.length / 200000))
+    for (int i = 0; i < data.length; i += step) {
+        float v = data[i]
+        if (v > 0) vals << v
+    }
+    if (vals.isEmpty()) return 1.0d
+    vals.sort()
+    int idx = (int) Math.max(0, Math.min(vals.size() - 1, Math.round((vals.size() - 1) * p)))
+    return Math.max(1.0d, vals[idx] as double)
+}
+
+// Read a region and produce a normalized merged-channel projection. Each channel
+// is scaled by a high percentile first so one bright marker cannot dominate.
+def readProjection = { srv, double ds, double rx, double ry, double rw, double rh, channelIdxs ->
+    int ix = (int) Math.floor(rx)
+    int iy = (int) Math.floor(ry)
+    int iw = (int) Math.ceil(rw)
+    int ih = (int) Math.ceil(rh)
+    int imgW = srv.getWidth()
+    int imgH = srv.getHeight()
+    if (ix < 0) {
+        iw += ix
+        ix = 0
+    }
+    if (iy < 0) {
+        ih += iy
+        iy = 0
+    }
+    if (ix + iw > imgW) iw = imgW - ix
+    if (iy + ih > imgH) ih = imgH - iy
+    if (ix < 0 || iy < 0 || ix >= imgW || iy >= imgH || iw < 1 || ih < 1)
+        throw new IllegalArgumentException("Requested detection region is outside the image: x=${rx}, y=${ry}, w=${rw}, h=${rh}")
+    def request = RegionRequest.createInstance(srv.getPath(), ds, ix, iy, iw, ih)
+    def img = srv.readRegion(request)
+    def raster = img.getRaster()
+    int w = raster.getWidth()
+    int h = raster.getHeight()
+    int n = w * h
+    float[] proj = new float[n]
+    float[] buf = new float[n]
+    int bands = raster.getNumBands()
+    def usableChannels = channelIdxs.findAll { it >= 0 && it < bands }
+    if (usableChannels.isEmpty())
+        println "WARNING: none of the requested detection channels are available in the image tile (${bands} bands)."
+    usableChannels.each { ci ->
+        raster.getSamples(0, 0, w, h, ci, buf)
+        double scale = percentilePositive(buf, 0.995d)
+        for (int i = 0; i < n; i++) {
+            float v = buf[i]
+            if (v > 0) {
+                double norm = Math.min(1.0d, v / scale)
+                proj[i] += (float) Math.sqrt(norm)
+            }
+        }
+    }
+    return [proj: proj, w: w, h: h, originX: ix, originY: iy]
+}
+
+// Native OpenCV Gaussian blur.  The original pixel-by-pixel Groovy convolution
+// took more than a minute on the example slide; QuPath already ships OpenCV,
+// so use its tested native implementation and copy the result back to the
+// existing float-array pipeline.
+def gaussianBlur = { float[] data, int w, int h, double sigma ->
+    if (sigma <= 0.0d) return data
+    Mat mat = new Mat(h, w, CV_32FC1)
+    try {
+        OpenCVTools.putPixelsFloat(mat, data)
+        OpenCVTools.gaussianFilter(mat, sigma)
+        return OpenCVTools.extractFloats(mat)
+    } finally {
+        mat.close()
+    }
+}
+
+// Native 4-connected components.  Footprint validation below recenters every
+// accepted component on tissue, therefore the fast geometric centroid here is
+// preferable to a second, slow Groovy intensity-weighted flood fill.
+def detectBlobs = { float[] proj, int w, int h, double thresh ->
+    Mat src = new Mat(h, w, CV_32FC1)
+    Mat thresholdMat = null
+    Mat mask = new Mat()
+    Mat labels = new Mat()
+    Mat stats = new Mat()
+    Mat centroids = new Mat()
+    def blobs = []
+    def statsIndexer = null
+    def centroidIndexer = null
+    try {
+        OpenCVTools.putPixelsFloat(src, proj)
+        thresholdMat = OpenCVTools.scalarMatWithType(thresh, src.type())
+        compare(src, thresholdMat, mask, CMP_GE)
+        int nLabels = connectedComponentsWithStats(mask, labels, stats, centroids, 4, CV_32S)
+        statsIndexer = stats.createIndexer()
+        centroidIndexer = centroids.createIndexer()
+        for (int label = 1; label < nLabels; label++) {
+            int count = (int) statsIndexer.get(label, CC_STAT_AREA)
+            if (count > 0) {
+                int minX = (int) statsIndexer.get(label, CC_STAT_LEFT)
+                int minY = (int) statsIndexer.get(label, CC_STAT_TOP)
+                int bw = (int) statsIndexer.get(label, CC_STAT_WIDTH)
+                int bh = (int) statsIndexer.get(label, CC_STAT_HEIGHT)
+                blobs << [count: count,
+                    cx: (double) centroidIndexer.get(label, 0),
+                    cy: (double) centroidIndexer.get(label, 1),
+                    minX: minX, maxX: minX + bw - 1,
+                    minY: minY, maxY: minY + bh - 1]
+            }
+        }
+    } finally {
+        if (statsIndexer != null) statsIndexer.release()
+        if (centroidIndexer != null) centroidIndexer.release()
+        [src, thresholdMat, mask, labels, stats, centroids].findAll { it != null }.each { it.close() }
+    }
+    return blobs
+}
+
+def estimateTissueFootprint = { float[] proj, int w, int h, double cx, double cy,
+                                double diamDS, double softThresh, double searchRadiusFactor ->
+    int radius = (int) Math.max(4, Math.ceil(diamDS * searchRadiusFactor))
+    int x0 = Math.max(0, (int) Math.floor(cx - radius))
+    int x1 = Math.min(w - 1, (int) Math.ceil(cx + radius))
+    int y0 = Math.max(0, (int) Math.floor(cy - radius))
+    int y1 = Math.min(h - 1, (int) Math.ceil(cy + radius))
+    int bw = x1 - x0 + 1
+    int bh = y1 - y0 + 1
+    if (bw <= 0 || bh <= 0)
+        return null
+
+    double r2 = radius * (double) radius
+    int nLocal = bw * bh
+    boolean[] mask = new boolean[nLocal]
+    boolean[] visited = new boolean[nLocal]
+    for (int ly = 0; ly < bh; ly++) {
+        int y = y0 + ly
+        double dy = y + 0.5d - cy
+        for (int lx = 0; lx < bw; lx++) {
+            int x = x0 + lx
+            double dx = x + 0.5d - cx
+            if (dx * dx + dy * dy > r2) continue
+            float v = proj[y * w + x]
+            if (v >= softThresh && v > 0.0f)
+                mask[ly * bw + lx] = true
+        }
+    }
+
+    def best = null
+    double bestScore = -1.0d
+    def stack = new ArrayDeque()
+    for (int start = 0; start < nLocal; start++) {
+        if (!mask[start] || visited[start]) continue
+        stack.clear()
+        stack.push(start)
+        int count = 0
+        int minLX = bw, maxLX = -1, minLY = bh, maxLY = -1
+        double sumI = 0.0d, sumIx = 0.0d, sumIy = 0.0d
+        while (!stack.isEmpty()) {
+            int idxLocal = (int) stack.pop()
+            if (idxLocal < 0 || idxLocal >= nLocal) continue
+            if (visited[idxLocal] || !mask[idxLocal]) continue
+            visited[idxLocal] = true
+            int ly = idxLocal.intdiv(bw)
+            int lx = idxLocal - ly * bw
+            int x = x0 + lx
+            int y = y0 + ly
+            float v = proj[y * w + x]
+            count++
+            sumI += v
+            sumIx += x * v
+            sumIy += y * v
+            if (lx < minLX) minLX = lx
+            if (lx > maxLX) maxLX = lx
+            if (ly < minLY) minLY = ly
+            if (ly > maxLY) maxLY = ly
+            if (lx + 1 < bw) stack.push(idxLocal + 1)
+            if (lx > 0)      stack.push(idxLocal - 1)
+            if (ly + 1 < bh) stack.push(idxLocal + bw)
+            if (ly > 0)      stack.push(idxLocal - bw)
+        }
+        if (count == 0 || sumI <= 0.0d) continue
+        double intensityCx = sumIx / sumI
+        double intensityCy = sumIy / sumI
+        double centerOffset = Math.sqrt((intensityCx - cx) * (intensityCx - cx) +
+            (intensityCy - cy) * (intensityCy - cy))
+        double score = count / (1.0d + Math.pow(centerOffset / Math.max(1.0d, diamDS * 0.45d), 2.0d))
+        if (score > bestScore) {
+            bestScore = score
+            best = [
+                count: count,
+                minX: x0 + minLX,
+                maxX: x0 + maxLX,
+                minY: y0 + minLY,
+                maxY: y0 + maxLY,
+                intensityCx: intensityCx,
+                intensityCy: intensityCy,
+                centerOffsetDS: centerOffset
+            ]
+        }
+    }
+    if (best == null)
+        return null
+
+    double bboxCx = (best.minX + best.maxX + 1.0d) / 2.0d
+    double bboxCy = (best.minY + best.maxY + 1.0d) / 2.0d
+    double blend = 0.75d
+    return [
+        cx: (1.0d - blend) * best.intensityCx + blend * bboxCx,
+        cy: (1.0d - blend) * best.intensityCy + blend * bboxCy,
+        coverDiamDS: Math.max(best.maxX - best.minX + 1.0d, best.maxY - best.minY + 1.0d),
+        count: best.count,
+        centerOffsetDS: best.centerOffsetDS
+    ]
+}
+
+def countCircularSupport = { float[] proj, int w, int h, double cx, double cy,
+                             double radius, double threshold ->
+    int x0 = Math.max(0, (int) Math.floor(cx - radius))
+    int x1 = Math.min(w - 1, (int) Math.ceil(cx + radius))
+    int y0 = Math.max(0, (int) Math.floor(cy - radius))
+    int y1 = Math.min(h - 1, (int) Math.ceil(cy + radius))
+    double r2 = radius * radius
+    int count = 0
+    for (int y = y0; y <= y1; y++) {
+        double dy = y + 0.5d - cy
+        for (int x = x0; x <= x1; x++) {
+            double dx = x + 0.5d - cx
+            if (dx * dx + dy * dy <= r2 && proj[y * w + x] >= threshold)
+                count++
+        }
+    }
+    return count
+}
+
+// Locate weak/fragmented cores from independent, unblurred nuclear evidence.
+// Unlike the merged blurred projection, this cannot turn uniform background
+// into one large connected component.  The centroid also recentres irregular
+// rows instead of leaving a circle at the theoretical lattice position.
+def estimateCircularSupportFootprint = { float[] proj, int w, int h,
+                                         double cx, double cy, double radius,
+                                         double threshold ->
+    int x0 = Math.max(0, (int) Math.floor(cx - radius))
+    int x1 = Math.min(w - 1, (int) Math.ceil(cx + radius))
+    int y0 = Math.max(0, (int) Math.floor(cy - radius))
+    int y1 = Math.min(h - 1, (int) Math.ceil(cy + radius))
+    double r2 = radius * radius
+    int count = 0
+    double sumX = 0.0d, sumY = 0.0d
+    int minX = x1, maxX = x0, minY = y1, maxY = y0
+    for (int y = y0; y <= y1; y++) {
+        double dy = y + 0.5d - cy
+        for (int x = x0; x <= x1; x++) {
+            double dx = x + 0.5d - cx
+            if (dx * dx + dy * dy > r2 || proj[y * w + x] < threshold) continue
+            count++
+            sumX += x + 0.5d
+            sumY += y + 0.5d
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x)
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+        }
+    }
+    if (count == 0) return null
+    double sx = sumX / count, sy = sumY / count
+    return [count: count, cx: sx, cy: sy,
+        coverDiamDS: Math.max(maxX - minX + 1.0d, maxY - minY + 1.0d),
+        centerOffsetDS: Math.sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy))]
+}
+
+// Gap-based 1-D clustering: split sorted values at the (k-1) largest gaps.
+// More robust than k-means when cluster spacing is non-uniform (e.g., TMA rows
+// with treatment-group separators). Returns sorted centers and assignments.
+def assignByLargestGaps = { values, int k ->
+    int n = values.size()
+    if (n == 0) return [centers: [], assignments: new int[0]]
+    if (k <= 1 || n == 1) {
+        def m = values.sum() / n
+        return [centers: [m], assignments: new int[n]]
+    }
+    Integer[] order = new Integer[n]
+    for (int i = 0; i < n; i++) order[i] = i
+    Arrays.sort(order, { a, b -> Double.compare((double) values[a], (double) values[b]) } as Comparator)
+    double[] sortedV = new double[n]
+    for (int i = 0; i < n; i++) sortedV[i] = (double) values[order[i]]
+
+    // Build (gap, position) pairs for positions 1..n-1 (gap[i] = sortedV[i] - sortedV[i-1])
+    int nGaps = n - 1
+    Integer[] gapOrder = new Integer[nGaps]
+    for (int i = 0; i < nGaps; i++) gapOrder[i] = i + 1
+    Arrays.sort(gapOrder, { a, b ->
+        double ga = sortedV[a] - sortedV[a - 1]
+        double gb = sortedV[b] - sortedV[b - 1]
+        return Double.compare(gb, ga)   // descending
+    } as Comparator)
+    int nBoundaries = Math.min(k - 1, nGaps)
+    int[] boundaries = new int[nBoundaries]
+    for (int i = 0; i < nBoundaries; i++) boundaries[i] = gapOrder[i]
+    Arrays.sort(boundaries)
+
+    int[] assign = new int[n]
+    int[] sortedAssign = new int[n]
+    int currentCluster = 0
+    int boundaryIdx = 0
+    for (int i = 0; i < n; i++) {
+        while (boundaryIdx < nBoundaries && i >= boundaries[boundaryIdx]) {
+            currentCluster++
+            boundaryIdx++
+        }
+        sortedAssign[i] = currentCluster
+        assign[order[i]] = currentCluster
+    }
+    int kActual = currentCluster + 1   // could be < k if n < k
+
+    // Compute centers as means of cluster members
+    double[] sums = new double[k]
+    int[] counts = new int[k]
+    for (int i = 0; i < n; i++) {
+        sums[assign[i]] += (double) values[i]
+        counts[assign[i]]++
+    }
+    def centers = (0..<k).collect { c -> counts[c] > 0 ? sums[c] / counts[c] : null }
+
+    return [centers: centers, assignments: assign, kActual: kActual]
+}
+
+// 1-D K-means with percentile initialization. Returns sorted centers and assignments.
+def kmeans1D = { values, int k, int maxIter ->
+    int nValues = values.size()
+    if (nValues == 0) return [centers: [], assignments: new int[0]]
+    if (k <= 1) {
+        double m = values.sum() / nValues
+        return [centers: [m], assignments: new int[nValues]]
+    }
+    def sorted = new ArrayList(values).sort()
+    double[] centers = new double[k]
+    for (int i = 0; i < k; i++) {
+        double p = (2.0d * i + 1.0d) / (2.0d * k)
+        double idx = p * (nValues - 1)
+        int lo = (int) Math.floor(idx)
+        int hi = (int) Math.ceil(idx)
+        double frac = idx - lo
+        centers[i] = (double) sorted[lo] * (1.0 - frac) + (double) sorted[hi] * frac
+    }
+    int[] assign = new int[nValues]
+    for (int iter = 0; iter < maxIter; iter++) {
+        boolean changed = false
+        for (int i = 0; i < nValues; i++) {
+            double v = (double) values[i]
+            int best = 0
+            double bestDist = Double.POSITIVE_INFINITY
+            for (int j = 0; j < k; j++) {
+                double d = Math.abs(v - centers[j])
+                if (d < bestDist) { bestDist = d; best = j }
+            }
+            if (assign[i] != best) { changed = true; assign[i] = best }
+        }
+        if (!changed && iter > 0) break
+        double[] sums = new double[k]
+        int[] counts = new int[k]
+        for (int i = 0; i < nValues; i++) {
+            sums[assign[i]] += (double) values[i]
+            counts[assign[i]]++
+        }
+        for (int j = 0; j < k; j++) {
+            if (counts[j] > 0) centers[j] = sums[j] / counts[j]
+        }
+    }
+    // Sort centers ascending and renumber assignments
+    Integer[] order = new Integer[k]
+    for (int i = 0; i < k; i++) order[i] = i
+    Arrays.sort(order, { a, b -> Double.compare(centers[a], centers[b]) } as Comparator)
+    int[] renumber = new int[k]
+    double[] sortedCenters = new double[k]
+    for (int newIdx = 0; newIdx < k; newIdx++) {
+        int oldIdx = order[newIdx]
+        renumber[oldIdx] = newIdx
+        sortedCenters[newIdx] = centers[oldIdx]
+    }
+    int[] sortedAssign = new int[nValues]
+    for (int i = 0; i < nValues; i++) sortedAssign[i] = renumber[assign[i]]
+    return [centers: sortedCenters.toList(), assignments: sortedAssign]
+}
+
+// Linear regression y = m*i + b on indices 0..n-1, given a list ys with possible nulls.
+// Returns a closure i -> y.
+def linearFitOverIndices = { ys ->
+    int n = ys.size()
+    def xs = []
+    def vals = []
+    for (int i = 0; i < n; i++) {
+        if (ys[i] != null) { xs << i; vals << ys[i] }
+    }
+    if (vals.size() < 2) {
+        double avg = vals.isEmpty() ? 0.0d : vals.sum() / vals.size()
+        return { double idx -> avg }
+    }
+    int np = vals.size()
+    double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0
+    for (int i = 0; i < np; i++) {
+        double x = xs[i], y = vals[i]
+        sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x
+    }
+    double denom = np * sumX2 - sumX * sumX
+    double m, b
+    if (Math.abs(denom) < 1e-10d) {
+        m = 0.0d; b = sumY / np
+    } else {
+        m = (np * sumXY - sumX * sumY) / denom
+        b = (sumY - m * sumX) / np
+    }
+    return { double idx -> m * idx + b }
+}
+
+def quantile = { values, double q ->
+    if (values == null || values.isEmpty()) return null
+    def sorted = new ArrayList(values).sort()
+    double idx = Math.max(0.0d, Math.min(sorted.size() - 1.0d, q * (sorted.size() - 1.0d)))
+    int lo = (int) Math.floor(idx)
+    int hi = (int) Math.ceil(idx)
+    double frac = idx - lo
+    return ((double) sorted[lo]) * (1.0d - frac) + ((double) sorted[hi]) * frac
+}
+
+def medianPositiveSpacing = { centers ->
+    def clean = centers.findAll { it != null }.collect { (double) it }.sort()
+    def diffs = []
+    for (int i = 1; i < clean.size(); i++) {
+        double d = clean[i] - clean[i - 1]
+        if (d > 0.0d) diffs << d
+    }
+    if (diffs.isEmpty()) return null
+    diffs.sort()
+    return diffs[(int) Math.floor(diffs.size() / 2.0d)]
+}
+
+def sameIndexList = { a, b ->
+    if (a == null || b == null || a.size() != b.size()) return false
+    def aa = a.collect { (int) it }.sort()
+    def bb = b.collect { (int) it }.sort()
+    for (int i = 0; i < aa.size(); i++) {
+        if (aa[i] != bb[i]) return false
+    }
+    return true
+}
+
+def inferAxisClusterCount = { values, double diamPx ->
+    def clean = values.findAll { it != null }.collect { (double) it }.sort()
+    if (clean.size() < 2)
+        return [count: clean.size(), pitch: null, boundaryGaps: []]
+
+    def diffs = []
+    for (int i = 1; i < clean.size(); i++) {
+        double d = clean[i] - clean[i - 1]
+        if (d > 0.0d) diffs << d
+    }
+    if (diffs.isEmpty())
+        return [count: 1, pitch: null, boundaryGaps: []]
+
+    // Within one row/column, centroids wiggle by a fraction of a core diameter.
+    // Between rows/columns, gaps are usually close to or larger than one diameter.
+    double minGap = diamPx * 0.45d
+    def largeGaps = diffs.findAll { it >= minGap }.sort()
+    if (largeGaps.isEmpty())
+        return [count: 1, pitch: null, boundaryGaps: []]
+
+    double pitch = (double) quantile(largeGaps, 0.25d)
+    if (!(pitch > 0.0d)) pitch = (double) largeGaps[0]
+    double boundaryThreshold = Math.max(minGap, pitch * 0.55d)
+
+    int count = 1
+    def boundaryGaps = []
+    diffs.each { d ->
+        if (d >= boundaryThreshold) {
+            int slots = Math.max(1, (int) Math.round(d / pitch))
+            count += slots
+            boundaryGaps << d
+        }
+    }
+    return [count: count, pitch: pitch, boundaryGaps: boundaryGaps]
+}
+
+def autoDetectArrayRegion = { double diamPx ->
+    int imgW = server.getWidth()
+    int imgH = server.getHeight()
+    double ds = AUTO_SEARCH_DOWNSAMPLE
+    println "No rectangle selected - auto-locating the TMA array at downsample ${ds}"
+
+    def reg = readProjection(server, ds, 0.0d, 0.0d, (double) imgW, (double) imgH, selectedChannelIndices)
+    double sigmaDS = Math.max(1.0d, (diamPx / ds) * 0.20d)
+    reg.proj = gaussianBlur(reg.proj, reg.w, reg.h, sigmaDS)
+    double thresh = otsuThreshold(reg.proj) * thresholdScale
+    def blobs = detectBlobs(reg.proj, reg.w, reg.h, thresh)
+
+    double diamDS = diamPx / ds
+    double expectedArea = Math.PI * (diamDS / 2.0d) * (diamDS / 2.0d)
+    double minArea = Math.max(4.0d, expectedArea * 0.03d)
+    def candidates = blobs.findAll { it.count >= minArea }
+    println "Auto-region candidates: ${candidates.size()} blobs from ${blobs.size()} raw blobs"
+
+    if (candidates.size() < rows) {
+        println 'WARNING: Auto-region found too few core-like blobs; falling back to the full image.'
+        return [x: 0.0d, y: 0.0d, w: (double) imgW, h: (double) imgH, source: 'whole image fallback']
+    }
+
+    def xs = candidates.collect { it.cx * ds }
+    def ys = candidates.collect { it.cy * ds }
+    double pad = diamPx * AUTO_REGION_PADDING_CORES
+    double qx1 = (double) quantile(xs, 0.01d)
+    double qx2 = (double) quantile(xs, 0.99d)
+    double qy1 = (double) quantile(ys, 0.01d)
+    double qy2 = (double) quantile(ys, 0.99d)
+    double x1 = Math.max(0.0d, qx1 - pad)
+    double x2 = Math.min((double) imgW, qx2 + pad)
+    double y1 = Math.max(0.0d, qy1 - pad)
+    double y2 = Math.min((double) imgH, qy2 + pad)
+
+    if ((x2 - x1) < diamPx * cols * 0.35d || (y2 - y1) < diamPx * rows * 0.20d) {
+        println 'WARNING: Auto-region looked too small; falling back to the full image.'
+        return [x: 0.0d, y: 0.0d, w: (double) imgW, h: (double) imgH, source: 'whole image fallback']
+    }
+
+    return [x: x1, y: y1, w: x2 - x1, h: y2 - y1, source: 'auto-detected']
+}
+
+// =========================================================
+// === Main: detect or use-existing ========================
+// =========================================================
+
+if (mode == MODE_DETECT) {
+    println "Mode: DETECT cores"
+    double diamPx = coreDiameterMM * 1000.0d / umPerPx
+    println "Core diameter: ${diamPx} px (full res)"
+
+    def reviewedCoreAnnotations = reviewedCoreAnnotationsAtStart
+    if (selectedRegionProvided) {
+        def sr = selectedAtStart.getROI()
+        double sx = sr.getBoundsX() - diamPx
+        double sy = sr.getBoundsY() - diamPx
+        double sw = sr.getBoundsWidth() + 2.0d * diamPx
+        double sh = sr.getBoundsHeight() + 2.0d * diamPx
+        reviewedCoreAnnotations = reviewedCoreAnnotations.findAll { ann ->
+            def roi = ann.getROI()
+            double ax = roi.getCentroidX()
+            double ay = roi.getCentroidY()
+            ax >= sx && ax <= sx + sw && ay >= sy && ay <= sy + sh
+        }
+        if (!reviewedCoreAnnotations.isEmpty())
+            println "Reviewed helper annotations inside selected region: ${reviewedCoreAnnotations.size()}"
+    }
+    int minReviewedAnnotationsForGrid = AUTO_INFER_GRID_LAYOUT_IN_SIMPLE_MODE && !SHOW_ADVANCED_DIALOG ?
+        MIN_REVIEWED_ANNOTATIONS_FOR_AUTO_LAYOUT :
+        Math.max(rows, (int) Math.round(rows * cols * MIN_CORE_FRACTION_FOR_TRUSTED_GRID))
+    boolean useReviewedAnnotations = reviewedCoreAnnotations.size() >= minReviewedAnnotationsForGrid
+    def coreBlobs = []
+    def detectionContext = null
+
+    if (useReviewedAnnotations) {
+        println "Using ${reviewedCoreAnnotations.size()} reviewed '${DETECTED_CLASS_NAME}' annotations as core centers."
+        reviewedCoreAnnotations.eachWithIndex { ann, idx ->
+            def roi = ann.getROI()
+            coreBlobs << [
+                count: 1,
+                imgX: roi.getCentroidX(),
+                imgY: roi.getCentroidY(),
+                coverDiamPx: Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()),
+                fromAnnotation: true,
+                sourceIndex: idx
+            ]
+        }
+    } else if (!reviewedCoreAnnotations.isEmpty()) {
+        println "Found ${reviewedCoreAnnotations.size()} reviewed core annotations, below the ${minReviewedAnnotationsForGrid} needed to build a grid; using image detection instead."
+    } else {
+        def selected = selectedAtStart
+        double rectX, rectY, rectW, rectH
+        String regionSource
+        if (selectedRegionProvided) {
+            def roi = selected.getROI()
+            rectX = roi.getBoundsX()
+            rectY = roi.getBoundsY()
+            rectW = roi.getBoundsWidth()
+            rectH = roi.getBoundsHeight()
+            regionSource = 'selected annotation'
+        } else {
+            def autoRegion = autoDetectArrayRegion(diamPx)
+            rectX = autoRegion.x
+            rectY = autoRegion.y
+            rectW = autoRegion.w
+            rectH = autoRegion.h
+            regionSource = autoRegion.source
+        }
+        println "Detection region (${regionSource}): x=${rectX}, y=${rectY}, w=${rectW}, h=${rectH}"
+
+        // Pad the read region by one core diameter on each side so cores at the
+        // rectangle's edge aren't clipped (caused col-7 false-missings before).
+        double pad = diamPx
+        int imgW = server.getWidth()
+        int imgH = server.getHeight()
+        double readX = Math.max(0, rectX - pad)
+        double readY = Math.max(0, rectY - pad)
+        double readW = Math.min(imgW - readX, rectW + 2 * pad)
+        double readH = Math.min(imgH - readY, rectH + 2 * pad)
+
+        double effectiveDetectDownsample = detectDownsample
+        double approxDetectPixels = (readW / effectiveDetectDownsample) * (readH / effectiveDetectDownsample)
+        if (approxDetectPixels > MAX_DETECTION_TILE_PIXELS) {
+            effectiveDetectDownsample = Math.ceil(Math.sqrt((readW * readH) / MAX_DETECTION_TILE_PIXELS))
+            println "Detection region is large; using safer downsample ${effectiveDetectDownsample} instead of ${detectDownsample}."
+        }
+
+        // 1. Read projection in the (padded) rectangle region
+        def reg = readProjection(server, effectiveDetectDownsample, readX, readY, readW, readH, selectedChannelIndices)
+        println "Projection: ${reg.w} × ${reg.h} px (downsampled by ${effectiveDetectDownsample})"
+        // Keep an unblurred nuclear projection for independent rescue
+        // validation; a wide Gaussian spreads weak signal into blank cells.
+        float[] primarySupportProj = (reg.proj as float[]).clone()
+        double primarySupportOtsu = otsuThreshold(primarySupportProj)
+        println "Unblurred nuclear support Otsu: ${primarySupportOtsu}"
+
+        // 2. Blur to merge nuclei → continuous core blobs
+        double diamDS_pre = (coreDiameterMM * 1000.0d / umPerPx) / effectiveDetectDownsample
+        double sigmaDS = diamDS_pre * blurSigmaFrac
+        if (sigmaDS > 0.5d) {
+            def tBlur = System.currentTimeMillis()
+            reg.proj = gaussianBlur(reg.proj, reg.w, reg.h, sigmaDS)
+            println "Blurred with sigma=${sigmaDS} downsampled-px in ${System.currentTimeMillis() - tBlur} ms"
+        } else {
+            println "Blur skipped (sigma=${sigmaDS} too small)"
+        }
+
+        // 3. Otsu threshold (on the blurred projection)
+        double otsu = otsuThreshold(reg.proj)
+        double thresh = otsu * thresholdScale
+        println "Otsu threshold: ${otsu}; using ${thresh} (scale ${thresholdScale})"
+
+        // 4. Connected components
+        def t0 = System.currentTimeMillis()
+        def blobs = detectBlobs(reg.proj, reg.w, reg.h, thresh)
+        println "Found ${blobs.size()} raw blobs in ${System.currentTimeMillis() - t0} ms"
+
+        // 4. Filter by size (downsampled-pixel area)
+        double diamDS = diamPx / effectiveDetectDownsample
+        double expectedArea = Math.PI * (diamDS / 2.0d) * (diamDS / 2.0d)
+        double minArea = expectedArea * minBlobFrac
+        double maxArea = expectedArea * maxBlobFrac
+        coreBlobs = blobs.findAll { it.count >= minArea && it.count <= maxArea }
+        println "Filtered to ${coreBlobs.size()} core-sized blobs (area in [${minArea}, ${maxArea}] px²)"
+
+        def rescueReg = reg
+        float[] mergedSupportProj = primarySupportProj
+        if (!sameIndexList(selectedChannelIndices, mergedChannelIndices)) {
+            rescueReg = readProjection(server, effectiveDetectDownsample, readX, readY, readW, readH, mergedChannelIndices)
+            mergedSupportProj = (rescueReg.proj as float[]).clone()
+            if (sigmaDS > 0.5d)
+                rescueReg.proj = gaussianBlur(rescueReg.proj, rescueReg.w, rescueReg.h, sigmaDS)
+        }
+        double mergedSupportOtsu = otsuThreshold(mergedSupportProj)
+        double rescueOtsu = otsuThreshold(rescueReg.proj)
+        double coverageFootprintThresh = rescueOtsu * COVERAGE_THRESHOLD_SCALE
+        double rescueFootprintThresh = rescueOtsu * RESCUE_THRESHOLD_SCALE
+        println "Merged/Otsu coverage threshold: ${coverageFootprintThresh} (scale ${COVERAGE_THRESHOLD_SCALE} x Otsu ${rescueOtsu})"
+        println "Merged/Otsu rescue threshold: ${rescueFootprintThresh} (scale ${RESCUE_THRESHOLD_SCALE} x Otsu ${rescueOtsu})"
+        detectionContext = [
+            proj: rescueReg.proj,
+            primaryProj: primarySupportProj,
+            mergedSupportProj: mergedSupportProj,
+            w: rescueReg.w,
+            h: rescueReg.h,
+            originX: rescueReg.originX,
+            originY: rescueReg.originY,
+            downsample: effectiveDetectDownsample,
+            diamDS: diamDS,
+            expectedArea: expectedArea,
+            primaryThreshold: primarySupportOtsu,
+            mergedSupportThreshold: mergedSupportOtsu,
+            coverageFootprintThresh: coverageFootprintThresh,
+            rescueFootprintThresh: rescueFootprintThresh
+        ]
+
+        int minBlobsBeforeLayout = AUTO_INFER_GRID_LAYOUT_IN_SIMPLE_MODE && !SHOW_ADVANCED_DIALOG ?
+            Math.min(rows, MIN_REVIEWED_ANNOTATIONS_FOR_AUTO_LAYOUT) :
+            rows
+        if (coreBlobs.size() < minBlobsBeforeLayout) {
+            Dialogs.showErrorMessage('TMA Rearrange',
+                "Only ${coreBlobs.size()} core-sized blobs detected, below the ${minBlobsBeforeLayout} needed before grid layout can be estimated.\n\n" +
+                'Check:\n' +
+                ' • Rectangle covers the full array\n' +
+                ' • Detection channels (try "All combined" if DAPI is sparse)\n' +
+                ' • Lower the "Min blob size" parameter\n\n' +
+                "Fallback: run optional_manual_core_detection.groovy, review the cyan circles, then re-run this script.")
+            return
+        }
+
+        // 5. Convert blob centroids to image coordinates (full-res)
+        coreBlobs.each {
+            def footprint = estimateTissueFootprint(rescueReg.proj, rescueReg.w, rescueReg.h,
+                (double) it.cx, (double) it.cy, diamDS, coverageFootprintThresh, 0.95d)
+            if (footprint != null) {
+                it.imgX = rescueReg.originX + (footprint.cx as double) * effectiveDetectDownsample
+                it.imgY = rescueReg.originY + (footprint.cy as double) * effectiveDetectDownsample
+                it.coverDiamPx = (footprint.coverDiamDS as double) *
+                    effectiveDetectDownsample * FOOTPRINT_MARGIN_FACTOR
+            } else {
+                it.imgX = reg.originX + it.cx * effectiveDetectDownsample
+                it.imgY = reg.originY + it.cy * effectiveDetectDownsample
+                if (it.minX != null && it.maxX != null && it.minY != null && it.maxY != null) {
+                    double bboxW = ((double) it.maxX - (double) it.minX + 1.0d) * effectiveDetectDownsample
+                    double bboxH = ((double) it.maxY - (double) it.minY + 1.0d) * effectiveDetectDownsample
+                    it.coverDiamPx = Math.max(bboxW, bboxH) * FOOTPRINT_MARGIN_FACTOR
+                }
+            }
+        }
+    }
+
+    // 5a. Estimate array tilt via PCA on blob centroids, then derive a rotation
+    //     that aligns the array's columns with screen Y (rows along screen X).
+    int nB = coreBlobs.size()
+    double meanX = coreBlobs.collect { it.imgX }.sum() / nB
+    double meanY = coreBlobs.collect { it.imgY }.sum() / nB
+    double sxx = 0.0d, syy = 0.0d, sxy = 0.0d
+    coreBlobs.each {
+        double dx = it.imgX - meanX
+        double dy = it.imgY - meanY
+        sxx += dx * dx; syy += dy * dy; sxy += dx * dy
+    }
+    sxx /= nB; syy /= nB; sxy /= nB
+    double trace = sxx + syy
+    double disc = Math.sqrt(Math.max(0, (sxx - syy) * (sxx - syy) + 4.0d * sxy * sxy))
+    double lambda1 = (trace + disc) / 2.0d
+    // PC1 angle from x-axis (radians)
+    double pc1Angle = (Math.abs(sxy) > 1e-10d)
+        ? Math.atan2(lambda1 - sxx, sxy)
+        : (sxx > syy ? 0.0d : Math.PI / 2.0d)
+    // We want PC1 along Y (π/2) so rows are horizontal. PC1 has 180° ambiguity, so
+    // collapse correction to [-π/4, π/4].
+    double rotation = Math.PI / 2.0d - pc1Angle
+    while (rotation > Math.PI / 4.0d) rotation -= Math.PI / 2.0d
+    while (rotation < -Math.PI / 4.0d) rotation += Math.PI / 2.0d
+    println "Array tilt (PC1): ${String.format('%.2f', Math.toDegrees(rotation))}° — correcting before row/col assignment"
+
+    double cosR = Math.cos(rotation), sinR = Math.sin(rotation)
+    coreBlobs.each {
+        double dx = it.imgX - meanX
+        double dy = it.imgY - meanY
+        it.rotX = dx * cosR - dy * sinR + meanX
+        it.rotY = dx * sinR + dy * cosR + meanY
+    }
+
+    if (!SHOW_ADVANCED_DIALOG && AUTO_INFER_GRID_LAYOUT_IN_SIMPLE_MODE) {
+        def inferredRowAxis = inferAxisClusterCount(coreBlobs.collect { it.rotY }, diamPx)
+        def inferredColAxis = inferAxisClusterCount(coreBlobs.collect { it.rotX }, diamPx)
+        int inferredRows = Math.max(1, Math.min(100, (int) inferredRowAxis.count))
+        int inferredCols = Math.max(1, Math.min(100, (int) inferredColAxis.count))
+        int inferredCells = inferredRows * inferredCols
+        double cellToDetectionRatio = inferredCells / Math.max(1.0d, (double) nB)
+        boolean plausibleLayout = inferredRows >= 2 && inferredCols >= 2 &&
+            inferredCells >= Math.max(inferredRows, inferredCols) &&
+            cellToDetectionRatio >= 0.65d && cellToDetectionRatio <= 2.50d
+
+        println "Auto-layout estimate from detected centers: ${inferredRows} x ${inferredCols} " +
+            "(row pitch ${inferredRowAxis.pitch == null ? 'n/a' : String.format('%.0f', inferredRowAxis.pitch)}, " +
+            "col pitch ${inferredColAxis.pitch == null ? 'n/a' : String.format('%.0f', inferredColAxis.pitch)})"
+
+        int configuredCells = rows * cols
+        double configuredDiff = Math.abs(configuredCells - nB) / Math.max(1.0d, (double) nB)
+        double inferredDiff = Math.abs(inferredCells - nB) / Math.max(1.0d, (double) nB)
+        boolean configuredCountReasonable = configuredCells >= nB * 0.75d && configuredCells <= nB * 1.40d
+        boolean inferredOnlyShrinksConfigured = inferredRows <= rows && inferredCols <= cols
+        boolean likelyMissingEdgeRowsOrCols = configuredCountReasonable && inferredOnlyShrinksConfigured
+        boolean inferredClearlyBetter = !likelyMissingEdgeRowsOrCols &&
+            (inferredDiff + 0.05d < configuredDiff || configuredDiff > 0.30d)
+
+        if (plausibleLayout && (inferredRows != rows || inferredCols != cols) && inferredClearlyBetter) {
+            println "Simple mode: changing grid layout from default ${rows} x ${cols} to inferred ${inferredRows} x ${inferredCols}."
+            rows = inferredRows
+            cols = inferredCols
+            rowLabelArr = buildLabelArr(rows, rowScheme)
+            colLabelArr = buildLabelArr(cols, colScheme)
+        } else if (plausibleLayout && (inferredRows != rows || inferredCols != cols)) {
+            println "Keeping configured ${rows} x ${cols}; inferred ${inferredRows} x ${inferredCols} was not clearly better for ${nB} detected centers or may reflect missing edge rows/columns."
+        } else if (!plausibleLayout) {
+            println "WARNING: auto-layout estimate looked implausible; keeping configured ${rows} x ${cols}."
+        }
+    }
+    // Inverse rotation (used to un-rotate placeholder positions for missing cells)
+    double cosRi = Math.cos(-rotation), sinRi = Math.sin(-rotation)
+    def unrotate = { double rx, double ry ->
+        double dx = rx - meanX
+        double dy = ry - meanY
+        return [dx * cosRi - dy * sinRi + meanX, dx * sinRi + dy * cosRi + meanY]
+    }
+
+    // 6. Cluster rotated-Y into rows. This handles non-uniform inter-row
+    //    spacing such as treatment-group separators.
+    def rowResult = assignByLargestGaps(coreBlobs.collect { it.rotY }, rows)
+    coreBlobs.eachWithIndex { b, i -> b.row = rowResult.assignments[i] }
+    if (rowResult.kActual < rows) {
+        println "WARNING: gap-detection produced only ${rowResult.kActual} non-empty rows out of ${rows} expected"
+    }
+
+    def preliminaryPerRow = new int[rows]
+    coreBlobs.each { preliminaryPerRow[it.row]++ }
+    println "Detected blobs per row before grid cleanup: ${(0..<rows).collect { preliminaryPerRow[it] }}"
+
+    // 7. Estimate global column centers, then assign every blob by nearest
+    //    row/column center. We try both a conservative left-biased seed and an
+    //    all-detected seed; the latter fixes cases where the rightmost real TMA
+    //    column was being mistaken as stray/control tissue.
+    def columnSeedXLeft = []
+    def columnSeedXRight = []
+    for (int r = 0; r < rows; r++) {
+        def rowBlobs = coreBlobs.findAll { it.row == r }.sort { it.rotX }
+        rowBlobs.take(cols).each { columnSeedXLeft << it.rotX }
+        rowBlobs.reverse().take(cols).each { columnSeedXRight << it.rotX }
+    }
+    if (columnSeedXLeft.size() < cols)
+        columnSeedXLeft = coreBlobs.collect { it.rotX }
+    if (columnSeedXRight.size() < cols)
+        columnSeedXRight = coreBlobs.collect { it.rotX }
+
+    def rowCenters = rowResult.centers
+    def rowPitchValue = medianPositiveSpacing(rowCenters)
+    double rowPitch = rowPitchValue == null ? diamPx * 1.5d : (double) rowPitchValue
+    double rowTolerance = Math.max(diamPx * 0.75d, rowPitch * 0.45d)
+
+    def nearestCenter = { double value, centers ->
+        int best = -1
+        double bestDist = Double.POSITIVE_INFINITY
+        centers.eachWithIndex { center, idx ->
+            if (center != null) {
+                double dist = Math.abs(value - ((double) center))
+                if (dist < bestDist) {
+                    best = idx
+                    bestDist = dist
+                }
+            }
+        }
+        return [index: best, dist: bestDist]
+    }
+
+    def evaluateColumnStrategy = { String strategyName, seedX ->
+        def colResult = assignByLargestGaps(seedX, cols)
+        def colCentersCandidate = colResult.centers
+        def colPitchValue = medianPositiveSpacing(colCentersCandidate)
+        double colPitchCandidate = colPitchValue == null ? diamPx * 1.5d : (double) colPitchValue
+        double colToleranceCandidate = Math.max(diamPx * 0.75d, colPitchCandidate * 0.45d)
+        def cells = [:]
+        int strays = 0
+        int duplicates = 0
+        coreBlobs.each { b ->
+            def nr = nearestCenter((double) b.rotY, rowCenters)
+            def nc = nearestCenter((double) b.rotX, colCentersCandidate)
+            if (nr.index < 0 || nc.index < 0 || nr.dist > rowTolerance || nc.dist > colToleranceCandidate) {
+                strays++
+            } else {
+                double score = Math.pow(nr.dist / rowTolerance, 2.0d) +
+                    Math.pow(nc.dist / colToleranceCandidate, 2.0d)
+                def candidate = b + [rowCandidate: nr.index, colCandidate: nc.index, gridScoreCandidate: score]
+                def key = [nr.index, nc.index]
+                def previous = cells[key]
+                if (previous == null) {
+                    cells[key] = candidate
+                } else if (score < previous.gridScoreCandidate) {
+                    cells[key] = candidate
+                    duplicates++
+                } else {
+                    duplicates++
+                }
+            }
+        }
+        def rowCounts = new int[rows]
+        def colCounts = new int[cols]
+        cells.each { key, b ->
+            rowCounts[key[0]]++
+            colCounts[key[1]]++
+        }
+        int emptyCols = (0..<cols).count { colCounts[it] == 0 }
+        int edgeMiss = (colCounts[0] == 0 ? 1 : 0) + (colCounts[cols - 1] == 0 ? 1 : 0)
+        double quality = cells.size() - strays * 0.20d - duplicates * 0.35d - emptyCols * 2.0d - edgeMiss * 4.0d
+        return [name: strategyName, seedCount: seedX.size(), colCenters: colCentersCandidate,
+                colPitch: colPitchCandidate, colTolerance: colToleranceCandidate,
+                gridCells: cells, strayCount: strays, duplicateCount: duplicates,
+                assignedCount: cells.size(), perRow: rowCounts, perCol: colCounts,
+                emptyCols: emptyCols, quality: quality]
+    }
+
+    def columnStrategies = [
+        evaluateColumnStrategy('left-biased', columnSeedXLeft),
+        evaluateColumnStrategy('all-detected', coreBlobs.collect { it.rotX }),
+        evaluateColumnStrategy('right-biased', columnSeedXRight)
+    ]
+    columnStrategies.each { s ->
+        println "Column strategy ${s.name}: assigned ${s.assignedCount}, strays ${s.strayCount}, duplicates ${s.duplicateCount}, empty columns ${s.emptyCols}, quality ${String.format('%.1f', s.quality)}"
+    }
+    def selectedStrategy = columnStrategies.max { it.quality }
+    def colCenters = selectedStrategy.colCenters
+    double colPitch = selectedStrategy.colPitch
+    double colTolerance = selectedStrategy.colTolerance
+    def gridCells = [:]
+    selectedStrategy.gridCells.each { key, b ->
+        b.row = b.rowCandidate
+        b.col = b.colCandidate
+        b.gridScore = b.gridScoreCandidate
+        b.remove('rowCandidate')
+        b.remove('colCandidate')
+        b.remove('gridScoreCandidate')
+        gridCells[key] = b
+    }
+    int strayCount = selectedStrategy.strayCount
+    int duplicateCount = selectedStrategy.duplicateCount
+
+    println "Selected column strategy: ${selectedStrategy.name} from ${selectedStrategy.seedCount} seed centers"
+    println "Assignment tolerance: row ${String.format('%.0f', rowTolerance)} px, col ${String.format('%.0f', colTolerance)} px"
+
+    // Build a smooth row-wise lattice from rows that contain at least all
+    // expected columns.  Those complete rows resolve the otherwise ambiguous
+    // question "which column is missing?" in sparse rows.  The former
+    // pair-anchor search could shift every candidate left and still achieve a
+    // high score, producing a visually plausible but incorrectly indexed grid.
+    double globalPitchForRows = colPitch > 0.0d ? colPitch : diamPx * 1.5d
+    double globalInterceptForRows = colCenters[0] == null ?
+        (coreBlobs.collect { (double) it.rotX }.min() as double) :
+        (double) colCenters[0]
+
+    def fitRankedAffine = { rankedBlobs ->
+        int n = rankedBlobs.size()
+        if (n < 2) return null
+        double sumC = 0.0d, sumX = 0.0d, sumCC = 0.0d, sumCX = 0.0d
+        for (int c = 0; c < n; c++) {
+            double x = (double) rankedBlobs[c].rotX
+            sumC += c
+            sumX += x
+            sumCC += c * (double) c
+            sumCX += c * x
+        }
+        double denom = n * sumCC - sumC * sumC
+        if (Math.abs(denom) < 1e-9d) return null
+        double slope = (n * sumCX - sumC * sumX) / denom
+        double intercept = (sumX - slope * sumC) / n
+        double rms = Math.sqrt(rankedBlobs.withIndex().collect { b, c ->
+            double e = (double) b.rotX - (intercept + slope * c)
+            e * e
+        }.sum() / n)
+        return [slope: slope, intercept: intercept, rms: rms]
+    }
+
+    def anchorModels = (0..<rows).collect { null }
+    for (int r = 0; r < rows; r++) {
+        def rowBlobs = coreBlobs.findAll { it.row == r }.sort { it.rotX }
+        if (rowBlobs.size() < cols) continue
+        // Known layout: occasional control fragments sit to the right of the
+        // seven presentation columns, therefore anchor on the leftmost seven.
+        def model = fitRankedAffine(rowBlobs.take(cols))
+        if (model == null) continue
+        if ((double) model.slope < globalPitchForRows * 0.65d ||
+                (double) model.slope > globalPitchForRows * 1.45d ||
+                (double) model.rms > globalPitchForRows * 0.32d) continue
+        anchorModels[r] = [slope: (double) model.slope,
+                           intercept: (double) model.intercept,
+                           source: 'complete-row-anchor']
+    }
+    def anchorRows = (0..<rows).findAll { anchorModels[it] != null }
+    println "Smooth lattice anchors: ${anchorRows.collect { it + 1 }} (${anchorRows.size()} rows)"
+
+    def interpolatedModelForRow = { int r ->
+        if (anchorModels[r] != null) return new LinkedHashMap(anchorModels[r])
+        def lower = anchorRows.findAll { it < r }
+        def upper = anchorRows.findAll { it > r }
+        Integer r0 = lower.isEmpty() ? null : (int) lower.max()
+        Integer r1 = upper.isEmpty() ? null : (int) upper.min()
+        if (r0 != null && r1 != null) {
+            double t = (r - r0) / (double) (r1 - r0)
+            return [
+                slope: (1.0d - t) * (double) anchorModels[r0].slope +
+                    t * (double) anchorModels[r1].slope,
+                intercept: (1.0d - t) * (double) anchorModels[r0].intercept +
+                    t * (double) anchorModels[r1].intercept,
+                source: 'interpolated-complete-rows'
+            ]
+        }
+        Integer nearest = r0 != null ? r0 : r1
+        if (nearest != null) {
+            return [slope: (double) anchorModels[nearest].slope,
+                    intercept: (double) anchorModels[nearest].intercept,
+                    source: 'nearest-complete-row']
+        }
+        return [slope: globalPitchForRows,
+                intercept: globalInterceptForRows,
+                source: 'global-fallback']
+    }
+
+    def assignRowToModel = { int rowIndex, rowBlobsRaw, model ->
+        def rowBlobs = new ArrayList(rowBlobsRaw).sort { it.rotX }
+        double slope = (double) model.slope
+        double intercept = (double) model.intercept
+        double xTolerance = Math.max(diamPx * 0.72d, slope * 0.48d)
+        double yTolerance = rowTolerance * 1.30d
+
+        // Allow modest smooth row drift, but never a whole-column shift.
+        def residuals = []
+        rowBlobs.each { b ->
+            int c = (int) Math.round(((double) b.rotX - intercept) / slope)
+            if (c >= 0 && c < cols) {
+                double residual = (double) b.rotX - (intercept + slope * c)
+                if (Math.abs(residual) <= slope * 0.48d) residuals << residual
+            }
+        }
+        if (residuals.size() >= 2 && anchorModels[rowIndex] == null) {
+            residuals.sort()
+            double shift = (double) residuals[(int) Math.floor(residuals.size() / 2.0d)]
+            double shiftLimit = slope * 0.28d
+            intercept += Math.max(-shiftLimit, Math.min(shiftLimit, shift))
+        }
+
+        def doAssign = { double localSlope, double localIntercept, String source ->
+            def cellsByCol = [:]
+            int duplicates = 0
+            rowBlobs.each { b ->
+                int c = (int) Math.round(((double) b.rotX - localIntercept) / localSlope)
+                if (c < 0 || c >= cols) return
+                double dx = Math.abs((double) b.rotX - (localIntercept + localSlope * c))
+                double dy = rowCenters[rowIndex] == null ? 0.0d :
+                    Math.abs((double) b.rotY - (double) rowCenters[rowIndex])
+                if (dx > xTolerance || dy > yTolerance) return
+                double score = Math.pow(dx / xTolerance, 2.0d) +
+                    Math.pow(dy / Math.max(1.0d, yTolerance), 2.0d)
+                def candidate = b + [row: rowIndex, col: c, gridScore: score,
+                                     rowLatticeSource: source]
+                def old = cellsByCol[c]
+                if (old == null) cellsByCol[c] = candidate
+                else {
+                    duplicates++
+                    if ((double) candidate.gridScore < (double) old.gridScore)
+                        cellsByCol[c] = candidate
+                }
+            }
+            return [cells: cellsByCol, duplicates: duplicates]
+        }
+
+        def assigned = doAssign(slope, intercept, (String) model.source)
+        // Refine scale/offset only when at least four unambiguous columns agree.
+        if (assigned.cells.size() >= 4 && anchorModels[rowIndex] == null) {
+            def rankedPairs = assigned.cells.keySet().sort().collect { c ->
+                [c: (int) c, rotX: (double) assigned.cells[c].rotX]
+            }
+            int n = rankedPairs.size()
+            double sumC = rankedPairs.collect { (double) it.c }.sum()
+            double sumX = rankedPairs.collect { (double) it.rotX }.sum()
+            double sumCC = rankedPairs.collect { (double) it.c * (double) it.c }.sum()
+            double sumCX = rankedPairs.collect { (double) it.c * (double) it.rotX }.sum()
+            double denom = n * sumCC - sumC * sumC
+            if (Math.abs(denom) > 1e-9d) {
+                double fittedSlope = (n * sumCX - sumC * sumX) / denom
+                double fittedIntercept = (sumX - fittedSlope * sumC) / n
+                if (fittedSlope >= slope * 0.78d && fittedSlope <= slope * 1.22d &&
+                        Math.abs(fittedIntercept - intercept) <= slope * 0.35d) {
+                    slope = 0.70d * fittedSlope + 0.30d * slope
+                    intercept = 0.70d * fittedIntercept + 0.30d * intercept
+                    assigned = doAssign(slope, intercept, 'smooth-row-refit')
+                }
+            }
+        }
+        return [cells: assigned.cells,
+                model: [slope: slope, intercept: intercept, source: model.source],
+                duplicateCount: assigned.duplicates,
+                strayCount: rowBlobs.size() - assigned.cells.size()]
+    }
+
+    def rowwiseGridCells = [:]
+    def rowLatticeModels = (0..<rows).collect { null }
+    int rowwiseDuplicates = 0
+    int rowwiseStrays = 0
+    def rowwiseCounts = new int[rows]
+    for (int r = 0; r < rows; r++) {
+        def model = interpolatedModelForRow(r)
+        def rowFit = assignRowToModel(r, coreBlobs.findAll { it.row == r }, model)
+        rowLatticeModels[r] = rowFit.model
+        rowwiseDuplicates += (int) rowFit.duplicateCount
+        rowwiseStrays += (int) rowFit.strayCount
+        rowFit.cells.each { c, b ->
+            rowwiseGridCells[[r, (int) c]] = b
+            rowwiseCounts[r]++
+        }
+    }
+
+    int globalAssignedBeforeRowwise = gridCells.size()
+    if (rowwiseGridCells.size() >= Math.max(rows, globalAssignedBeforeRowwise - 2)) {
+        gridCells = rowwiseGridCells
+        strayCount = rowwiseStrays
+        duplicateCount = rowwiseDuplicates
+        println "Smooth row-wise lattice: assigned ${gridCells.size()} cores " +
+            "(was ${globalAssignedBeforeRowwise}); per row ${(0..<rows).collect { rowwiseCounts[it] }}"
+        println "Smooth row-wise lattice rejected ${rowwiseStrays} strays and resolved ${rowwiseDuplicates} duplicates."
+    } else {
+        println "Smooth row-wise lattice looked weaker (${rowwiseGridCells.size()} vs ${globalAssignedBeforeRowwise}); keeping global assignment."
+        rowLatticeModels = (0..<rows).collect {
+            [slope: globalPitchForRows, intercept: globalInterceptForRows, source: 'global-fallback']
+        }
+    }
+
+    if (rowLatticeModels.findAll { it != null }.isEmpty()) {
+        rowLatticeModels = (0..<rows).collect {
+            [slope: colPitch, intercept: (colCenters[0] == null ? 0.0d : (double) colCenters[0]), source: 'global-fallback']
+        }
+    }
+    def rowSlopeFn = linearFitOverIndices(rowLatticeModels.collect { it?.slope })
+    def rowInterceptFn = linearFitOverIndices(rowLatticeModels.collect { it?.intercept })
+    def rowCenterFn = linearFitOverIndices(rowCenters)
+    def expectedRotXForCell = { int r, int c ->
+        def model = rowLatticeModels[r]
+        double slope = model == null || model.slope == null ?
+            (double) rowSlopeFn(r) : (double) model.slope
+        double intercept = model == null || model.intercept == null ?
+            (double) rowInterceptFn(r) : (double) model.intercept
+        if (!(slope > 0.0d)) slope = colPitch > 0.0d ? colPitch : diamPx * 1.5d
+        return intercept + slope * c
+    }
+
+    int coverageRecenteredCount = 0
+    int coverageDemotedCount = 0
+    if (detectionContext != null) {
+        float[] coverageProj = detectionContext.proj as float[]
+        int coverageW = (int) detectionContext.w
+        int coverageH = (int) detectionContext.h
+        double coverageOriginX = (double) detectionContext.originX
+        double coverageOriginY = (double) detectionContext.originY
+        double coverageDownsample = (double) detectionContext.downsample
+        double coverageDiamDS = (double) detectionContext.diamDS
+        double coverageThresh = (double) detectionContext.coverageFootprintThresh
+        double minAssignedPixels = Math.max(8.0d,
+            (double) detectionContext.expectedArea * MIN_ASSIGNED_FOOTPRINT_FRACTION)
+        double minAssignedDiamDS = coverageDiamDS * MIN_ASSIGNED_FOOTPRINT_DIAM_FRACTION
+
+        def originalCoreCenters = [:]
+        gridCells.each { key, b ->
+            if (b.imgX != null && b.imgY != null)
+                originalCoreCenters[key] = [x: (double) b.imgX, y: (double) b.imgY]
+        }
+        def keysToCheck = gridCells.keySet().toList()
+        keysToCheck.each { key ->
+            def b = gridCells[key]
+            int r = (int) key[0]
+            int c = (int) key[1]
+            double expectedRotX = expectedRotXForCell(r, c)
+            double expectedRotY = rowCenters[r] == null ?
+                (double) rowCenterFn(r) : (double) rowCenters[r]
+            def (expectedX, expectedY) = unrotate(expectedRotX, expectedRotY)
+            double seedX = b.imgX == null ? expectedX : (double) b.imgX
+            double seedY = b.imgY == null ? expectedY : (double) b.imgY
+            double localX = (seedX - coverageOriginX) / coverageDownsample
+            double localY = (seedY - coverageOriginY) / coverageDownsample
+            def footprint = estimateTissueFootprint(coverageProj, coverageW, coverageH,
+                localX, localY, coverageDiamDS, coverageThresh, 0.95d)
+            double footprintImgX = footprint == null ? Double.NaN :
+                coverageOriginX + (footprint.cx as double) * coverageDownsample
+            double footprintImgY = footprint == null ? Double.NaN :
+                coverageOriginY + (footprint.cy as double) * coverageDownsample
+            double expectedOffset = footprint == null ? Double.POSITIVE_INFINITY :
+                Math.sqrt((footprintImgX - expectedX) * (footprintImgX - expectedX) +
+                    (footprintImgY - expectedY) * (footprintImgY - expectedY))
+            boolean reusesNearbyCore = false
+            if (footprint != null) {
+                originalCoreCenters.each { otherKey, pt ->
+                    if (otherKey != key) {
+                        double dOther = Math.sqrt((footprintImgX - (double) pt.x) *
+                                (footprintImgX - (double) pt.x) +
+                            (footprintImgY - (double) pt.y) *
+                                (footprintImgY - (double) pt.y))
+                        if (dOther < diamPx * MAX_SHARED_FOOTPRINT_DISTANCE_FRACTION)
+                            reusesNearbyCore = true
+                    }
+                }
+            }
+            boolean footprintLooksReal = footprint != null &&
+                ((int) footprint.count) >= minAssignedPixels &&
+                ((footprint.coverDiamDS as double) >= minAssignedDiamDS) &&
+                ((footprint.centerOffsetDS as double) <=
+                    coverageDiamDS * MAX_ASSIGNED_CENTER_OFFSET_FRACTION) &&
+                expectedOffset <= diamPx * MAX_ASSIGNED_EXPECTED_OFFSET_FRACTION &&
+                !reusesNearbyCore
+
+            if (footprintLooksReal) {
+                double oldX = b.imgX == null ? footprintImgX : (double) b.imgX
+                double oldY = b.imgY == null ? footprintImgY : (double) b.imgY
+                b.imgX = footprintImgX
+                b.imgY = footprintImgY
+                b.rotX = expectedRotX
+                b.rotY = expectedRotY
+                double footprintDiamPx = Math.max(
+                    (footprint.coverDiamDS as double) * coverageDownsample * FOOTPRINT_MARGIN_FACTOR,
+                    diamPx * MIN_PRESENT_COVER_DIAM_FRACTION)
+                b.coverDiamPx = Math.max((b.coverDiamPx ?: 0.0d) as double, footprintDiamPx)
+                if (Math.sqrt((b.imgX - oldX) * (b.imgX - oldX) +
+                        (b.imgY - oldY) * (b.imgY - oldY)) > diamPx * 0.05d)
+                    coverageRecenteredCount++
+            } else if (!(b.fromAnnotation ?: false)) {
+                gridCells.remove(key)
+                coverageDemotedCount++
+            }
+        }
+        println "Coverage validation: recentered ${coverageRecenteredCount} cores; demoted ${coverageDemotedCount} weak/empty placements."
+    }
+
+    int rescuedMissingCount = 0
+    if (detectionContext != null) {
+        float[] rescueProj = detectionContext.proj as float[]
+        float[] primaryProj = detectionContext.primaryProj as float[]
+        int rescueW = (int) detectionContext.w
+        int rescueH = (int) detectionContext.h
+        double rescueOriginX = (double) detectionContext.originX
+        double rescueOriginY = (double) detectionContext.originY
+        double rescueDownsample = (double) detectionContext.downsample
+        double rescueDiamDS = (double) detectionContext.diamDS
+        double primarySupportThreshold =
+            (double) detectionContext.primaryThreshold * RESCUE_DAPI_THRESHOLD_SCALE
+        double minPrimarySupportPixels = Math.max(8.0d,
+            (double) detectionContext.expectedArea * MIN_RESCUE_DAPI_SUPPORT_FRACTION)
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                def key = [r, c]
+                if (gridCells[key] != null) continue
+                double expectedRotX = expectedRotXForCell(r, c)
+                double expectedRotY = rowCenters[r] == null ?
+                    (double) rowCenterFn(r) : (double) rowCenters[r]
+                def (expectedX, expectedY) = unrotate(expectedRotX, expectedRotY)
+                double localX = (expectedX - rescueOriginX) / rescueDownsample
+                double localY = (expectedY - rescueOriginY) / rescueDownsample
+                def nuclearEvidence = estimateCircularSupportFootprint(primaryProj,
+                    rescueW, rescueH, localX, localY, rescueDiamDS * 1.15d,
+                    primarySupportThreshold)
+                if (nuclearEvidence == null ||
+                        (nuclearEvidence.count as int) < minPrimarySupportPixels ||
+                        (nuclearEvidence.coverDiamDS as double) < rescueDiamDS * 0.20d ||
+                        (nuclearEvidence.centerOffsetDS as double) > rescueDiamDS * 1.10d) continue
+                int primarySupport = nuclearEvidence.count as int
+                double rescueImgX = rescueOriginX + (nuclearEvidence.cx as double) * rescueDownsample
+                double rescueImgY = rescueOriginY + (nuclearEvidence.cy as double) * rescueDownsample
+                boolean reusesExistingCore = gridCells.values().any { existing ->
+                    if (existing.imgX == null || existing.imgY == null) return false
+                    double dExisting = Math.sqrt((rescueImgX - (double) existing.imgX) *
+                            (rescueImgX - (double) existing.imgX) +
+                        (rescueImgY - (double) existing.imgY) *
+                            (rescueImgY - (double) existing.imgY))
+                    return dExisting < diamPx * MAX_SHARED_FOOTPRINT_DISTANCE_FRACTION
+                }
+                if (reusesExistingCore) continue
+
+                def rescue = [
+                    count: nuclearEvidence.count,
+                    imgX: rescueImgX,
+                    imgY: rescueImgY,
+                    rotX: expectedRotX,
+                    rotY: expectedRotY,
+                    row: r,
+                    col: c,
+                    gridScore: 0.75d,
+                    dapiSupportPixels: primarySupport,
+                    coverDiamPx: Math.max((nuclearEvidence.coverDiamDS as double) *
+                        rescueDownsample * FOOTPRINT_MARGIN_FACTOR,
+                        diamPx * MIN_PRESENT_COVER_DIAM_FRACTION),
+                    fromRescueFootprint: true,
+                    fromWeakThresholdRescue: true
+                ]
+                gridCells[key] = rescue
+                rescuedMissingCount++
+                println "Rescue ${r + 1}-${(char) ('A'.charAt(0) + c)}: nuclear=${primarySupport}, diameter=${String.format('%.1f', nuclearEvidence.coverDiamDS as double)}, offset=${String.format('%.1f', nuclearEvidence.centerOffsetDS as double)}"
+            }
+        }
+        if (rescuedMissingCount > 0)
+            println "Rescued ${rescuedMissingCount} missing grid cells using independent unblurred nuclear evidence."
+    }
+
+    def assignedCount = gridCells.size()
+    def perRow = new int[rows]
+    def perCol = new int[cols]
+    gridCells.each { key, b ->
+        perRow[key[0]]++
+        perCol[key[1]]++
+    }
+
+    println "Assigned ${assignedCount} cores to grid; dropped ${strayCount} strays and ${duplicateCount} duplicate cell candidates"
+    println "Grid cores per row: ${(0..<rows).collect { perRow[it] }}"
+    println "Grid cores per column: ${(0..<cols).collect { perCol[it] }}"
+
+    int minAssignedForGrid = Math.max(rows,
+        (int) Math.round(rows * cols * MIN_CORE_FRACTION_TO_BUILD_GRID))
+    if (assignedCount < minAssignedForGrid) {
+        Dialogs.showErrorMessage('TMA Rearrange',
+            "Only ${assignedCount} cores could be assigned into the ${rows} x ${cols} grid.\n\n" +
+            "This is below the safety threshold (${minAssignedForGrid}), so the grid was not created.\n\n" +
+            "Run optional_manual_core_detection.groovy, review the cyan circles, then re-run this script.")
+        return
+    }
+
+    // 8. Build per-row rotated-Y average for placeholder positions. Rotated-X
+    //    positions come from the row-wise lattice, so missing markers follow
+    //    local row drift instead of snapping back to a rigid global column.
+    def rowYr = (0..<rows).collect { r ->
+        def ys = (0..<cols).collect { c -> gridCells[[r, c]]?.rotY }.findAll { it != null }
+        ys.isEmpty() ? null : ys.sum() / ys.size()
+    }
+    def rowYFn = linearFitOverIndices(rowYr)
+
+    // 9. Build TMA grid (real centers where blobs found; interpolated otherwise, marked missing)
+    int colorDetected = 0x00FFFF        // bright cyan — easy to see on dark slide
+    int colorMissing  = 0xFF3030        // red — flags positions to investigate
+    double basePlacedDiamPx = diamPx * cropPaddingFactor
+    double missingMarkerDiamPx = Math.max(8.0d, diamPx * MISSING_MARKER_DIAM_FRACTION)
+    double spacingCapDiamPx = Math.max(basePlacedDiamPx,
+        Math.min(rowPitch, colPitch) * MAX_PRESENT_DIAM_SPACING_FRACTION)
+    def coreList = []
+    int presentCount = 0, missingCount = 0
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            def b = gridCells[[r, c]]
+            double cx, cy
+            boolean missing
+            double placedDiamForCore = basePlacedDiamPx
+            if (b != null) {
+                cx = b.imgX; cy = b.imgY
+                if (b.coverDiamPx != null) {
+                    placedDiamForCore = Math.min(spacingCapDiamPx,
+                        Math.max(basePlacedDiamPx, (double) b.coverDiamPx))
+                }
+                missing = false
+                presentCount++
+            } else {
+                def (rcx, rcy) = unrotate(expectedRotXForCell(r, c), rowYFn(r))
+                cx = rcx; cy = rcy
+                placedDiamForCore = missingMarkerDiamPx
+                missing = true
+                missingCount++
+            }
+            def core = PathObjects.createTMACoreObject(cx, cy, placedDiamForCore, missing)
+            core.setName("${rowLabelArr[r]}-${colLabelArr[c]}")
+            core.setColor(missing ? colorMissing : colorDetected)
+            core.setLocked(false)   // allow user to drag/nudge cores
+            // Persist a review-oriented provenance score on every grid cell.
+            // This is intentionally a heuristic triage score, not a claimed
+            // probability of correctness; the approval gate remains human.
+            String detectionSource = missing ? 'missing_placeholder' :
+                ((b?.fromAnnotation ?: false) ? 'reviewed_annotation' :
+                    ((b?.fromWeakThresholdRescue ?: false) ? 'rescue_weak_multichannel' :
+                        ((b?.fromRescueFootprint ?: false) ? 'rescue_footprint' : 'primary_detection')))
+            double detectionConfidence = 0.0d
+            if (!missing) {
+                double score = b?.gridScore == null ? 0.50d : (double) b.gridScore
+                detectionConfidence = Math.max(0.20d, Math.min(0.98d, Math.exp(-0.70d * score)))
+                if (b?.fromAnnotation ?: false) detectionConfidence = Math.max(detectionConfidence, 0.95d)
+                if (b?.fromRescueFootprint ?: false) detectionConfidence = Math.min(detectionConfidence, 0.62d)
+                if (b?.fromWeakThresholdRescue ?: false) detectionConfidence = Math.min(detectionConfidence, 0.50d)
+                if ((b?.rowLatticeSource ?: '').toString().contains('global-fallback'))
+                    detectionConfidence *= 0.82d
+            }
+            try {
+                core.putMetadataValue('Detection source', detectionSource)
+                core.putMetadataValue('Detection algorithm version', DETECTION_ALGORITHM_VERSION)
+                core.putMetadataValue('Detection confidence', String.format(Locale.US, '%.3f', detectionConfidence))
+                core.putMetadataValue('Grid assignment score', b?.gridScore == null ? '' :
+                    String.format(Locale.US, '%.4f', (double) b.gridScore))
+            } catch (Throwable metadataError) {
+                println "WARNING: Could not attach detection metadata to ${core.getName()}: ${metadataError.getMessage()}"
+            }
+            coreList << core
+        }
+    }
+    def grid = DefaultTMAGrid.create(coreList, cols)
+    hierarchy.setTMAGrid(grid)
+    hierarchy.getSelectionModel().clearSelection()
+
+    println "Grid built: ${presentCount} present, ${missingCount} missing"
+
+} else {
+    println "Mode: USE EXISTING grid"
+    def existing = hierarchy.getTMAGrid()
+    def isSentinel = existing != null &&
+        ((existing.getGridHeight() == 1 && existing.getGridWidth() == 1 &&
+            existing.getTMACoreList().every { it.isMissing() }) ||
+            existing.getTMACoreList().every { it.isMissing() })
+    if (existing == null || isSentinel) {
+        Dialogs.showErrorMessage('TMA Rearrange',
+            (existing == null
+                ? 'No existing TMA grid found.\n\n'
+                : 'The existing grid is the dearrayer\'s "found nothing" placeholder.\n\n') +
+            'Switch to "Detect cores in selected rectangle" mode.')
+        return
+    }
+}
+
+// === Verify ===
+def tmaGrid = hierarchy.getTMAGrid()
+if (tmaGrid == null) {
+    Dialogs.showErrorMessage('TMA Rearrange', 'No TMA grid present after Step 1.')
+    return
+}
+
+def gridRows = tmaGrid.getGridHeight()
+def gridCols = tmaGrid.getGridWidth()
+def coreList = tmaGrid.getTMACoreList()
+def missingFinal = coreList.count { it.isMissing() }
+def presentFinal = coreList.size() - missingFinal
+def presentPerRowFinal = new int[gridRows]
+def presentPerColFinal = new int[gridCols]
+coreList.eachWithIndex { core, i ->
+    if (!core.isMissing() && gridCols > 0) {
+        int r = i.intdiv(gridCols)
+        int c = i % gridCols
+        if (r >= 0 && r < gridRows) presentPerRowFinal[r]++
+        if (c >= 0 && c < gridCols) presentPerColFinal[c]++
+    }
+}
+def emptyRowsFinal = (0..<gridRows).findAll { presentPerRowFinal[it] == 0 }
+def emptyColsFinal = (0..<gridCols).findAll { presentPerColFinal[it] == 0 }
+
+println "Grid: ${gridRows} rows × ${gridCols} cols"
+println "Cores: ${coreList.size()} total, ${presentFinal} present, ${missingFinal} marked missing"
+println "Final present cores per row: ${(0..<gridRows).collect { presentPerRowFinal[it] }}"
+println "Final present cores per column: ${(0..<gridCols).collect { presentPerColFinal[it] }}"
+
+// Export a small, deterministic QC overlay and the exact coordinates used by
+// the grid.  This makes an automated run auditable without zooming through all
+// 126 positions in QuPath, and gives the orientation step a clear go/no-go
+// checkpoint.
+if (EXPORT_GRID_QC) {
+    try {
+        File qcBase = null
+        try {
+            def project = getProject()
+            if (project != null && project.getPath() != null)
+                qcBase = project.getPath().getParent().toFile()
+        } catch (Throwable ignored) {}
+        if (qcBase == null) {
+            try {
+                def fileUri = server.getURIs().find { it != null && it.getScheme() == 'file' }
+                if (fileUri != null) qcBase = new File(fileUri).getParentFile()
+            } catch (Throwable ignored) {}
+        }
+        if (qcBase == null)
+            qcBase = new File(System.getProperty('user.home'), 'QuPath-TMA-export')
+
+        File qcDir = new File(qcBase, 'tma_grid_qc')
+        if (!qcDir.isDirectory()) qcDir.mkdirs()
+        String qcStem = server.getMetadata().getName() ?: 'image'
+        qcStem = qcStem.replaceAll(/(?i)\.ome\.tif+$/, '')
+            .replaceAll(/[^A-Za-z0-9._-]+/, '_')
+        if (qcStem.isEmpty()) qcStem = 'image'
+
+        double qcDownsample = 32.0d
+        def qcReg = readProjection(server, qcDownsample, 0.0d, 0.0d,
+            (double) server.getWidth(), (double) server.getHeight(), dapiIndices)
+        double qcMax = percentilePositive(qcReg.proj as float[], 0.997d)
+        if (!(qcMax > 0.0d)) qcMax = 1.0d
+        BufferedImage qcImage = new BufferedImage((int) qcReg.w, (int) qcReg.h,
+            BufferedImage.TYPE_INT_RGB)
+        float[] qcPixels = qcReg.proj as float[]
+        for (int y = 0; y < (int) qcReg.h; y++) {
+            int rowOffset = y * (int) qcReg.w
+            for (int x = 0; x < (int) qcReg.w; x++) {
+                double v = Math.min(1.0d, Math.max(0.0d, qcPixels[rowOffset + x] / qcMax))
+                int b = (int) Math.round(255.0d * Math.sqrt(v))
+                int g = (int) Math.round(b * 0.92d)
+                int r = (int) Math.round(b * 0.72d)
+                qcImage.setRGB(x, y, (r << 16) | (g << 8) | b)
+            }
+        }
+
+        def qg = qcImage.createGraphics()
+        qg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        qg.setFont(new Font('SansSerif', Font.BOLD, 11))
+        qg.setStroke(new BasicStroke(2.0f))
+        coreList.eachWithIndex { core, i ->
+            def roi = core.getROI()
+            double cx = roi.getCentroidX() / qcDownsample
+            double cy = roi.getCentroidY() / qcDownsample
+            double d = Math.max(10.0d,
+                Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()) / qcDownsample)
+            int x = (int) Math.round(cx - d / 2.0d)
+            int y = (int) Math.round(cy - d / 2.0d)
+            int dd = (int) Math.round(d)
+            qg.setColor(core.isMissing() ? new Color(255, 65, 65) : new Color(0, 235, 220))
+            qg.drawOval(x, y, dd, dd)
+            String label = core.getName() ?: "${i + 1}"
+            qg.drawString(label, (int) Math.round(cx + d / 2.0d + 2.0d),
+                (int) Math.round(cy + 4.0d))
+        }
+        qg.dispose()
+
+        File qcPng = new File(qcDir, "${qcStem}_grid_qc.png")
+        File qcCsv = new File(qcDir, "${qcStem}_grid_coordinates.csv")
+        File qcTxt = new File(qcDir, "${qcStem}_grid_summary.txt")
+        ImageIO.write(qcImage, 'PNG', qcPng)
+        qcCsv.withPrintWriter('UTF-8') { pw ->
+            pw.println('index,row,column,core,center_x_px,center_y_px,diameter_px,missing')
+            coreList.eachWithIndex { core, i ->
+                def roi = core.getROI()
+                int rr = i.intdiv(gridCols) + 1
+                int cc = i % gridCols + 1
+                pw.println([i + 1, rr, cc, core.getName(),
+                    String.format(Locale.US, '%.1f', roi.getCentroidX()),
+                    String.format(Locale.US, '%.1f', roi.getCentroidY()),
+                    String.format(Locale.US, '%.1f', Math.max(roi.getBoundsWidth(), roi.getBoundsHeight())),
+                    core.isMissing()].join(','))
+            }
+        }
+        qcTxt.withPrintWriter('UTF-8') { pw ->
+            pw.println("image=${server.getMetadata().getName()}")
+            pw.println("grid=${gridRows}x${gridCols}")
+            pw.println("present=${presentFinal}")
+            pw.println("missing=${missingFinal}")
+            pw.println("present_per_row=${(0..<gridRows).collect { presentPerRowFinal[it] }}")
+            pw.println("present_per_column=${(0..<gridCols).collect { presentPerColFinal[it] }}")
+        }
+        println "Grid QC overlay: ${qcPng.getAbsolutePath()}"
+        println "Grid coordinates: ${qcCsv.getAbsolutePath()}"
+    } catch (Throwable qcError) {
+        println "WARNING: Could not export grid QC: ${qcError.getMessage()}"
+    }
+}
+
+if (gridRows != rows || gridCols != cols) {
+    Dialogs.showWarningNotification('TMA Step 1',
+        "Grid is ${gridRows}×${gridCols}, expected ${rows}×${cols}.")
+} else if (!emptyRowsFinal.isEmpty() || !emptyColsFinal.isEmpty()) {
+    Dialogs.showWarningNotification('TMA Step 1',
+        "Grid built, but has empty rows ${emptyRowsFinal.collect { it + 1 }} and empty columns ${emptyColsFinal.collect { it + 1 }}. Inspect before Step 2.")
+} else if (presentFinal < coreList.size() * 0.70d) {
+    Dialogs.showWarningNotification('TMA Step 1',
+        "Grid built with many missing positions (${missingFinal}/${coreList.size()}). Inspect before Step 2.")
+} else {
+    Dialogs.showInfoNotification('TMA Step 1',
+        "Grid OK: ${gridRows}×${gridCols} — ${presentFinal} present, ${missingFinal} missing. Run 02_auto_orient_epidermis.groovy next.")
+}
+
+println '=== Step 1 done ==='
