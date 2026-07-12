@@ -1,98 +1,73 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-const tutorialVideo = `${repo}/releases/download/v1.1.0/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4`;
+const release = `${repo}/releases/tag/v1.2.0`;
+const tutorialVideo = `${repo}/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4`;
 import SiteHeader from "./site-header";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-
 const path = (value: string) => `${basePath}${value}`;
 
 const validation = [
-  ["126", "array positions assigned"],
-  ["117", "present cores"],
-  ["9", "known empty positions"],
-  ["0", "processing errors"],
+  ["126", "grid positions"],
+  ["117", "tissue cores"],
+  ["9", "empty positions"],
+  ["0", "run errors"],
 ];
 
 const steps = [
-  {
-    icon: "ri-download-cloud-2-line",
-    number: "01",
-    title: "Download",
-    text: "Get CoreAlign.groovy and a config file from the repository.",
-  },
-  {
-    icon: "ri-layout-grid-line",
-    number: "02",
-    title: "Detect and review",
-    text: "Run once in QuPath. Check the grid and correct only the positions that need attention.",
-  },
-  {
-    icon: "ri-focus-3-line",
-    number: "03",
-    title: "Rotate then crop",
-    text: "Each core is read from a safe source window, rotated, checked, and cropped last.",
-  },
-  {
-    icon: "ri-shield-check-line",
-    number: "04",
-    title: "Approve and export",
-    text: "Review uncertain results, resume changed cores, and export ready to present images.",
-  },
+  { icon: "ri-layout-grid-line", number: "01", title: "Choose the array", text: "Set rows, columns, and core size. Download one config file." },
+  { icon: "ri-play-circle-line", number: "02", title: "Run in QuPath", text: "Open the slide and CoreAlign.groovy. Check the detected grid." },
+  { icon: "ri-crop-2-line", number: "03", title: "Review and export", text: "Each core is rotated first, cropped second, and saved automatically." },
 ];
 
-const reviewTools = [
-  ["ri-map-pin-line", "TMA correction", "Move a core center without rebuilding the full array."],
-  ["ri-crop-2-line", "Crop override", "Define a cleaner source region for one contaminated core."],
-  ["ri-compass-3-line", "Epidermis override", "Point to the correct epidermal side when orientation is wrong."],
+const outputs = [
+  { icon: "ri-timer-flash-line", label: "Less manual work", title: "Batch preparation", text: "Process the full array and resume from the last completed core." },
+  { icon: "ri-slideshow-3-line", label: "For presentations", title: "Full resolution PNG", text: "Ready for PowerPoint, figures, and contact sheets." },
+  { icon: "ri-stack-line", label: "When all channels matter", title: "Multichannel OME-TIFF", text: "Optional UINT16 export for downstream analysis and archive." },
 ];
 
 export default function Home() {
   return (
     <main>
       <a className="skipLink" href="#content">Skip to content</a>
-
       <SiteHeader />
 
       <section className="brandHero" id="content">
-        <h1 className="srOnly">CoreAlign TMA. Rotate first. Crop second.</h1>
+        <h1 className="srOnly">CoreAlign TMA for QuPath</h1>
         <figure className="brandHeroFrame reveal">
-          {/* Both illustrations are generated and contain no real specimen data. */}
+          {/* Generated illustrations contain no real specimen data. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="heroLightImage" src={path("/images/corealign-hero-light.webp")} alt="Generated CoreAlign TMA illustration for light mode" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="heroDarkImage" src={path("/images/corealign-hero-dark.webp")} alt="Generated CoreAlign TMA illustration for dark mode" />
-          <figcaption><i className="ri-sparkling-2-line" /> Generated illustration. No real specimen data.</figcaption>
+          <figcaption><i className="ri-sparkling-2-line" /> Generated example</figcaption>
         </figure>
         <div className="heroSummary reveal delayOne">
           <div>
-            <p className="kicker"><i className="ri-microscope-line" /> QuPath workflow for skin TMA orientation</p>
-            <h2>Detect, rotate, and crop every core with review built in.</h2>
-            <p>Keep epidermis at the top, save after every core, and send uncertain results to a focused review queue.</p>
+            <p className="kicker"><i className="ri-microscope-line" /> TMA preparation in QuPath</p>
+            <h2>Prepare TMA cores for analysis and presentation.</h2>
+            <p>Detect every core, rotate skin with epidermis at the top, and crop at source resolution. Review only the results that need attention.</p>
           </div>
           <div className="heroSummaryActions">
             <div className="heroActions">
-              <a className="button" href={path("/config-builder/")}>Create a config <i className="ri-arrow-right-line" /></a>
-              <a className="button ghost" href={repo}><i className="ri-github-fill" /> View on GitHub</a>
+              <a className="button" href={path("/config-builder/")}>Build config <i className="ri-arrow-right-line" /></a>
+              <a className="button ghost" href={release}><i className="ri-download-2-line" /> Download</a>
             </div>
-            <div className="quickStart"><i className="ri-time-line" /><div><b>Start with two files</b><span>CoreAlign.groovy and corealign.config.json</span></div></div>
+            <div className="quickStart"><i className="ri-file-code-line" /><div><b>Two files</b><span>CoreAlign.groovy + corealign.config.json</span></div></div>
           </div>
         </div>
       </section>
 
-      <section className="validationStrip" aria-label="Reference validation result">
-        <div className="validationLabel"><i className="ri-flask-line" /> Reference slide result</div>
-        {validation.map(([value, label]) => (
-          <div className="metric" key={label}><strong>{value}</strong><span>{label}</span></div>
-        ))}
+      <section className="validationStrip" aria-label="Reference slide test result">
+        <div className="validationLabel"><i className="ri-shield-check-line" /> Tested reference slide</div>
+        {validation.map(([value, label]) => <div className="metric" key={label}><strong>{value}</strong><span>{label}</span></div>)}
       </section>
 
       <section className="section workflowSection" id="workflow">
-        <div className="sectionIntro">
-          <p className="eyebrow">How it works</p>
-          <h2>One script. Four clear stages.</h2>
-          <p>The workflow stops at the right moments, saves exact checkpoints, and resumes without repeating completed cores.</p>
+        <div className="sectionIntro compactIntro">
+          <p className="eyebrow">Simple workflow</p>
+          <h2>From slide to aligned cores in three steps.</h2>
         </div>
-        <div className="stepGrid">
+        <div className="stepGrid threeSteps">
           {steps.map((step) => (
             <article className="stepCard" key={step.number}>
               <div><span>{step.number}</span><i className={step.icon} /></div>
@@ -103,56 +78,19 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section configFeature">
-        <div className="configPreview">
-          <div className="previewHeader">
-            <div><span className="statusDot" /> Config ready</div>
-            <span>126 positions</span>
-          </div>
-          <div className="previewBody">
-            <div className="previewNav"><span className="active" /><span /><span /><span /></div>
-            <div className="previewFields">
-              <span className="field wide" /><div><span className="field" /><span className="field" /></div>
-              <div><span className="field" /><span className="field" /></div><span className="field wide" />
-            </div>
-            <div className="previewCode">
-              <code>{`{\n  "rows": 18,\n  "columns": 7,\n  "exportDownsample": 1,\n  "humanReview": true\n}`}</code>
-            </div>
-          </div>
+      <section className="section outputSection" id="outputs">
+        <div className="sectionIntro compactIntro">
+          <p className="eyebrow">Useful outputs</p>
+          <h2>Choose speed or a full research archive.</h2>
         </div>
-        <div className="configCopy">
-          <p className="eyebrow">Visual config builder</p>
-          <h2>Set up a new array without editing JSON.</h2>
-          <p>Choose a preset, enter the array geometry, map channel names, and download a validated config file. Slide data never leaves your browser.</p>
-          <ul>
-            <li><i className="ri-check-line" /> Plain language fields</li>
-            <li><i className="ri-check-line" /> Live validation</li>
-            <li><i className="ri-check-line" /> Ready to use JSON download</li>
-          </ul>
-          <a className="button" href={path("/config-builder/")}>Open Config Builder <i className="ri-arrow-right-line" /></a>
+        <div className="outputGrid threeOutputs">
+          {outputs.map((output) => (
+            <article key={output.title}>
+              <div className="outputIcon"><i className={output.icon} /></div>
+              <div><p>{output.label}</p><h3>{output.title}</h3><span>{output.text}</span></div>
+            </article>
+          ))}
         </div>
-      </section>
-
-      <section className="section reviewSection" id="review">
-        <div className="reviewCopy">
-          <p className="eyebrow">Human review</p>
-          <h2>Automation handles volume. Review handles uncertainty.</h2>
-          <p>CoreAlign shows the exact cores that need attention. A reviewer can correct one region and run again. Valid checkpoints stay untouched.</p>
-          <div className="reviewTools">
-            {reviewTools.map(([icon, title, text]) => (
-              <article key={title}><i className={icon} /><div><h3>{title}</h3><p>{text}</p></div></article>
-            ))}
-          </div>
-        </div>
-        <figure className="coreFigure">
-          {/* Generated WebP is already optimized and must stay portable on GitHub Pages. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={path("/images/synthetic-core-grid.webp")}
-            alt="Generated grid of four synthetic skin core illustrations aligned with epidermis at the top"
-          />
-          <figcaption><span><i className="ri-checkbox-circle-fill" /> Epidermis aligned at the top</span><span>Generated example</span></figcaption>
-        </figure>
       </section>
 
       <section className="section tutorialSection" id="tutorial">
@@ -161,67 +99,40 @@ export default function Home() {
             <source src={tutorialVideo} type="video/mp4" />
             Your browser does not support embedded video.
           </video>
-          <div><span><i className="ri-play-circle-line" /> 4 minutes 9 seconds</span><span>English narration with Thai and English subtitle tracks</span></div>
+          <div><span><i className="ri-play-circle-line" /> 4 minutes 9 seconds</span><span>English narration, English and Thai subtitles</span></div>
         </div>
         <div className="tutorialCopy">
-          <p className="eyebrow">Complete video tutorial</p>
-          <h2>Follow the workflow from download to reviewed exports.</h2>
-          <p>The validated tutorial adds a mandatory one-folder preflight before QuPath, then covers grid review, per-core rotate then crop processing, selective resume, and presentation outputs.</p>
-          <ul>
-            <li><i className="ri-shield-check-line" /><span><b>Mandatory preflight</b> Confirm the exact slide, config, profile, grid, and diameter before processing.</span></li>
-            <li><i className="ri-translate-2" /><span><b>Two subtitle tracks</b> Thai is enabled by default and English is included.</span></li>
-            <li><i className="ri-music-2-line" /><span><b>Production audio</b> ElevenLabs narration and original ElevenLabs Music.</span></li>
-          </ul>
-          <a className="button" href={tutorialVideo}><i className="ri-download-2-line" /> Download the 1080p tutorial</a>
+          <p className="eyebrow">Video tutorial</p>
+          <h2>Watch the complete workflow in four minutes.</h2>
+          <p>Download, configure, run, review, and export. The tutorial also shows the required preflight check before detection.</p>
+          <a className="button" href={tutorialVideo}><i className="ri-play-line" /> Watch or download</a>
         </div>
       </section>
 
-      <section className="section outputSection" id="outputs">
-        <div className="sectionIntro compact">
-          <p className="eyebrow">Outputs</p>
-          <h2>Use the right file for the next task.</h2>
-        </div>
-        <div className="outputGrid">
-          <article>
-            <div className="outputIcon"><i className="ri-image-2-line" /></div>
-            <div><p>For presentations</p><h3>Full resolution PNG</h3><span>Rotated RGB image at source pixel dimensions for figures, contact sheets, and slides.</span></div>
-            <b>PNG</b>
-          </article>
-          <article>
-            <div className="outputIcon"><i className="ri-stack-line" /></div>
-            <div><p>For scientific archive</p><h3>Rotated multichannel OME TIFF</h3><span>UINT16 image with every original channel and the accepted transform applied to each plane.</span></div>
-            <b>OME TIFF</b>
-          </article>
-        </div>
-      </section>
-
-      <section className="section validationSection" id="validation">
+      <section className="section validationSection" id="review">
         <div>
-          <p className="eyebrow">Accuracy policy</p>
-          <h2>One hundred percent reviewed. Never one hundred percent guessed.</h2>
+          <p className="eyebrow">Built-in safety</p>
+          <h2>Automation does the repetitive work. A person confirms the result.</h2>
         </div>
         <div className="validationCopy">
-          <p>CoreAlign does not claim autonomous biological accuracy. It blocks final presentation status until the exact grid and orientation result hashes are reviewed and accepted.</p>
-          <div><i className="ri-lock-2-line" /><span><b>Exact hash approval</b> prevents an old review from approving a changed result.</span></div>
-          <div><i className="ri-save-3-line" /><span><b>Atomic checkpoints</b> prevent a failed core from forcing a full restart.</span></div>
+          <p>CoreAlign pauses after grid detection and flags uncertain orientations. Completed cores are saved, so corrections do not restart the full array.</p>
+          <div><i className="ri-eye-line" /><span><b>Quick review</b> Check the grid and flagged cores only.</span></div>
+          <div><i className="ri-save-3-line" /><span><b>Safe resume</b> Continue from the last completed core.</span></div>
         </div>
       </section>
 
       <section className="finalCta">
+        <div><p className="eyebrow">Start here</p><h2>Build a config, then run one file in QuPath.</h2></div>
         <div>
-          <p className="eyebrow">Ready to start</p>
-          <h2>Build the config. Run one file. Review what matters.</h2>
-        </div>
-        <div>
-          <a className="button light" href={path("/config-builder/")}>Create a config <i className="ri-arrow-right-line" /></a>
-          <a className="button outlineLight" href={repo}><i className="ri-github-fill" /> Download the workflow</a>
+          <a className="button light" href={path("/config-builder/")}>Build config <i className="ri-arrow-right-line" /></a>
+          <a className="button outlineLight" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
         </div>
       </section>
 
       <footer>
         <a className="siteBrand" href={path("/")}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
-        <p>Research and quality control software. Pathologist review is required before clinical claims.</p>
-        <div><a href={repo}>GitHub</a><a href={`${repo}/blob/main/README.md`}>Documentation</a><a href={`${repo}/blob/main/CREDITS.md`}>Credits</a></div>
+        <p>Research software for TMA image preparation. Review results before clinical use.</p>
+        <div><a href={repo}>GitHub</a><a href={`${repo}/blob/main/README.md`}>Guide</a><a href={`${repo}/releases/tag/v1.2.0`}>Download</a></div>
       </footer>
     </main>
   );

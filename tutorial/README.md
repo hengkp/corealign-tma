@@ -2,7 +2,7 @@
 
 Validated on 12 July 2026 with QuPath 0.7.0 on the example `TMA_0.6mm_7_backsub.ome.tif` slide.
 
-Video: [CoreAlign TMA validated tutorial version 2 in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.1.0/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4)
+Video: [CoreAlign TMA tutorial version 3 in 1080p](https://github.com/hengkp/corealign-tma/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4)
 
 ## The one-folder rule
 
