@@ -1,5 +1,5 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-const release = `${repo}/releases/tag/v1.2.0`;
+const release = `${repo}/releases/tag/v1.2.1`;
 const tutorialVideo = `${repo}/releases/download/v1.2.0/CoreAlign-TMA-tutorial-v3-1080p.mp4`;
 import SiteHeader from "./site-header";
 
@@ -132,7 +132,7 @@ export default function Home() {
       <footer>
         <a className="siteBrand" href={path("/")}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
         <p>Research software for TMA image preparation. Review results before clinical use.</p>
-        <div><a href={repo}>GitHub</a><a href={`${repo}/blob/main/README.md`}>Guide</a><a href={`${repo}/releases/tag/v1.2.0`}>Download</a></div>
+        <div><a href={repo}>GitHub</a><a href={`${repo}/blob/main/README.md`}>Guide</a><a href={release}>Download</a></div>
       </footer>
     </main>
   );

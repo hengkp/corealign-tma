@@ -177,6 +177,27 @@ if (configuredRows < 1 || configuredColumns < 1 || configuredCoreMM <= 0.0d ||
         "Profile ${profileName} has invalid rows/columns/core diameter or orientation ring limits.")
     return
 }
+
+// Prevent the validated example slide from being processed with an unrelated
+// Config Builder preset. This is intentionally limited to reference slides
+// whose physical layout is known; other slides remain fully configurable.
+def knownReferenceLayouts = [
+    'TMA_0.6mm_7_backsub': [rows: 18, columns: 7, coreDiameterMM: 0.6d]
+]
+def knownLayout = knownReferenceLayouts[imageStem]
+if (knownLayout != null && (configuredRows != knownLayout.rows ||
+        configuredColumns != knownLayout.columns ||
+        Math.abs(configuredCoreMM - knownLayout.coreDiameterMM) > 0.001d)) {
+    Dialogs.showErrorMessage('CoreAlign preflight blocked',
+        "The open reference slide ${imageName} requires ${knownLayout.rows} x ${knownLayout.columns} " +
+        "positions with ${knownLayout.coreDiameterMM} mm cores.\n\n" +
+        "The selected profile '${profileName}' specifies ${configuredRows} x ${configuredColumns} " +
+        "with ${configuredCoreMM} mm cores.\n\n" +
+        'Choose the Skin 18 x 7 preset and download a fresh config.')
+    println "PREFLIGHT_BLOCKED: known slide ${imageStem} requires ${knownLayout.rows}x${knownLayout.columns} " +
+        "at ${knownLayout.coreDiameterMM} mm, not ${configuredRows}x${configuredColumns} at ${configuredCoreMM} mm."
+    return
+}
 boolean advancedDialogRequested = gridConfig.showAdvancedDialog == true
 boolean allowAdvancedDialog = 'true'.equalsIgnoreCase(
     System.getProperty('tma.allowAdvancedDialog', 'false'))
@@ -197,8 +218,21 @@ System.setProperty('tma.config.profile', profileName)
 System.setProperty('tma.config.profileHash', profileHash)
 
 def setProp = { String key, value ->
-    if (value != null) System.setProperty(key, value instanceof List ?
-        value.collect { it.toString() }.join(',') : value.toString())
+    if (value == null) return
+    String propertyValue
+    if (value instanceof List) {
+        propertyValue = value.collect { it.toString() }.join(',')
+    } else if (value instanceof Number) {
+        // Gson represents JSON integers as doubles in an untyped Map. Without
+        // normalization, rows=12 becomes "12.0" and the embedded detector's
+        // Integer.parseInt falls back silently to its 18-row default.
+        double numericValue = ((Number) value).doubleValue()
+        propertyValue = Double.isFinite(numericValue) && numericValue == Math.rint(numericValue) ?
+            Long.toString(((Number) value).longValue()) : value.toString()
+    } else {
+        propertyValue = value.toString()
+    }
+    System.setProperty(key, propertyValue)
 }
 [
     'tma.grid.rows': gridConfig.rows,
@@ -259,6 +293,25 @@ def setProp = { String key, value ->
     'tma.orientation.rgbGreenChannelTokens': orientationConfig.rgbGreenChannelTokens,
     'tma.orientation.overrideClassName': orientationConfig.overrideClassName
 ].each { key, value -> setProp(key, value) }
+
+// Fail before reading any pixels if config propagation ever regresses.
+try {
+    int runtimeRows = Integer.parseInt(System.getProperty('tma.grid.rows'))
+    int runtimeColumns = Integer.parseInt(System.getProperty('tma.grid.columns'))
+    double runtimeCoreMM = Double.parseDouble(System.getProperty('tma.grid.coreDiameterMM'))
+    if (runtimeRows != configuredRows || runtimeColumns != configuredColumns ||
+            Math.abs(runtimeCoreMM - configuredCoreMM) > 0.000001d) {
+        throw new IllegalStateException(
+            "expected ${configuredRows}x${configuredColumns} at ${configuredCoreMM} mm, " +
+            "propagated ${runtimeRows}x${runtimeColumns} at ${runtimeCoreMM} mm")
+    }
+    println "TMA runtime config verified: grid ${runtimeRows}x${runtimeColumns} | core ${runtimeCoreMM} mm"
+} catch (Throwable propagationError) {
+    Dialogs.showErrorMessage('CoreAlign preflight failed',
+        "The detector did not receive the selected grid configuration.\n\n${propagationError.getMessage()}")
+    println "PREFLIGHT_BLOCKED: config propagation failed: ${propagationError.getMessage()}"
+    return
+}
 
 REQUIRED_DETECTION_ALGORITHM_VERSION = System.getProperty('tma.detection.algorithmVersion',
     REQUIRED_DETECTION_ALGORITHM_VERSION)
