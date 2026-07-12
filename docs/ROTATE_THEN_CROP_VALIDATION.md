@@ -46,3 +46,14 @@ It cannot honestly guarantee 100% autonomous biological correctness on unseen sl
 Confidence is a triage score, not a probability. Ambiguous regions are routed to the human
 queue and corrected with `TMA crop override` and/or `Epidermis override`; the next run
 recomputes only those cores.
+
+## Rotated multichannel export — v3.7
+
+Core 1-A was exported at `exportDownsample: 1.0` after the accepted rotation was
+applied independently to every source plane. The resulting OME-TIFF was reopened in
+QuPath and verified as 2,606 × 2,606 pixels, UINT16, 19 channels, with all original
+channel names preserved. The matching rotated RGB PNG was also 2,606 × 2,606 pixels.
+
+Geometric rotation requires interpolation. The original whole-slide OME-TIFF remains
+the immutable quantitative source of truth; the rotated multichannel crop is a
+registered derivative with its transform recorded in `orientation_results.csv`.

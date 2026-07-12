@@ -28,7 +28,7 @@
         "maxMissingFractionToPreserve": 0.06
       },
       "orientation": {
-        "algorithmVersion": "skin-epidermis-orient-3.6-component-region-qc",
+        "algorithmVersion": "skin-epidermis-orient-3.7-rotated-multichannel",
         "analysisDownsample": 4.0,
         "exportDownsample": 1.0,
         "previewMaxPixels": 900,
@@ -41,7 +41,8 @@
         "regionMaxCropScale": 1.15,
         "regionReviewConfidence": 0.12,
         "saveFullResolutionPng": true,
-        "saveNativeOmeTiff": true,
+        "saveNativeOmeTiff": false,
+        "saveRotatedMultichannelOmeTiff": true,
         "cropOverrideClassName": "TMA crop override",
         "postRotationToleranceDeg": 12.0,
         "postRotationMaxIterations": 2,
@@ -308,7 +309,7 @@
         "maxBlobAreaFraction": 5.0
       },
       "orientation": {
-        "algorithmVersion": "generic-peripheral-orient-3.6-component-region-qc",
+        "algorithmVersion": "generic-peripheral-orient-3.7-rotated-multichannel",
         "analysisDownsample": 4.0,
         "exportDownsample": 1.0,
         "previewMaxPixels": 900,
@@ -322,6 +323,7 @@
         "regionReviewConfidence": 0.12,
         "saveFullResolutionPng": true,
         "saveNativeOmeTiff": false,
+        "saveRotatedMultichannelOmeTiff": false,
         "cropOverrideClassName": "TMA crop override",
         "postRotationToleranceDeg": 12.0,
         "postRotationMaxIterations": 2,

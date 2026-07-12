@@ -31,7 +31,7 @@ const copy = {
       ["nuclearChannelTokens", "Words used to find DAPI-like channels", "dapi, hoechst"],
       ["epidermisChannelTokens", "Helpful epithelial/skin markers", "keratin, panck…"],
       ["exportDownsample", "1.0 keeps source pixel dimensions", "1.0"],
-      ["saveNativeOmeTiff", "Archive all original channels", "true"],
+      ["saveRotatedMultichannelOmeTiff", "Rotate and retain every original channel", "true"],
       ["postRotationToleranceDeg", "Residual angle before review", "12"],
     ],
     reviewTitle: "100% accepted—not 100% guessed",
@@ -44,7 +44,7 @@ const copy = {
     outputsTitle: "Two outputs, two purposes",
     outputs: [
       ["Rotated full-resolution PNG", "Source-pixel-size RGB composite. Best for contact sheets, figures, and slide presentations."],
-      ["Native OME-TIFF", "Lossless UINT16 multichannel source crop. Best for archival and quantitative follow-up."],
+      ["Rotated multichannel OME-TIFF", "UINT16, all original channels, with the accepted rotation baked into every plane. Best for archival and quantitative follow-up."],
     ],
     tutorialTitle: "Complete video tutorial",
     tutorialBody: "Follow the full journey: GitHub download, file preparation, QuPath grid review, per-core orientation, override, resume, and export.",
@@ -79,7 +79,7 @@ const copy = {
       ["nuclearChannelTokens", "คำที่ใช้ค้นหา DAPI-like channels", "dapi, hoechst"],
       ["epidermisChannelTokens", "marker ที่ช่วยบอกชั้นผิว", "keratin, panck…"],
       ["exportDownsample", "1.0 รักษาขนาดพิกเซลต้นฉบับ", "1.0"],
-      ["saveNativeOmeTiff", "เก็บทุก channel ต้นฉบับ", "true"],
+      ["saveRotatedMultichannelOmeTiff", "หมุนและเก็บทุก channel ต้นฉบับ", "true"],
       ["postRotationToleranceDeg", "มุมคลาดเคลื่อนก่อนส่ง review", "12"],
     ],
     reviewTitle: "ครบ 100% หลังตรวจ ไม่ใช่เดา 100%",
@@ -92,7 +92,7 @@ const copy = {
     outputsTitle: "ผลลัพธ์สองชนิด ใช้ต่างวัตถุประสงค์",
     outputs: [
       ["Rotated full-resolution PNG", "RGB composite ที่ขนาดพิกเซลต้นฉบับ เหมาะกับ contact sheet, figure และ presentation"],
-      ["Native OME-TIFF", "source crop แบบ lossless UINT16 ครบทุก channel เหมาะกับ archive และวิเคราะห์ต่อ"],
+      ["Rotated multichannel OME-TIFF", "UINT16 ครบทุก channel และ bake มุมที่อนุมัติลงทุก plane เหมาะกับ archive และวิเคราะห์ต่อ"],
     ],
     tutorialTitle: "วิดีโอสอนฉบับสมบูรณ์",
     tutorialBody: "ทำตามตั้งแต่ดาวน์โหลด GitHub เตรียมไฟล์ ตรวจ grid ใน QuPath หมุนทีละ core แก้ override, resume และ export",
@@ -180,7 +180,7 @@ export default function Home() {
   },
   "orientation": {
     "exportDownsample": 1.0,
-    "saveNativeOmeTiff": true,
+    "saveRotatedMultichannelOmeTiff": true,
     "postRotationToleranceDeg": 12
   }
 }`}</pre><a className="builderLaunch" href="/config-builder"><i className="ri-dashboard-3-line" /> Open visual Config Builder · เปิดหน้าสร้าง Config</a></div>

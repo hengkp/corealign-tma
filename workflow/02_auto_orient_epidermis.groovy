@@ -30,6 +30,14 @@ import qupath.lib.regions.RegionRequest
 import qupath.lib.roi.ROIs
 import qupath.lib.images.writers.ome.OMEPyramidWriter
 
+import loci.common.services.ServiceFactory
+import loci.formats.meta.IMetadata
+import loci.formats.out.OMETiffWriter
+import loci.formats.services.OMEXMLService
+import ome.xml.model.enums.DimensionOrder
+import ome.xml.model.enums.PixelType
+import ome.xml.model.primitives.PositiveInteger
+
 import com.google.gson.GsonBuilder
 
 import javax.imageio.ImageIO
@@ -39,6 +47,8 @@ import java.awt.Font
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
+import java.awt.image.AffineTransformOp
+import java.awt.geom.AffineTransform
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -78,6 +88,8 @@ double REGION_MAX_CROP_SCALE = cfgDouble('tma.orientation.regionMaxCropScale', 1
 double REGION_REVIEW_CONFIDENCE = cfgDouble('tma.orientation.regionReviewConfidence', 0.12d)
 boolean SAVE_FULL_RESOLUTION_PNG = cfgBool('tma.orientation.saveFullResolutionPng', true)
 boolean SAVE_NATIVE_OME_TIFF = cfgBool('tma.orientation.saveNativeOmeTiff', false)
+boolean SAVE_ROTATED_MULTICHANNEL_OME_TIFF =
+    cfgBool('tma.orientation.saveRotatedMultichannelOmeTiff', false)
 double POST_ROTATION_TOLERANCE_DEG = cfgDouble('tma.orientation.postRotationToleranceDeg', 12.0d)
 int POST_ROTATION_MAX_ITERATIONS = cfgInt('tma.orientation.postRotationMaxIterations', 2)
 String TEST_CORE_FILTER = System.getProperty('tma.orientation.testCoreFilter', '').trim()
@@ -96,7 +108,7 @@ int DEFAULT_GRID_COLS = cfgInt('tma.grid.columns', 7)
 boolean ALLOW_ANNOTATION_FALLBACK_WITHOUT_GRID =
     cfgBool('tma.orientation.allowAnnotationFallbackWithoutGrid', false)
 String ORIENTATION_ALGORITHM_VERSION = cfgString('tma.orientation.algorithmVersion',
-    'skin-epidermis-orient-3.6-component-region-qc')
+    'skin-epidermis-orient-3.7-rotated-multichannel')
 String CURRENT_PROFILE_HASH = System.getProperty('tma.config.profileHash', '')
 def json = new GsonBuilder().setPrettyPrinting().create()
 
@@ -486,6 +498,89 @@ def cropAround = { BufferedImage src, double cxImg, double cyImg, int sidePx ->
     g.drawImage(src, 0, 0, side, side, x, y, x + side, y + side, null)
     g.dispose()
     return out
+}
+
+// Bake the final per-core rotation into every original channel without first
+// cropping the core. Each channel is rotated from the same oversized support
+// image, then the final square is cropped and written as planar OME-TIFF.
+// UINT8 and UINT16 are supported losslessly with respect to bit depth; the
+// geometric transform uses bicubic interpolation, matching the visual export.
+def writeRotatedMultichannelOme = { BufferedImage sourceSupport,
+        double radians, double cxImg, double cyImg, int sidePx, File destination ->
+    String sourcePixelType = server.getPixelType().toString()
+    boolean isU8 = sourcePixelType == 'UINT8'
+    boolean isU16 = sourcePixelType == 'UINT16'
+    if (!isU8 && !isU16)
+        throw new IllegalArgumentException(
+            "Rotated multichannel OME-TIFF supports UINT8/UINT16; found ${sourcePixelType}")
+    int bands = sourceSupport.getRaster().getNumBands()
+    int channels = Math.min(server.nChannels(), bands)
+    if (channels < 1)
+        throw new IllegalStateException('Source support image has no readable channels')
+    int w = sourceSupport.getWidth(), h = sourceSupport.getHeight()
+    int side = Math.max(1, Math.min(sidePx, Math.min(w, h)))
+    int cropX = Math.max(0, Math.min(w - side,
+        (int) Math.round(cxImg - side / 2.0d)))
+    int cropY = Math.max(0, Math.min(h - side,
+        (int) Math.round(cyImg - side / 2.0d)))
+
+    def service = new ServiceFactory().getInstance(OMEXMLService.class)
+    IMetadata metadata = service.createOMEXMLMetadata()
+    metadata.setImageID('Image:0', 0)
+    metadata.setImageName(destination.getName(), 0)
+    metadata.setPixelsID('Pixels:0', 0)
+    metadata.setPixelsDimensionOrder(DimensionOrder.XYCZT, 0)
+    metadata.setPixelsType(isU8 ? PixelType.UINT8 : PixelType.UINT16, 0)
+    metadata.setPixelsSizeX(new PositiveInteger(side), 0)
+    metadata.setPixelsSizeY(new PositiveInteger(side), 0)
+    metadata.setPixelsSizeZ(new PositiveInteger(1), 0)
+    metadata.setPixelsSizeC(new PositiveInteger(channels), 0)
+    metadata.setPixelsSizeT(new PositiveInteger(1), 0)
+    try { metadata.setPixelsBigEndian(Boolean.FALSE, 0) } catch (Throwable ignored) {}
+    for (int c = 0; c < channels; c++) {
+        metadata.setChannelID("Channel:0:${c}", 0, c)
+        metadata.setChannelName(server.getMetadata().getChannels()[c].getName(), 0, c)
+        metadata.setChannelSamplesPerPixel(new PositiveInteger(1), 0, c)
+    }
+
+    def writer = new OMETiffWriter()
+    try {
+        writer.setMetadataRetrieve(metadata)
+        writer.setInterleaved(false)
+        try { writer.setCompression('zlib') } catch (Throwable ignored) {}
+        writer.setId(destination.getAbsolutePath())
+        def transform = AffineTransform.getRotateInstance(radians, cxImg, cyImg)
+        int imageType = isU8 ? BufferedImage.TYPE_BYTE_GRAY : BufferedImage.TYPE_USHORT_GRAY
+        int bytesPerSample = isU8 ? 1 : 2
+        int[] supportRow = new int[w]
+        int[] cropRow = new int[side]
+        for (int c = 0; c < channels; c++) {
+            def channelImage = new BufferedImage(w, h, imageType)
+            def channelRaster = channelImage.getRaster()
+            for (int y = 0; y < h; y++) {
+                sourceSupport.getRaster().getSamples(0, y, w, 1, c, supportRow)
+                channelRaster.setSamples(0, y, w, 1, 0, supportRow)
+            }
+            def rotatedChannel = new BufferedImage(w, h, imageType)
+            new AffineTransformOp(transform, AffineTransformOp.TYPE_BICUBIC)
+                .filter(channelImage, rotatedChannel)
+            byte[] plane = new byte[side * side * bytesPerSample]
+            int offset = 0
+            for (int y = 0; y < side; y++) {
+                rotatedChannel.getRaster().getSamples(cropX, cropY + y,
+                    side, 1, 0, cropRow)
+                for (int x = 0; x < side; x++) {
+                    int value = cropRow[x]
+                    plane[offset++] = (byte) (value & 0xff)
+                    if (!isU8) plane[offset++] = (byte) ((value >> 8) & 0xff)
+                }
+            }
+            writer.saveBytes(c, plane)
+        }
+    } finally {
+        try { writer.close() } catch (Throwable ignored) {}
+    }
+    return destination.isFile() && destination.length() > 0
 }
 
 def scaleForPreview = { BufferedImage src, int maxPixels ->
@@ -1153,7 +1248,8 @@ if (!approvalMatches) {
 // run.  A new rotation/crop algorithm never silently overwrites an older run.
 String runIdentity = sha256([gridHash, CURRENT_PROFILE_HASH,
     ORIENTATION_ALGORITHM_VERSION, EXPORT_DOWNSAMPLE, CROP_SCALE,
-    ROTATION_SUPPORT_SCALE, SAVE_NATIVE_OME_TIFF].join('|')).substring(0, 12)
+    ROTATION_SUPPORT_SCALE, SAVE_NATIVE_OME_TIFF,
+    SAVE_ROTATED_MULTICHANNEL_OME_TIFF].join('|')).substring(0, 12)
 def outDir = new File(exportBaseDir,
     "${imageStem}_grid_${gridHash.substring(0, 12)}_orient_${runIdentity}")
 def previewDir = new File(outDir, 'rotated_previews')
@@ -1161,6 +1257,7 @@ def originalDir = new File(outDir, 'unrotated_previews')
 def fullResDir = new File(outDir, 'rotated_fullres')
 def originalFullResDir = new File(outDir, 'unrotated_fullres')
 def nativeOmeDir = new File(outDir, 'source_native_ome')
+def rotatedMultichannelOmeDir = new File(outDir, 'rotated_multichannel_ome')
 def checkpointDir = new File(outDir, 'checkpoints')
 def partialCsvFile = new File(outDir, 'orientation_results.partial.csv')
 
@@ -1169,6 +1266,8 @@ if ((!previewDir.mkdirs() && !previewDir.isDirectory()) ||
         (SAVE_FULL_RESOLUTION_PNG && !fullResDir.mkdirs() && !fullResDir.isDirectory()) ||
         (SAVE_FULL_RESOLUTION_PNG && !originalFullResDir.mkdirs() && !originalFullResDir.isDirectory()) ||
         (SAVE_NATIVE_OME_TIFF && !nativeOmeDir.mkdirs() && !nativeOmeDir.isDirectory()) ||
+        (SAVE_ROTATED_MULTICHANNEL_OME_TIFF &&
+            !rotatedMultichannelOmeDir.mkdirs() && !rotatedMultichannelOmeDir.isDirectory()) ||
         (!checkpointDir.mkdirs() && !checkpointDir.isDirectory())) {
     Dialogs.showErrorMessage('Auto-orient TMA',
         "Could not create output folders under:\n${outDir.getAbsolutePath()}")
@@ -1176,7 +1275,7 @@ if ((!previewDir.mkdirs() && !previewDir.isDirectory()) ||
 }
 println "Output: ${outDir.getAbsolutePath()}"
 println "Approved grid hash: ${gridHash}"
-println "Per-core export: rotate source-support window first, crop second; downsample ${EXPORT_DOWNSAMPLE}; native OME-TIFF ${SAVE_NATIVE_OME_TIFF}"
+println "Per-core export: rotate source-support window first, crop second; downsample ${EXPORT_DOWNSAMPLE}; source OME-TIFF ${SAVE_NATIVE_OME_TIFF}; rotated multichannel OME-TIFF ${SAVE_ROTATED_MULTICHANNEL_OME_TIFF}"
 
 def arrowClass = makePathClass(ARROW_CLASS_NAME, COLOR_OK)
 def overrideClass = makePathClass(OVERRIDE_CLASS_NAME, COLOR_OVERRIDE)
@@ -1269,6 +1368,7 @@ def recordsCsvText = { rows ->
         'confidence', 'tissue_fraction', 'status', 'orientation_method',
         'unrotated_preview_png', 'rotated_preview_png', 'checkpoint_reused',
         'unrotated_fullres_png', 'rotated_fullres_png', 'source_native_ome_tif',
+        'rotated_multichannel_ome_tif',
         'export_downsample', 'rotation_then_crop', 'approved_grid_hash'
     ].join(',')).append('\n')
     rows.each { r ->
@@ -1282,6 +1382,7 @@ def recordsCsvText = { rows ->
             format3(r.confidence), format3(r.tissueFraction), csv(r.status),
             csv(r.method), csv(r.original), csv(r.preview), r.resumed,
             csv(r.originalFullRes), csv(r.rotatedFullRes), csv(r.nativeOme),
+            csv(r.rotatedMultichannelOme),
             format3(EXPORT_DOWNSAMPLE), true, csv(gridHash)
         ].join(',')).append('\n')
     }
@@ -1330,6 +1431,8 @@ coreEntries.each { entry ->
     def originalFullResFile = new File(originalFullResDir, outName)
     def nativeOmeFile = new File(nativeOmeDir,
         outName.replaceFirst(/(?i)\.png$/, '.ome.tif'))
+    def rotatedMultichannelOmeFile = new File(rotatedMultichannelOmeDir,
+        outName.replaceFirst(/(?i)\.png$/, '.ome.tif'))
     def checkpointFile = new File(checkpointDir,
         String.format(Locale.US, '%03d_%s.json', i + 1,
             coreName.replaceAll(/[^A-Za-z0-9._-]+/, '_')))
@@ -1343,6 +1446,7 @@ coreEntries.each { entry ->
     String rotatedFullResRel = ''
     String originalFullResRel = ''
     String nativeOmeRel = ''
+    String rotatedMultichannelOmeRel = ''
     def analysisRegion = null
     def analysisRgb = null
     def override = missing ? null : findOverride(cx, cy, radius)
@@ -1355,7 +1459,8 @@ coreEntries.each { entry ->
         ORIENTATION_ALGORITHM_VERSION, gridHash, i, coreName, format3(cx), format3(cy),
         format3(diameter), missing, overrideSignature, cropOverrideSignature,
         EXPORT_DOWNSAMPLE, PREVIEW_MAX_PIXELS, ROTATION_SUPPORT_SCALE,
-        SAVE_FULL_RESOLUTION_PNG, SAVE_NATIVE_OME_TIFF
+        SAVE_FULL_RESOLUTION_PNG, SAVE_NATIVE_OME_TIFF,
+        SAVE_ROTATED_MULTICHANNEL_OME_TIFF
     ].join('|'))
     boolean resumed = false
     String processingError = ''
@@ -1373,7 +1478,10 @@ coreEntries.each { entry ->
                     new File(outDir, cpRecord.rotatedFullRes.toString()).isFile() &&
                     new File(outDir, cpRecord.originalFullRes.toString()).isFile())) &&
                 (!SAVE_NATIVE_OME_TIFF || (cpRecord.nativeOme &&
-                    new File(outDir, cpRecord.nativeOme.toString()).isFile())))
+                    new File(outDir, cpRecord.nativeOme.toString()).isFile())) &&
+                (!SAVE_ROTATED_MULTICHANNEL_OME_TIFF ||
+                    (cpRecord.rotatedMultichannelOme &&
+                    new File(outDir, cpRecord.rotatedMultichannelOme.toString()).isFile())))
             if (cp.complete == true && cp.coreSignature == coreSignature &&
                     cp.gridHash == gridHash &&
                     (cp.profileHash == null || cp.profileHash == CURRENT_PROFILE_HASH) &&
@@ -1389,6 +1497,8 @@ coreEntries.each { entry ->
                 rotatedFullResRel = cpRecord.rotatedFullRes?.toString() ?: ''
                 originalFullResRel = cpRecord.originalFullRes?.toString() ?: ''
                 nativeOmeRel = cpRecord.nativeOme?.toString() ?: ''
+                rotatedMultichannelOmeRel =
+                    cpRecord.rotatedMultichannelOme?.toString() ?: ''
                 resumed = true
                 resumedCount++
                 if (cp.profileHash == null && !CURRENT_PROFILE_HASH.isEmpty()) {
@@ -1524,8 +1634,18 @@ coreEntries.each { entry ->
                     wroteNative = nativeOmeFile.isFile() && nativeOmeFile.length() > 0
                     if (wroteNative) nativeOmeRel = 'source_native_ome/' + nativeOmeFile.getName()
                 }
+                boolean wroteRotatedMultichannel = true
+                if (SAVE_ROTATED_MULTICHANNEL_OME_TIFF) {
+                    wroteRotatedMultichannel = writeRotatedMultichannelOme(
+                        exportRegion.image, rotateRad, exportCx, exportCy,
+                        finalSidePx, rotatedMultichannelOmeFile)
+                    if (wroteRotatedMultichannel)
+                        rotatedMultichannelOmeRel = 'rotated_multichannel_ome/' +
+                            rotatedMultichannelOmeFile.getName()
+                }
                 if (!wroteOriginal || !wroteRotated || !wroteFullOriginal ||
-                        !wroteFullRotated || !wroteNative) result.status = 'export_error'
+                        !wroteFullRotated || !wroteNative ||
+                        !wroteRotatedMultichannel) result.status = 'export_error'
                 else if ((regionResult.status == 'region_review' || !qcAvailable ||
                         postRotationResidualDeg > POST_ROTATION_TOLERANCE_DEG) &&
                         result.status == 'ok') result.status = 'review'
@@ -1540,6 +1660,7 @@ coreEntries.each { entry ->
             rotatedFullResRel = ''
             originalFullResRel = ''
             nativeOmeRel = ''
+            rotatedMultichannelOmeRel = ''
             println "ERROR: ${coreName} failed but the run will continue: ${processingError}"
         }
     }
@@ -1608,6 +1729,7 @@ coreEntries.each { entry ->
         originalFullRes: originalFullResRel,
         rotatedFullRes: rotatedFullResRel,
         nativeOme: nativeOmeRel,
+        rotatedMultichannelOme: rotatedMultichannelOmeRel,
         resumed: resumed,
         processingError: processingError
     ]
@@ -1672,6 +1794,7 @@ def runManifest = [schemaVersion: 1, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' 
     exportDownsample: EXPORT_DOWNSAMPLE, rotationThenCrop: true,
     fullResolutionPng: SAVE_FULL_RESOLUTION_PNG,
     nativeOmeTiff: SAVE_NATIVE_OME_TIFF]
+runManifest.rotatedMultichannelOmeTiff = SAVE_ROTATED_MULTICHANNEL_OME_TIFF
 writeAtomic(runManifestFile, json.toJson(runManifest) + '\n')
 
 // -------------------------------------------------------------------------
@@ -1812,6 +1935,8 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     }
     if (SAVE_NATIVE_OME_TIFF)
         pw.println("Native multichannel OME-TIFF source crops: ${nativeOmeDir.getName()}/")
+    if (SAVE_ROTATED_MULTICHANNEL_OME_TIFF)
+        pw.println("Rotated multichannel OME-TIFF crops: ${rotatedMultichannelOmeDir.getName()}/")
 }
 
 println '=== Step 2 done ==='
