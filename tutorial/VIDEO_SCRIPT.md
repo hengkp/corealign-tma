@@ -1,6 +1,6 @@
-# CoreAlign TMA validated tutorial version 2
+# CoreAlign TMA tutorial version 3
 
-This version adds a mandatory preflight pause after the working-folder step. It corrects the failure mode in tutorial version 1, where a slide opened from Downloads could silently load a different config beside that slide.
+This version keeps the validated preflight from version 2 and replaces the configuration chapter with the simplified Config Builder. The visible workflow is now choose the TMA, choose the output, and download.
 
 ## Non-negotiable preflight
 
@@ -24,4 +24,4 @@ Before pressing Run, confirm all of the following:
 9. Accuracy and approval policy
 10. Reuse with other arrays
 
-The valid ElevenLabs narration from version 1 is retained. The outdated final sentence in narration chapter 3 is removed. A 15-second visual safety pause is inserted after chapter 3. The English and Thai subtitle tracks include the new safety instruction.
+The valid ElevenLabs narration is retained. The outdated final sentence in narration chapter 3 remains removed. A 15-second visual safety pause follows chapter 3. The configuration chapter now shows the current lightweight builder and its optional advanced settings.

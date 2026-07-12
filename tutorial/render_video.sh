@@ -6,8 +6,9 @@ WORK="$ROOT/tutorial/work"
 FINAL="$ROOT/tutorial/final"
 PYTHON="/Users/heng/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
 OLD_MASTER="$WORK/corealign_video_master.mp4"
-NEW_MASTER="$WORK/corealign_validated_video_master_v2.mp4"
-OUTPUT="$FINAL/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4"
+V2_MASTER="$WORK/corealign_validated_video_master_v2.mp4"
+V3_MASTER="$WORK/corealign_tutorial_master_v3.mp4"
+OUTPUT="$FINAL/CoreAlign-TMA-tutorial-v3-1080p.mp4"
 
 mkdir -p "$WORK" "$FINAL"
 "$PYTHON" "$ROOT/tutorial/render_overlays.py"
@@ -22,10 +23,18 @@ ffmpeg -y -hide_banner \
   -loop 1 -t 15 -i "$WORK/preflight_guard.png" \
   -filter_complex "[0:v]trim=start=0:end=55.928,setpts=PTS-STARTPTS[v0];[1:v]scale=1920:1080,fps=30,setsar=1,trim=duration=15,setpts=PTS-STARTPTS[v1];[0:v]trim=start=55.928:end=234.423,setpts=PTS-STARTPTS[v2];[v0][v1][v2]concat=n=3:v=1:a=0[v]" \
   -map "[v]" -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 \
-  -movflags +faststart "$NEW_MASTER"
+  -movflags +faststart "$V2_MASTER"
 
 ffmpeg -y -hide_banner \
-  -i "$NEW_MASTER" \
+  -i "$V2_MASTER" \
+  -loop 1 -t 20 -i "$ROOT/tutorial/qc/config_builder_v3_top.png" \
+  -loop 1 -t 15.004 -i "$ROOT/tutorial/qc/config_builder_v3_advanced.png" \
+  -filter_complex "[0:v]trim=start=0:end=70.928,setpts=PTS-STARTPTS[v0];[1:v]scale=1920:1080,fps=30,setsar=1,trim=duration=20,setpts=PTS-STARTPTS[v1];[2:v]scale=1920:1080,fps=30,setsar=1,trim=duration=15.004,setpts=PTS-STARTPTS[v2];[0:v]trim=start=105.932:end=249.423,setpts=PTS-STARTPTS[v3];[v0][v1][v2][v3]concat=n=4:v=1:a=0[v]" \
+  -map "[v]" -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 \
+  -movflags +faststart "$V3_MASTER"
+
+ffmpeg -y -hide_banner \
+  -i "$V3_MASTER" \
   -i "$ROOT/tutorial/audio/narration_01.mp3" \
   -i "$ROOT/tutorial/audio/narration_02.mp3" \
   -i "$ROOT/tutorial/audio/narration_03.mp3" \
@@ -44,7 +53,7 @@ ffmpeg -y -hide_banner \
   -map 0:v:0 -map "[mix]" -map 12:0 -map 13:0 \
   -map_metadata 14 -map_chapters 14 \
   -c:v copy -c:a aac -b:a 192k -c:s mov_text \
-  -metadata title="CoreAlign TMA Validated Tutorial Version 2" \
+  -metadata title="CoreAlign TMA Tutorial Version 3" \
   -metadata comment="ElevenLabs narration and original ElevenLabs Music soundtrack" \
   -metadata:s:s:0 language=eng -metadata:s:s:0 title="English" \
   -metadata:s:s:1 language=tha -metadata:s:s:1 title="Thai" \
@@ -53,6 +62,6 @@ ffmpeg -y -hide_banner \
 
 ffprobe -v error \
   -show_entries format=filename,duration,size:stream=index,codec_name,width,height,r_frame_rate,channels:chapter=start_time,end_time:stream_tags=language,title \
-  -of json "$OUTPUT" > "$FINAL/CoreAlign-TMA-validated-tutorial-v2-1080p.probe.json"
+  -of json "$OUTPUT" > "$FINAL/CoreAlign-TMA-tutorial-v3-1080p.probe.json"
 
 echo "Rendered: $OUTPUT"

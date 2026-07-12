@@ -11,11 +11,11 @@ test("exports the home page and config builder", async () => {
 
 test("keeps the public website concise and English only", async () => {
   const html = await readFile(new URL("out/index.html", root), "utf8");
-  assert.match(html, /Detect, rotate, and crop every core/);
+  assert.match(html, /Prepare TMA cores for analysis and presentation/);
   assert.match(html, /corealign-hero-light\.webp/);
   assert.match(html, /corealign-hero-dark\.webp/);
-  assert.match(html, /CoreAlign-TMA-validated-tutorial-v2-1080p\.mp4/);
-  assert.match(html, /Mandatory preflight/);
+  assert.match(html, /CoreAlign-TMA-tutorial-v3-1080p\.mp4/);
+  assert.match(html, /required preflight check/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
 });
@@ -36,14 +36,28 @@ test("includes persistent navigation and a theme control on both pages", async (
 
   assert.match(home, /Toggle color theme/);
   assert.match(builder, /Toggle color theme/);
-  assert.match(builder, /Workflow/);
-  assert.match(builder, /Human review/);
+  assert.match(builder, /How it works/);
+  assert.match(builder, /Outputs/);
   assert.match(builder, /Tutorial/);
-  assert.match(builder, /Build a config/);
-  assert.match(builder, /On this page/);
+  assert.match(builder, /Safety/);
+  assert.match(builder, /Build config/);
+  assert.match(builder, /Create your TMA config in under a minute/);
+  assert.match(builder, /Presentation images/);
+  assert.match(builder, /Advanced settings/);
+  assert.match(builder, /download="corealign\.config\.json"/);
+  assert.match(builder, /data:application\/json/);
+  assert.doesNotMatch(builder, /On this page/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(css, /\.presetButtons button\s*\{[\s\S]*?min-width:\s*0/);
   assert.match(css, /:root\[data-theme="dark"\]/);
+});
+
+test("keeps the website runtime lightweight", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+  assert.equal(packageJson.dependencies["drizzle-orm"], undefined);
+  assert.equal(packageJson.devDependencies.tailwindcss, undefined);
+  assert.equal(packageJson.devDependencies["@tailwindcss/postcss"], undefined);
 });
 
 test("ships one guarded production workflow", async () => {

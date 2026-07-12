@@ -11,16 +11,15 @@ export default function SiteHeader() {
         <span>CoreAlign <b>TMA</b></span>
       </a>
       <nav aria-label="Main navigation">
-        <a href={`${basePath}/#workflow`}>Workflow</a>
-        <a href={`${basePath}/#review`}>Human review</a>
-        <a href={`${basePath}/#tutorial`}>Tutorial</a>
+        <a href={`${basePath}/#workflow`}>How it works</a>
         <a href={`${basePath}/#outputs`}>Outputs</a>
-        <a href={`${basePath}/#validation`}>Validation</a>
+        <a href={`${basePath}/#tutorial`}>Tutorial</a>
+        <a href={`${basePath}/#review`}>Safety</a>
       </nav>
       <div className="headerActions">
         <ThemeToggle />
         <a className="textLink" href={repo}>GitHub</a>
-        <a className="button small" href={`${basePath}/config-builder/`}>Build a config</a>
+        <a className="button small" href={`${basePath}/config-builder/`}>Build config</a>
       </div>
     </header>
   );

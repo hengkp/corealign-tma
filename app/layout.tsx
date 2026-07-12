@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://hengkp.github.io/corealign-tma/"),
   title: "CoreAlign TMA | QuPath rotate then crop workflow",
   description:
-    "Detect, review, rotate, and crop each TMA core with a configurable QuPath workflow.",
+    "Prepare TMA cores in QuPath with automated detection, rotation, crop, review, and export.",
   icons: {
     icon: "https://hengkp.github.io/corealign-tma/favicon.svg",
     shortcut: "https://hengkp.github.io/corealign-tma/favicon.svg",
