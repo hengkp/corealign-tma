@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import ThemeToggle from "../theme-toggle";
 
 type FormState = {
   profile: string;
@@ -185,7 +186,10 @@ export default function ConfigBuilder() {
           <span>CoreAlign <b>TMA</b></span>
         </a>
         <div className="builderHeaderTitle"><span>Config Builder</span><small>Create a ready to use profile</small></div>
-        <a className="textLink" href="https://github.com/hengkp/corealign-tma"><i className="ri-github-fill" /> GitHub</a>
+        <div className="builderHeaderActions">
+          <ThemeToggle />
+          <a className="textLink" href="https://github.com/hengkp/corealign-tma"><i className="ri-github-fill" /> GitHub</a>
+        </div>
       </header>
 
       <section className="builderHero">

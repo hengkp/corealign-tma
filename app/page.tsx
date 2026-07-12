@@ -1,4 +1,6 @@
 const repo = "https://github.com/hengkp/corealign-tma";
+import ThemeToggle from "./theme-toggle";
+
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const path = (value: string) => `${basePath}${value}`;
@@ -60,6 +62,7 @@ export default function Home() {
           <a href="#validation">Validation</a>
         </nav>
         <div className="headerActions">
+          <ThemeToggle />
           <a className="textLink" href={repo}>GitHub</a>
           <a className="button small" href={path("/config-builder/")}>Build a config</a>
         </div>
