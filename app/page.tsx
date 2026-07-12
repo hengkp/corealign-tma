@@ -1,5 +1,5 @@
 const repo = "https://github.com/hengkp/corealign-tma";
-const tutorialVideo = `${repo}/releases/download/v1.0.0/CoreAlign-TMA-complete-tutorial-1080p.mp4`;
+const tutorialVideo = `${repo}/releases/download/v1.1.0/CoreAlign-TMA-validated-tutorial-v2-1080p.mp4`;
 import SiteHeader from "./site-header";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -161,14 +161,14 @@ export default function Home() {
             <source src={tutorialVideo} type="video/mp4" />
             Your browser does not support embedded video.
           </video>
-          <div><span><i className="ri-play-circle-line" /> 3 minutes 54 seconds</span><span>English narration with Thai and English subtitle tracks</span></div>
+          <div><span><i className="ri-play-circle-line" /> 4 minutes 9 seconds</span><span>English narration with Thai and English subtitle tracks</span></div>
         </div>
         <div className="tutorialCopy">
           <p className="eyebrow">Complete video tutorial</p>
           <h2>Follow the workflow from download to reviewed exports.</h2>
-          <p>The tutorial covers repository download, visual configuration, QuPath setup, grid review, per-core rotate then crop processing, selective resume, and presentation outputs.</p>
+          <p>The validated tutorial adds a mandatory one-folder preflight before QuPath, then covers grid review, per-core rotate then crop processing, selective resume, and presentation outputs.</p>
           <ul>
-            <li><i className="ri-movie-2-line" /><span><b>Ten chapters</b> Jump directly to the step you need.</span></li>
+            <li><i className="ri-shield-check-line" /><span><b>Mandatory preflight</b> Confirm the exact slide, config, profile, grid, and diameter before processing.</span></li>
             <li><i className="ri-translate-2" /><span><b>Two subtitle tracks</b> Thai is enabled by default and English is included.</span></li>
             <li><i className="ri-music-2-line" /><span><b>Production audio</b> ElevenLabs narration and original ElevenLabs Music.</span></li>
           </ul>

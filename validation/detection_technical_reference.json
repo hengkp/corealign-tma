@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "image": "TMA_0.6mm_7_backsub.ome.tif",
+  "detectorVersion": "skin-tma-detect-2.3-preflight-guard",
+  "stage": "new_detection",
+  "evaluatedPositions": 126,
+  "correctPresenceMissingClassifications": 126,
+  "technicalReferenceAgreement": 1.0,
+  "expectedMissing": ["11-G", "12-E", "14-E", "14-G", "15-G", "16-F", "16-G", "5-D", "6-G"],
+  "detectedMissing": ["11-G", "12-E", "14-E", "14-G", "15-G", "16-F", "16-G", "5-D", "6-G"],
+  "falsePresent": [],
+  "falseMissing": [],
+  "referenceStatus": "technical_visual_QC; pathologist_adjudication_required_for_clinical_claim"
+}

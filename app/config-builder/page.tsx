@@ -85,12 +85,12 @@ function makeConfig(form: FormState) {
           cropPaddingFactor: 1.75,
           rowScheme: "1, 2, 3...",
           columnScheme: "A, B, C...",
-          showAdvancedDialog: true,
+          showAdvancedDialog: false,
           useExistingGridUnlessRectangleSelected: true,
           trustNondefaultExistingGrid: true,
         },
         detection: {
-          algorithmVersion: "skin-tma-detect-2.2-nuclear-rescue",
+          algorithmVersion: "skin-tma-detect-2.3-preflight-guard",
           channelMode: "nuclear",
           customChannels: "",
           downsample: 8,
@@ -99,6 +99,8 @@ function makeConfig(form: FormState) {
           minBlobAreaFraction: 0.05,
           maxBlobAreaFraction: 5,
           minAssignedFractionToBuildGrid: 0.3,
+          minAssignedFractionForReview: 0.75,
+          requireEveryRowAndColumn: true,
           maxMissingFractionToPreserve: 0.06,
         },
         orientation: {
