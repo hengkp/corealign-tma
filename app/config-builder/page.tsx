@@ -231,6 +231,7 @@ export default function ConfigBuilder() {
                 );
               })}
             </div>
+            <p className="presetHint"><i className="ri-information-line" /> For <b>TMA_0.6mm_7_backsub.ome.tif</b>, choose <b>Skin 18 x 7</b>.</p>
 
             <div className="geometryEditor">
               <div className="geometryFields">

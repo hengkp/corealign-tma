@@ -43,6 +43,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Build config/);
   assert.match(builder, /Create your TMA config in under a minute/);
   assert.match(builder, /Presentation images/);
+  assert.match(builder, /TMA_0\.6mm_7_backsub\.ome\.tif/);
   assert.match(builder, /Advanced settings/);
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
@@ -69,6 +70,9 @@ test("ships one guarded production workflow", async () => {
   const profile = config.profiles.skin_18x7;
 
   assert.match(groovy, /PREFLIGHT_BLOCKED: multiple config files/);
+  assert.match(groovy, /Gson represents JSON integers as doubles/);
+  assert.match(groovy, /TMA runtime config verified/);
+  assert.match(groovy, /known slide.*requires/);
   assert.match(groovy, /STRUCTURAL QC:/);
   assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
   assert.equal(profile.grid.rows, 18);

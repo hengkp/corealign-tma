@@ -476,6 +476,10 @@ footer a:hover { color: var(--blue); }
 :root[data-theme="dark"] .presetColor1 { color: #7ee6ef; background: #113d49; }
 :root[data-theme="dark"] .presetColor2 { color: #c9baff; background: #33285c; }
 :root[data-theme="dark"] .presetColor3 { color: #ffc26b; background: #4a2d14; }
+.presetHint { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 0; padding: 11px 13px; border: 1px solid #8fdbe4; border-radius: 12px; background: #eafcff; color: #155e6a; font-size: 13px; line-height: 1.45; }
+.presetHint i { margin-top: 1px; color: #087e91; font-size: 17px; }
+:root[data-theme="dark"] .presetHint { border-color: #276674; background: #12343c; color: #a8e8ef; }
+:root[data-theme="dark"] .presetHint i { color: #7ee6ef; }
 .geometryEditor { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 18px; padding: 20px; border-radius: 14px; background: linear-gradient(135deg, var(--surface-accent), var(--blue-pale)); }
 .geometryFields { display: flex; align-items: end; gap: 10px; min-width: 0; }
 .numberField > span, .diameterField > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
