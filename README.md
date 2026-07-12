@@ -91,7 +91,8 @@ Reference-slide technical validation processed 126/126 positions with zero proce
 
 ## Documentation and tutorial
 
-- Documentation website: deployment URL will be added after release
+- Documentation website: [corealign-tma.heng-kkpk.chatgpt.site](https://corealign-tma.heng-kkpk.chatgpt.site)
+- Visual Config Builder: [open builder](https://corealign-tma.heng-kkpk.chatgpt.site/config-builder)
 - Video tutorial: available from GitHub Releases after production
 - Validation artifacts: [`validation/`](validation/)
 
