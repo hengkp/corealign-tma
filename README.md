@@ -1,107 +1,93 @@
 # CoreAlign TMA
 
-> Rotate first. Crop second. Review what matters.  
-> หมุนก่อน แล้วจึงครอป ตรวจเฉพาะจุดที่จำเป็น
+Rotate first. Crop second. Review what matters.
 
-CoreAlign TMA is a configurable, resumable QuPath workflow for detecting TMA grids, orienting individual skin cores with epidermis at the top, and exporting presentation-ready PNG plus source-quality multichannel OME-TIFF crops.
+CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-CoreAlign TMA คือ QuPath workflow ที่ตั้งค่าได้และ resume ได้ สำหรับตรวจหา TMA grid หมุนชิ้นเนื้อผิวหนังทีละ core ให้ epidermis อยู่ด้านบน และส่งออกทั้ง PNG สำหรับงานนำเสนอและ OME-TIFF ครบทุก channel
+Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma/)
 
-## Highlights / จุดเด่น
+Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/)
 
-- One production runner: `workflow/CoreAlign.groovy`
-- Per-core order: refine → orient → rotate support window → QC → crop
-- Atomic checkpoint after every core; failed or corrected cores resume selectively
-- Human gates for grid, missing calls, contaminated regions, orientation, and presentation
-- Full-resolution rotated RGB PNG and rotated UINT16 multichannel OME-TIFF
-- Profiles for other arrays, stains, scanners, and experiments
-- Bilingual documentation with light/dark mode
+## What it does
 
-## Requirements / สิ่งที่ต้องมี
+- Runs from one production script: `workflow/CoreAlign.groovy`
+- Detects the grid and asks for review before processing
+- Refines, orients, rotates, checks, and crops each core in that order
+- Saves an atomic checkpoint after every core
+- Resumes only failed or corrected cores
+- Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
+- Supports profiles for other arrays, stains, scanners, and experiments
+
+## Requirements
 
 - QuPath 0.7.x
-- A local whole-slide image supported by QuPath; OME-TIFF is recommended
-- Enough disk space: native 19-channel crops from the reference array used about 90 MB/core
+- A local whole slide image supported by QuPath
+- Enough free disk space for all selected channels and outputs
 
-## Quick start / เริ่มต้นใช้งาน
+## Quick start
 
-1. Download this repository as ZIP and extract it.
-2. Copy `workflow/CoreAlign.groovy` and `workflow/corealign.config.json` beside your slide.
-3. Open the slide in QuPath.
-4. Open **Automate → Show script editor**, open `CoreAlign.groovy`, and press **Run**.
-5. First run: inspect and correct the detected grid, then run the same file again.
-6. Second run: approve the grid; CoreAlign processes cores one by one and pauses for orientation review.
-7. Add `TMA crop override` or `Epidermis override` annotations only where required, then run again.
-8. Final approval creates the presentation package. A package with unresolved items remains `QC_DRAFT`.
+1. Download this repository as a ZIP file and extract it.
+2. Open the [Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) and download `corealign.config.json`.
+3. Copy `workflow/CoreAlign.groovy` and the config file beside the slide.
+4. Open the slide in QuPath.
+5. Open `Automate`, then `Show script editor`.
+6. Open `CoreAlign.groovy` and press `Run`.
+7. Review the detected grid and run the same file again.
+8. Review uncertain orientations, add an override only where needed, and resume.
+9. Approve the final reviewed result to create the presentation package.
 
-ภาษาไทย: ดาวน์โหลด ZIP → วางไฟล์ Groovy และ config ข้างสไลด์ → เปิดสไลด์ใน QuPath → รันไฟล์เดิมซ้ำตาม human gate ระบบจะไม่ประมวลผล core ที่เสร็จแล้วใหม่
+## Important config fields
 
-## Configuration / การตั้งค่า
-
-Edit `corealign.config.json`. The most important values are:
-
-For the easiest setup, open the **Visual Config Builder** on the documentation website. It provides presets, validation, a live JSON preview, Thai/English labels, and downloads a ready-to-use `corealign.config.json` entirely in the browser without uploading slide data.
-
-วิธีที่ง่ายที่สุดคือใช้หน้า **Visual Config Builder** บนเว็บไซต์ เลือก preset กรอก geometry และ channel mapping ตรวจ JSON แบบทันที แล้วกดดาวน์โหลดไฟล์พร้อมใช้งาน โดยไม่มีการอัปโหลดข้อมูลสไลด์
-
-| Key | Meaning / ความหมาย |
+| Key | Purpose |
 |---|---|
-| `grid.rows`, `grid.columns` | Array dimensions / จำนวนแถวและคอลัมน์ |
-| `grid.coreDiameterMM` | Punch diameter / เส้นผ่านศูนย์กลาง core |
-| `nuclearChannelTokens` | Words used to find DAPI-like channels |
-| `epidermisChannelTokens` | Optional markers that support skin orientation |
-| `exportDownsample: 1.0` | Preserve source pixel dimensions |
-| `saveFullResolutionPng` | Save rotated lossless RGB PNG |
-| `saveRotatedMultichannelOmeTiff` | Bake the accepted rotation into every original channel |
-| `saveNativeOmeTiff` | Optionally keep an additional unrotated source archive |
+| `grid.rows`, `grid.columns` | Array dimensions |
+| `grid.coreDiameterMM` | Physical punch diameter |
+| `nuclearChannelTokens` | Words used to find DAPI like channels |
+| `epidermisChannelTokens` | Markers that support skin orientation |
+| `exportDownsample: 1` | Preserve source pixel dimensions |
+| `saveFullResolutionPng` | Save a rotated lossless RGB PNG |
+| `saveRotatedMultichannelOmeTiff` | Apply the accepted rotation to every original channel |
 | `postRotationToleranceDeg` | Residual angle that triggers review |
 
-For a new experiment, duplicate a profile, change `activeProfile`, and update only the array geometry and channel tokens first. Never copy slide-specific missing positions into a new profile.
+For a new experiment, duplicate a profile, change `activeProfile`, and update the array geometry and channel tokens. Do not copy slide specific missing positions into a new profile.
 
-## Human overrides / การแก้เฉพาะ core
+## Human overrides
 
-- `TMA correction 4-C`: small annotation at the correct core center
-- `TMA mark missing 14-G`: annotation near a truly empty position
-- `TMA crop override 4-C`: rectangle defining the source region to rotate and crop
-- `Epidermis override 4-C`: point placed on the epidermal side
+- `TMA correction 4-C`: mark the correct core center
+- `TMA mark missing 14-G`: mark a truly empty position
+- `TMA crop override 4-C`: define the source region to rotate and crop
+- `Epidermis override 4-C`: point to the epidermal side
 
-Overrides are included in each core signature. Rerunning invalidates only the affected checkpoint.
+Overrides are part of each core signature. A new run invalidates only the affected checkpoint.
 
 ## Outputs
 
 ```text
 tma_auto_orient_export/<image>_grid_<hash>_orient_<run-id>/
-├── rotated_previews/
-├── rotated_fullres/       # rotated, then cropped RGB PNG
-├── rotated_multichannel_ome/ # rotated, then cropped UINT16 all-channel OME-TIFF
-├── source_native_ome/     # optional unrotated source archive
-├── checkpoints/
-├── orientation_results.csv
-├── orientation_review_queue.csv
-├── orientation_contact_sheet.png
-├── review.html
-└── run_manifest.json
+  rotated_previews/
+  rotated_fullres/
+  rotated_multichannel_ome/
+  source_native_ome/
+  checkpoints/
+  orientation_results.csv
+  orientation_review_queue.csv
+  orientation_contact_sheet.png
+  review.html
+  run_manifest.json
 ```
 
-The rotated multichannel OME-TIFF uses the same accepted per-core transform for all original channels. Rotation requires interpolation; keep the original whole slide as the immutable source of truth. `source_native_ome` can be enabled when an additional unrotated per-core archive is useful.
+The rotated multichannel OME TIFF uses the same accepted transform for every original channel. Keep the original whole slide as the immutable source of truth.
 
-## Validation and accuracy
+## Accuracy policy
 
-Reference-slide technical validation processed 126/126 positions with zero processing errors: 117 present, 9 missing, 77 automatic passes, and 40 routed to human review. This does **not** prove autonomous 100% biological accuracy on unseen slides.
+Reference slide technical validation assigned 126 of 126 positions with zero processing errors. The set contained 117 present cores and 9 known empty positions. This does not prove autonomous biological accuracy on unseen slides.
 
-“100%” in this workflow means every position is accepted after human review and exact grid/result hashes are approved. See [`docs/ACCURACY_99_9_PROTOCOL.md`](docs/ACCURACY_99_9_PROTOCOL.md).
-
-## Documentation and tutorial
-
-- Documentation website: [corealign-tma.heng-kkpk.chatgpt.site](https://corealign-tma.heng-kkpk.chatgpt.site)
-- Visual Config Builder: [open builder](https://corealign-tma.heng-kkpk.chatgpt.site/config-builder)
-- Video tutorial: available from GitHub Releases after production
-- Validation artifacts: [`validation/`](validation/)
+One hundred percent in this workflow means every position is accepted after human review and the exact grid and result hashes are approved. See [the validation protocol](docs/ACCURACY_99_9_PROTOCOL.md).
 
 ## Safety
 
-Research/QC software only. Independent pathologist review and local validation are required before clinical claims. Do not publish patient-identifying slide data or private annotations.
+This is research and quality control software. Independent pathologist review and local validation are required before clinical claims. Do not publish patient identifying slide data or private annotations.
 
 ## Credits
 
-See [CREDITS.md](CREDITS.md). CoreAlign uses Remix Icon and draws design-process inspiration from the resources credited there. No Flaticon or Lottie asset is redistributed without an explicit compatible license.
+See [CREDITS.md](CREDITS.md). CoreAlign uses Remix Icon and draws design process inspiration from the resources listed there. No Flaticon or Lottie asset is redistributed without an explicit compatible license.

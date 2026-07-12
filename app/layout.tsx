@@ -1,35 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "CoreAlign TMA — Automated rotate-then-crop for QuPath",
+  metadataBase: new URL("https://hengkp.github.io/corealign-tma/"),
+  title: "CoreAlign TMA | QuPath rotate then crop workflow",
   description:
-    "Bilingual documentation for reproducible TMA detection, per-core skin orientation, rotate-then-crop export, and human review in QuPath.",
+    "Detect, review, rotate, and crop each TMA core with a configurable QuPath workflow.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "https://hengkp.github.io/corealign-tma/favicon.svg",
+    shortcut: "https://hengkp.github.io/corealign-tma/favicon.svg",
   },
   openGraph: {
     title: "CoreAlign TMA",
     description: "Rotate first. Crop second. Review what matters.",
-    images: [{ url: "/og.png", width: 1743, height: 909 }],
+    url: "https://hengkp.github.io/corealign-tma/",
+    siteName: "CoreAlign TMA",
+    images: [{ url: "https://hengkp.github.io/corealign-tma/og.png", width: 1536, height: 1024 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "CoreAlign TMA",
     description: "Rotate first. Crop second. Review what matters.",
-    images: ["/og.png"],
+    images: ["https://hengkp.github.io/corealign-tma/og.png"],
   },
 };
 
@@ -47,11 +39,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/npm/remixicon@4.9.1/fonts/remixicon.css"
         />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

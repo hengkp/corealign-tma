@@ -2,6 +2,7 @@ node_modules/
 .next/
 .vinext/
 dist/
+out/
 .wrangler/
 .DS_Store
 *.ome.tif
@@ -17,6 +18,9 @@ tma_pipeline_state/
 presentation_ready/
 tutorial/raw/
 tutorial/work/
+tutorial/audio/
+tutorial/qc/
+tutorial/final/
 *.env
 .env*
 !.env.example
