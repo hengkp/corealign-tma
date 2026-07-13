@@ -26,4 +26,10 @@ for (const [step, name, sourcePath] of sources) {
   runner = runner.replace(pattern, `$1${payload}$2`);
 }
 
+const placeholderJpeg = await readFile(new URL("workflow/assets/no-core-placeholder.jpg", root));
+const placeholderPayload = wrapBase64(placeholderJpeg.toString("base64"));
+const placeholderPattern = /(String NO_CORE_PLACEHOLDER_JPEG_BASE64 = '''\n)[\s\S]*?(\n''')/;
+if (!placeholderPattern.test(runner)) throw new Error("Could not find the no-core placeholder payload");
+runner = runner.replace(placeholderPattern, `$1${placeholderPayload}$2`);
+
 await writeFile(runnerUrl, runner, "utf8");

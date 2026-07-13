@@ -60,10 +60,10 @@ export default function Documentation() {
             <p>This is the only workflow HTML file. Use its tabs to move between Grid QC, Orientation QC, Results, and Help.</p>
             <div className="featureList">
               <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Tissue is brightened under lighter outlines. The complete array opens in Fit view, and Reset always returns to the full image.</span></div>
-              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Switch between Before and Rotated. Confirm a correct core directly. Use Edit only for a wrong angle.</span></div>
+              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Switch between Before and Rotated. Missing positions use a synthetic black no-core image. Filters follow All cores, QC pass, Missing, Needs review, and Changes.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
             </div>
-            <p className="docsSmall">A direct confirmation is saved in this browser and moves the card from Needs review to QC pass. No download is needed. To reverse a confirmation, open QC pass or All cores and click Undo. When the review is finished, run CoreAlign again. Editing shows one slider with Reset, Cancel, and Confirm. For an angle change, choose Save angle changes and save <code>corealign-review-corrections.json</code> beside the slide and <code>CoreAlign.groovy</code>. If the browser saves it in Downloads, move it into the project folder before running CoreAlign. Only edited cores are recalculated.</p>
+            <p className="docsSmall">If no cores need review, All cores opens automatically. A direct confirmation is saved in this browser and moves the card from Needs review to QC pass. No download is needed. To reverse a confirmation, open QC pass or All cores and click Undo. When the review is finished, run CoreAlign again. Editing shows one slider with Reset, Cancel, and Confirm. For an angle change, choose Save angle changes and save <code>corealign-review-corrections.json</code> beside the slide and <code>CoreAlign.groovy</code>. If the browser saves it in Downloads, move it into the project folder before running CoreAlign. Only edited cores are recalculated.</p>
           </section>
 
           <section className="docsSection" id="correct">
