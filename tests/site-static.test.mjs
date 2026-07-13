@@ -66,6 +66,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /TMA correction 4-C/);
   assert.match(docs, /Review a rotation/);
   assert.match(docs, /Confirm a correct core directly/);
+  assert.match(docs, /click Undo/);
   assert.match(docs, /Editing shows one slider with Reset, Cancel, and Confirm/);
   assert.match(docs, /complete array opens in Fit view/);
   assert.match(docs, /corealign-review-corrections\.json/);
@@ -135,6 +136,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-confirmed/);
   assert.match(groovy, /confirmed-badge/);
   assert.match(groovy, /reviewState\.confirmed/);
+  assert.match(groovy, /confirmed\?"Undo":"Confirm"/);
+  assert.match(groovy, /Undo confirmation/);
   assert.match(groovy, /data-edit/);
   assert.match(groovy, /data-edit-reset/);
   assert.match(groovy, /data-edit-cancel/);
