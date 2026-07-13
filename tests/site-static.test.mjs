@@ -68,6 +68,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /Change a wrong rotation/);
   assert.match(docs, /The rerun is required, but CoreAlign recalculates only the changed core/);
   assert.match(docs, /rotate previews, select cores, and flag Accepted/);
+  assert.match(docs, /complete array opens in Fit view/);
   assert.match(docs, /corealign-review-corrections\.json/);
   assert.match(docs, /Only changed cores are recalculated/);
   assert.match(docs, /aria-current="location"/);
