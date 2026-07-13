@@ -56,7 +56,7 @@ The first valid run stops after detection. Inspect the live grid and QC image. R
 
 CoreAlign saves an atomic checkpoint after each core. If QuPath stops, run the same file again. Completed cores are reused.
 
-When orientation processing finishes, CoreAlign shows a modal summary and writes `run_report.html` and `run_report.json` in the run folder. A message such as `PAUSED AT FINAL ORIENTATION REVIEW GATE` is an intentional human review stop, not a crash.
+When orientation processing finishes, CoreAlign shows a modal summary, refreshes `START-HERE.html`, and writes `run_report.json` in the run folder. A message such as `PAUSED AT FINAL ORIENTATION REVIEW GATE` is an intentional human review stop, not a crash.
 
 If a core needs correction:
 

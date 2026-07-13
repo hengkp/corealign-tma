@@ -1,6 +1,7 @@
 import ThemeToggle from "./theme-toggle";
 
 const repo = "https://github.com/hengkp/corealign-tma";
+const release = `${repo}/releases/latest`;
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export default function SiteHeader() {
@@ -11,14 +12,13 @@ export default function SiteHeader() {
         <span>CoreAlign <b>TMA</b></span>
       </a>
       <nav aria-label="Main navigation">
-        <a href={`${basePath}/#workflow`}>How it works</a>
-        <a href={`${basePath}/#outputs`}>Outputs</a>
-        <a href={`${basePath}/docs/`}>Documentation</a>
+        <a href={`${basePath}/docs/`}>Guide</a>
+        <a href={`${basePath}/config-builder/`}>Config</a>
+        <a href={repo}>GitHub</a>
       </nav>
       <div className="headerActions">
         <ThemeToggle />
-        <a className="textLink" href={repo}>GitHub</a>
-        <a className="button small" href={`${basePath}/config-builder/`}>Build config</a>
+        <a className="button small" href={release}><i className="ri-download-2-line" /> Download</a>
       </div>
     </header>
   );

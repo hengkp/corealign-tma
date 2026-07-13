@@ -13,11 +13,10 @@ test("exports the home page, config builder, and documentation", async () => {
 
 test("keeps the public website concise and English only", async () => {
   const html = await readFile(new URL("out/index.html", root), "utf8");
-  assert.match(html, /Turn one TMA slide into aligned core images/);
-  assert.match(html, /corealign-hero-light\.webp/);
-  assert.match(html, /corealign-hero-dark\.webp/);
-  assert.match(html, /corealign-workflow-v1\.webp/);
-  assert.match(html, /finds the array, core size, rows, columns, and useful channels/);
+  assert.match(html, /Aligned TMA cores without the repetitive work/);
+  assert.match(html, /One script\. Three clear steps/);
+  assert.match(html, /START-HERE\.html/);
+  assert.match(html, /rotates each core before cropping/);
   assert.doesNotMatch(html, /<video|\.mp4|Watch or download|Video tutorial/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
@@ -41,44 +40,36 @@ test("includes persistent navigation and a theme control on both pages", async (
 
   assert.match(home, /Toggle color theme/);
   assert.match(builder, /Toggle color theme/);
-  assert.match(builder, /How it works/);
-  assert.match(builder, /Outputs/);
-  assert.doesNotMatch(builder, />Tutorial</);
-  assert.match(builder, /Documentation/);
-  assert.match(builder, /Build config/);
-  assert.match(builder, /Choose two things\. CoreAlign handles the rest/);
+  assert.match(builder, /Two choices\. One ready-to-use config/);
+  assert.match(builder, /Geometry is automatic/);
   assert.match(builder, /Presentation images/);
-  assert.match(builder, /run the same script again/);
-  assert.match(builder, /reuses every accepted grid, rotation, and crop checkpoint/);
-  assert.match(builder, /analysis-ready QuPath project/);
-  assert.match(builder, /Detection is fully automatic/);
-  assert.match(builder, /No array geometry or punch size is required/);
+  assert.match(builder, /Research package/);
+  assert.match(builder, /No row count, column count, or core diameter is required/);
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
   assert.match(builder, /%22autoEstimateCoreDiameter%22%3A%20true/);
   assert.match(builder, /%22cropPaddingFactor%22%3A%201.9/);
-  assert.match(builder, /Channel name helper/);
+  assert.match(builder, /Optional channel words/);
   assert.doesNotMatch(builder, /Fallback rows|Fallback columns|Core-size seed|Profile name/);
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
-  assert.doesNotMatch(builder, /On this page/);
-  assert.match(docs, /One project folder\. Clear results at every step/);
-  assert.match(docs, /Documentation table of contents/);
-  assert.match(docs, /qc\/01-grid/);
-  assert.match(docs, /qc\/02-orientation/);
+  assert.match(docs, /Start with one file\. Follow one clear dashboard/);
+  assert.match(docs, /only workflow HTML file/);
+  assert.match(docs, /There are no separate review\.html, run_report\.html, or completion_report\.html pages/);
+  assert.match(docs, /01-grid/);
+  assert.match(docs, /02-orientation/);
   assert.match(docs, /results\/png/);
   assert.match(docs, /results\/ome-tiff/);
   assert.match(docs, /qupath\/project\.qpproj/);
   assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
-  assert.match(docs, /One annotation format/);
   assert.match(docs, /TMA orientation 4-C/);
   assert.match(docs, /TMA correction 4-C/);
-  assert.match(docs, /Why the ROI is now an ellipse/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.docsToc\s*\{[\s\S]*?position:\s*sticky/);
-  assert.match(css, /\.autoGeometryCard\s*\{[\s\S]*?display:\s*grid/);
+  assert.match(css, /\.automaticStrip\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
+  assert.match(css, /--bg:\s*#ffffff/);
 });
 
 test("keeps the website runtime lightweight", async () => {
@@ -112,9 +103,11 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /CoreAlign run finished: review required/);
   assert.match(groovy, /This is a planned review pause, not an error/);
   assert.match(groovy, /tma\.analysisProject\.status/);
-  assert.match(groovy, /completion_report\.html/);
+  assert.doesNotMatch(groovy, /new File\(completionDir, 'completion_report\.html'\)/);
   assert.match(groovy, /COMPLETE_HUMAN_APPROVED/);
   assert.match(groovy, /START-HERE\.html/);
+  assert.match(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
+  assert.match(groovy, /removeLegacyWorkflowHtml/);
   assert.match(groovy, /PROJECT-README\.txt/);
   assert.match(groovy, /qc\/01-grid/);
   assert.match(groovy, /qc\/02-orientation/);
@@ -164,9 +157,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /EXPORT-ONLY:/);
   assert.match(embeddedOrient, /MIGRATION: Reusing compatible earlier run/);
   assert.match(embeddedOrient, /CURRENT_PROCESSING_HASH/);
-  assert.match(embeddedOrient, /run_report\.html/);
+  assert.doesNotMatch(embeddedOrient, /setText\([^\n]*run_report\.html/);
   assert.match(embeddedOrient, /ORIENTATION_REVIEW_REQUIRED/);
-  assert.match(embeddedOrient, /LATEST_RUN_REPORT\.txt/);
+  assert.match(embeddedOrient, /LATEST_START_HERE\.txt/);
   assert.match(embeddedOrient, /checkpoint_fast_resume/);
   assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
   assert.match(embeddedOrient, /corealign\.work\.runBaseDir/);

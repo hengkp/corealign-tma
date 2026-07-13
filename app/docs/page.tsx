@@ -5,22 +5,11 @@ const release = "https://github.com/hengkp/corealign-tma/releases/latest";
 
 const toc = [
   ["overview", "Overview"],
-  ["project-folder", "Project folder"],
   ["run", "Run CoreAlign"],
-  ["grid-qc", "Grid QC"],
-  ["orientation-qc", "Orientation QC"],
-  ["annotation-names", "Annotation names"],
-  ["results", "Results"],
-  ["qupath", "QuPath project"],
-  ["resume", "Resume and upgrade"],
-  ["troubleshooting", "Troubleshooting"],
-];
-
-const resultFolders = [
-  { icon: "ri-image-line", path: "results/png/", title: "Presentation PNG", text: "Final full resolution RGB images. Each core is rotated first and cropped second." },
-  { icon: "ri-stack-line", path: "results/ome-tiff/", title: "Research OME-TIFF", text: "Rotated multichannel core images for quantitative analysis. Created in Research package mode." },
-  { icon: "ri-table-line", path: "results/tables/", title: "Tables and metadata", text: "Per-core coordinates, rotation, confidence, QC status, and reproducibility metadata." },
-  { icon: "ri-slideshow-3-line", path: "results/presentation/", title: "Optional panels", text: "Config-driven comparison panels when presentation mapping is enabled." },
+  ["review", "Review results"],
+  ["correct", "Correct a core"],
+  ["results", "Find your files"],
+  ["resume", "Resume or upgrade"],
 ];
 
 export default function Documentation() {
@@ -30,145 +19,96 @@ export default function Documentation() {
       <SiteHeader />
       <div className="docsShell">
         <aside className="docsToc" aria-label="Documentation table of contents">
-          <p>Documentation</p>
-          <nav>
-            {toc.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}
-          </nav>
-          <a className="docsDownload" href={release}><i className="ri-download-2-line" /> Download</a>
+          <p>CoreAlign guide</p>
+          <nav>{toc.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}</nav>
+          <a className="tocDownload" href={release}><i className="ri-download-2-line" /> Download</a>
         </aside>
 
         <article className="docsContent" id="docs-content">
           <header className="docsHero" id="overview">
-            <p className="kicker"><i className="ri-book-open-line" /> CoreAlign guide</p>
-            <h1>One project folder. Clear results at every step.</h1>
-            <p>CoreAlign organizes detection, orientation, export, and analysis files so you can find the current result without opening technical run folders.</p>
-            <div className="docsQuickLinks">
-              <a href="#project-folder"><i className="ri-folder-3-line" /> See the folder layout</a>
-              <a href="#run"><i className="ri-play-circle-line" /> Run the workflow</a>
-            </div>
+            <p className="kicker"><i className="ri-book-open-line" /> Documentation</p>
+            <h1>Start with one file. Follow one clear dashboard.</h1>
+            <p>CoreAlign organizes detection, orientation, review, and export in one project folder. Open <code>START-HERE.html</code> whenever you need the current status or next action.</p>
+            <div className="docsActions"><a className="button" href={release}>Download CoreAlign</a><a className="button secondary" href={`${basePath}/config-builder/`}>Create a config</a></div>
           </header>
 
-          <section className="docsSection" id="project-folder">
-            <p className="docsEyebrow">Start here</p>
-            <h2>Project folder</h2>
-            <p>Use one folder for one slide. Keep the slide, script, config, and generated folders together.</p>
-            <div className="folderTree" aria-label="CoreAlign project folder structure"><pre>{`my-project/
+          <section className="docsSection" id="run">
+            <p className="docsEyebrow">Quick start</p>
+            <h2>Run CoreAlign</h2>
+            <div className="folderTree"><pre>{`my-project/
 |-- slide.ome.tif
 |-- CoreAlign.groovy
-|-- corealign.config.json
+|-- corealign.config.json   optional
 |-- START-HERE.html
-|-- PROJECT-README.txt
 |-- qc/
 |   |-- 01-grid/
 |   +-- 02-orientation/
 |-- results/
 |   |-- png/
 |   |-- ome-tiff/
-|   |-- tables/
-|   +-- presentation/
+|   +-- tables/
 |-- qupath/
 +-- work/`}</pre></div>
-            <div className="docsCallout"><i className="ri-home-4-line" /><div><b>Open START-HERE.html first</b><span>It shows the current stage and links directly to the latest QC, results, and QuPath project.</span></div></div>
-          </section>
-
-          <section className="docsSection" id="run">
-            <p className="docsEyebrow">Workflow</p>
-            <h2>Run CoreAlign</h2>
             <div className="docsSteps">
-              <article><span>1</span><div><h3>Prepare</h3><p>Put the slide and CoreAlign.groovy in the same folder. Add one optional config file.</p></div></article>
-              <article><span>2</span><div><h3>Detect</h3><p>Open the slide in QuPath and run CoreAlign.groovy. Review the circles in qc/01-grid.</p></div></article>
-              <article><span>3</span><div><h3>Orient</h3><p>Run the same script again after grid approval. Review flagged cores in qc/02-orientation.</p></div></article>
-              <article><span>4</span><div><h3>Approve</h3><p>Confirm the final review. Use the images in results or open the project in qupath.</p></div></article>
+              <article><span>1</span><div><h3>Prepare</h3><p>Put the slide and CoreAlign.groovy in the same folder. Add one optional config.</p></div></article>
+              <article><span>2</span><div><h3>Run</h3><p>Open the slide in QuPath. Open the script in Script Editor and press Run.</p></div></article>
+              <article><span>3</span><div><h3>Review</h3><p>Open START-HERE.html. Check the requested QC, correct if needed, then run the same script again.</p></div></article>
             </div>
+            <div className="docsCallout"><i className="ri-information-line" /><div><b>A pause is usually intentional</b><span>CoreAlign stops at review gates. Accepted work is saved and does not need to run again.</span></div></div>
           </section>
 
-          <section className="docsSection" id="grid-qc">
-            <p className="docsEyebrow">Step 1 output</p>
-            <h2>qc/01-grid</h2>
-            <p>This folder answers one question: did CoreAlign find the correct TMA positions?</p>
-            <div className="docsFileList">
-              <div><code>*_grid_qc_latest.png</code><span>Whole-slide view with circles, labels, and connecting lines.</span></div>
-              <div><code>*_grid_coordinates_latest.csv</code><span>Current row, column, center, diameter, missing state, and detection source.</span></div>
-              <div><code>*_structural_qc.json</code><span>Row and column coverage checks used before approval.</span></div>
+          <section className="docsSection" id="review">
+            <p className="docsEyebrow">Your project dashboard</p>
+            <h2>Review everything in START-HERE.html</h2>
+            <p>This is the only workflow HTML file. Use its tabs to move between Grid QC, Orientation QC, Results, and Help.</p>
+            <div className="featureList">
+              <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Check that every circle covers the correct core and every row and column is present.</span></div>
+              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Review only flagged cores and compare rotated previews.</span></div>
+              <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
             </div>
-            <div className="docsLegend"><span className="cyan">Automatic</span><span className="green">Human corrected</span><span className="red">Missing</span></div>
+            <p className="docsSmall">Technical data remains available as JSON and CSV. There are no separate review.html, run_report.html, or completion_report.html pages.</p>
           </section>
 
-          <section className="docsSection" id="orientation-qc">
-            <p className="docsEyebrow">Step 2 output</p>
-            <h2>qc/02-orientation</h2>
-            <p>This folder contains the latest rotation and crop review. Start with the report, then inspect only the flagged cores.</p>
-            <div className="docsFileList">
-              <div><code>run_report.html</code><span>Run status, counts, duration, flagged cores, and next action.</span></div>
-              <div><code>review.html</code><span>Filterable visual review of each rotated core.</span></div>
-              <div><code>orientation_contact_sheet.png</code><span>All core positions in row and column order.</span></div>
-              <div><code>rotated_previews/</code><span>Small images used by the visual review page.</span></div>
+          <section className="docsSection" id="correct">
+            <p className="docsEyebrow">Human correction in QuPath</p>
+            <h2>Correct only the core that needs attention</h2>
+            <p>Use the same action-first naming pattern for automatic and manual annotations.</p>
+            <div className="nameTable">
+              <div><code>TMA orientation 4-C</code><span>Automatic ellipse for the refined core footprint.</span></div>
+              <div><code>TMA correction 4-C</code><span>Correct a missed or misplaced detection.</span></div>
+              <div><code>TMA mark missing 4-C</code><span>Mark a truly empty position.</span></div>
+              <div><code>TMA crop override 4-C</code><span>Replace the crop footprint for one core.</span></div>
+              <div><code>Epidermis override 4-C</code><span>Mark the true epidermal side for one skin core.</span></div>
             </div>
-          </section>
-
-          <section className="docsSection" id="annotation-names">
-            <p className="docsEyebrow">QuPath object list</p>
-            <h2>One annotation format</h2>
-            <p>Every annotation uses the action first and the assigned position second. This keeps automatic QC and manual edits together in a predictable order.</p>
-            <div className="docsFileList annotationList">
-              <div><code>TMA orientation 4-C</code><span>Automatic ellipse showing the refined rotate-then-crop footprint.</span></div>
-              <div><code>TMA correction 4-C</code><span>Ellipse that corrects a missed or misplaced core.</span></div>
-              <div><code>TMA mark missing 4-C</code><span>Marks a truly empty grid position.</span></div>
-              <div><code>TMA crop override 4-C</code><span>Manual crop ellipse or rectangle.</span></div>
-              <div><code>Epidermis override 4-C</code><span>Small object placed on the true epidermal side.</span></div>
-            </div>
-            <div className="docsCallout"><i className="ri-shape-line" /><div><b>Why the ROI is now an ellipse</b><span>The previous automatic object used a line only to show epidermis direction. CoreAlign now shows the refined circular core footprint and stores direction, rotation, confidence, and QC status as metadata.</span></div></div>
-          </section>
-
-          <section className="docsSection" id="results">
-            <p className="docsEyebrow">Final files</p>
-            <h2>results</h2>
-            <p>Open only the folder that matches your next task.</p>
-            <div className="resultFolderGrid">
-              {resultFolders.map((folder) => (
-                <article key={folder.path}>
-                  <i className={folder.icon} />
-                  <code>{folder.path}</code>
-                  <h3>{folder.title}</h3>
-                  <p>{folder.text}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="docsSection" id="qupath">
-            <p className="docsEyebrow">Analysis</p>
-            <h2>qupath</h2>
-            <p>Research package mode creates <code>qupath/project.qpproj</code> after final human approval. Each non-missing core is a separate ordered image entry with row, column, QC, and transform metadata.</p>
             <ol className="docsSimpleList">
-              <li>In QuPath, choose File, Project, Open project.</li>
-              <li>Select <code>qupath/project.qpproj</code>.</li>
-              <li>Use the core entries for downstream analysis.</li>
+              <li>Select the ellipse or draw a new ellipse over the correct core.</li>
+              <li>Give it the matching action and row-column name, for example <code>TMA correction 4-C</code>.</li>
+              <li>Run CoreAlign.groovy again. The full QC summary is refreshed, but unchanged cores are reused.</li>
             </ol>
           </section>
 
+          <section className="docsSection" id="results">
+            <p className="docsEyebrow">Easy-to-find outputs</p>
+            <h2>Open the folder for your next task</h2>
+            <div className="resultGrid">
+              <article><i className="ri-image-line" /><code>results/png/</code><h3>Presentation images</h3><p>Full resolution PNG files. Each core is rotated first, then cropped.</p></article>
+              <article><i className="ri-stack-line" /><code>results/ome-tiff/</code><h3>Research images</h3><p>Rotated multichannel OME-TIFF files for quantitative analysis.</p></article>
+              <article><i className="ri-table-line" /><code>results/tables/</code><h3>Metadata</h3><p>Position, rotation, confidence, QC status, and reproducibility data.</p></article>
+              <article><i className="ri-microscope-line" /><code>qupath/project.qpproj</code><h3>QuPath project</h3><p>Ordered core entries with row, column, QC, and transform metadata.</p></article>
+            </div>
+          </section>
+
           <section className="docsSection" id="resume">
-            <p className="docsEyebrow">No repeated work</p>
-            <h2>Resume and upgrade</h2>
-            <p>The <code>work/</code> folder stores approved state and per-core checkpoints. Run the same script again after a stop or correction. CoreAlign processes only changed or incomplete cores.</p>
-            <div className="docsCallout violet"><i className="ri-history-line" /><div><b>PNG to Research package</b><span>Replace the config with a Research package config and run again. Existing detection, rotation, and crop checkpoints are reused.</span></div></div>
-            <p className="docsSmall">Projects made with an older CoreAlign version can still read legacy tma_* folders. New files are published into the clear folder layout above.</p>
+            <p className="docsEyebrow">Saved checkpoints</p>
+            <h2>Resume or upgrade without starting over</h2>
+            <p>The <code>work/</code> folder stores approved state and per-core checkpoints. Run the same script after a correction, interruption, or config output change.</p>
+            <div className="docsCallout purple"><i className="ri-history-line" /><div><b>Presentation to Research package</b><span>Create a Research package config, replace the old config, and run again. Accepted detection, rotation, and crop work is reused.</span></div></div>
+            <details><summary>CoreAlign stopped after processing</summary><p>Open START-HERE.html. It shows whether the workflow is waiting for grid or orientation review and gives the next action.</p></details>
+            <details><summary>A circle or crop is wrong</summary><p>Add the matching correction annotation in QuPath and run again. Other accepted core checkpoints remain unchanged.</p></details>
+            <details><summary>OME-TIFF files are missing</summary><p>The current config is probably set to Presentation images. Create a Research package config and rerun the same project folder.</p></details>
           </section>
 
-          <section className="docsSection" id="troubleshooting">
-            <p className="docsEyebrow">Quick checks</p>
-            <h2>Troubleshooting</h2>
-            <details><summary>START-HERE.html says Grid ready for review</summary><p>Inspect qc/01-grid in QuPath. Correct missed or misplaced circles, then run CoreAlign.groovy again.</p></details>
-            <details><summary>A core rotation or crop is wrong</summary><p>Add the documented orientation or crop override to that core and run again. Other accepted checkpoints are preserved.</p></details>
-            <details><summary>results/ome-tiff is empty</summary><p>Your config is set to Presentation images. Create a Research package config and run the same slide folder again.</p></details>
-            <details><summary>The workflow stopped</summary><p>Open qc/02-orientation/run_report.html. It explains whether the stop is a planned review gate or an error and lists the next action.</p></details>
-          </section>
-
-          <div className="docsEnd">
-            <h2>Ready to prepare a slide?</h2>
-            <a className="button" href={release}>Download CoreAlign</a>
-            <a className="button ghost" href={`${basePath}/config-builder/`}>Create config</a>
-          </div>
+          <div className="docsEnd"><h2>Ready to prepare a slide?</h2><div><a className="button" href={release}>Download</a><a className="button secondary" href={`${basePath}/config-builder/`}>Create config</a></div></div>
         </article>
       </div>
     </main>

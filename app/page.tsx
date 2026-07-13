@@ -1,20 +1,25 @@
-const repo = "https://github.com/hengkp/corealign-tma";
-const release = `${repo}/releases/latest`;
 import SiteHeader from "./site-header";
 
+const repo = "https://github.com/hengkp/corealign-tma";
+const release = `${repo}/releases/latest`;
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const path = (value: string) => `${basePath}${value}`;
 
-const steps = [
-  { icon: "ri-folder-open-line", number: "1", title: "Put the files together", text: "Keep the slide, CoreAlign.groovy, and optional config in one folder." },
-  { icon: "ri-play-circle-line", number: "2", title: "Press Run in QuPath", text: "CoreAlign finds the array, core size, rows, columns, and useful channels." },
-  { icon: "ri-eye-line", number: "3", title: "Check the result", text: "Confirm the grid and review only the cores that CoreAlign flags." },
-  { icon: "ri-crop-2-line", number: "4", title: "Use the aligned images", text: "Each core is rotated first, cropped second, and saved at source quality." },
-];
-
-const outputs = [
-  { icon: "ri-slideshow-3-line", label: "results/png", title: "Full resolution PNG", text: "Fast, lossless images ready for PowerPoint, figures, and contact sheets." },
-  { icon: "ri-stack-line", label: "results/ome-tiff and qupath", title: "Research package", text: "Rotated multichannel images and an ordered QuPath core project with QC metadata." },
+const workflow = [
+  {
+    icon: "ri-folder-open-line",
+    title: "Prepare one folder",
+    text: "Add your slide and CoreAlign.groovy. A config is optional.",
+  },
+  {
+    icon: "ri-play-circle-line",
+    title: "Run in QuPath",
+    text: "CoreAlign finds the array, estimates core size, rotates each core, then crops it.",
+  },
+  {
+    icon: "ri-eye-line",
+    title: "Review and use",
+    text: "Open START-HERE.html, check flagged cores, and continue with the saved results.",
+  },
 ];
 
 export default function Home() {
@@ -23,48 +28,49 @@ export default function Home() {
       <a className="skipLink" href="#content">Skip to content</a>
       <SiteHeader />
 
-      <section className="brandHero simpleHero" id="content">
-        <h1 className="srOnly">CoreAlign TMA for QuPath</h1>
-        <figure className="brandHeroFrame reveal">
-          {/* Generated illustrations contain no real specimen data. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="heroLightImage" src={path("/images/corealign-hero-light.webp")} alt="Generated example of aligned TMA cores" />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="heroDarkImage" src={path("/images/corealign-hero-dark.webp")} alt="Generated example of aligned TMA cores in dark mode" />
-          <figcaption><i className="ri-sparkling-2-line" /> Generated example</figcaption>
-        </figure>
-        <div className="heroSummary reveal delayOne">
-          <div>
-            <p className="kicker"><i className="ri-microscope-line" /> TMA preparation for QuPath</p>
-            <h2>Turn one TMA slide into aligned core images.</h2>
-            <p>CoreAlign finds each core, rotates it consistently, then crops and saves it. You check the result instead of repeating the same work by hand.</p>
+      <section className="homeHero" id="content">
+        <div className="heroCopy">
+          <p className="kicker"><i className="ri-microscope-line" /> TMA preparation for QuPath</p>
+          <h1>Aligned TMA cores without the repetitive work.</h1>
+          <p className="lead">CoreAlign detects the array, rotates each core before cropping, and saves presentation or research-ready files. You review only what needs attention.</p>
+          <div className="heroActions">
+            <a className="button" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
+            <a className="button secondary" href={`${basePath}/config-builder/`}><i className="ri-magic-line" /> Create a config</a>
           </div>
-          <div className="heroSummaryActions">
-            <div className="heroActions">
-              <a className="button" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
-              <a className="button ghost" href={path("/config-builder/")}><i className="ri-settings-3-line" /> Create config</a>
+          <div className="heroNote"><i className="ri-shield-check-line" /><span><b>Human checked.</b> Work is saved after each core, so you can correct and continue.</span></div>
+        </div>
+
+        <div className="productPreview" aria-label="Example CoreAlign project dashboard">
+          <div className="previewBar">
+            <span><i className="ri-focus-3-line" /> START-HERE.html</span>
+            <span className="previewReady"><i className="ri-checkbox-blank-circle-fill" /> Review ready</span>
+          </div>
+          <div className="previewContent">
+            <div className="previewTitle"><span>Current slide</span><h2>Skin TMA</h2><p>Automatic orientation complete</p></div>
+            <div className="previewMetrics">
+              <div><strong>126</strong><span>Core positions</span></div>
+              <div><strong>121</strong><span>QC pass</span></div>
+              <div className="needsReview"><strong>5</strong><span>Review</span></div>
             </div>
-            <div className="quickStart"><i className="ri-timer-flash-line" /><div><b>Less time at the computer</b><span>No row or column setup for a normal run</span></div></div>
+            <div className="coreStrip" aria-hidden="true">
+              {Array.from({ length: 18 }).map((_, index) => <span className={index === 7 || index === 14 ? "flag" : ""} key={index} />)}
+            </div>
+            <div className="previewAction"><span><i className="ri-eye-line" /> Review flagged cores</span><i className="ri-arrow-right-line" /></div>
           </div>
         </div>
       </section>
 
-      <section className="section workflowSection" id="workflow">
-        <div className="sectionIntro compactIntro">
+      <section className="homeSection" id="workflow">
+        <div className="sectionHeading">
           <p className="eyebrow">How it works</p>
-          <h2>Four steps. One script.</h2>
-          <p>Start with the automatic settings. CoreAlign pauses when a person needs to check the result.</p>
+          <h2>One script. Three clear steps.</h2>
+          <p>Start with the automatic settings. CoreAlign pauses only when your review is needed.</p>
         </div>
-        <figure className="workflowVisual">
-          {/* GPT Image 2 generated visual. No real specimen data. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={path("/images/corealign-workflow-v1.webp")} alt="Generated four-stage CoreAlign workflow from TMA slide to aligned core files" />
-          <figcaption>Generated workflow visual. No patient or specimen data.</figcaption>
-        </figure>
-        <div className="stepGrid fourSteps compactSteps">
-          {steps.map((step) => (
-            <article className="stepCard" key={step.number}>
-              <div><span>{step.number}</span><i className={step.icon} /></div>
+        <div className="workflowCards">
+          {workflow.map((step, index) => (
+            <article key={step.title}>
+              <div className={`stepIcon color${index + 1}`}><i className={step.icon} /></div>
+              <span>Step {index + 1}</span>
               <h3>{step.title}</h3>
               <p>{step.text}</p>
             </article>
@@ -72,46 +78,32 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section outputSection" id="outputs">
-        <div className="sectionIntro compactIntro">
-          <p className="eyebrow">What you get</p>
-          <h2>Choose the files you need.</h2>
+      <section className="homeSection outputBand" id="outputs">
+        <div className="sectionHeading compact">
+          <p className="eyebrow">Choose your output</p>
+          <h2>Ready for your next task.</h2>
         </div>
-        <div className="outputGrid simpleOutputs">
-          {outputs.map((output) => (
-            <article key={output.title}>
-              <div className="outputIcon"><i className={output.icon} /></div>
-              <div><p>{output.label}</p><h3>{output.title}</h3><span>{output.text}</span></div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="section validationSection compactSafety" id="review">
-        <div>
-          <p className="eyebrow">You stay in control</p>
-          <h2>Automation prepares the images. You approve the result.</h2>
-        </div>
-        <div className="validationCopy">
-          <p>CoreAlign saves completed work after every core and stops when the grid or orientation needs attention.</p>
-          <div><i className="ri-eye-line" /><span><b>Quick review</b> Check the grid and flagged cores before export.</span></div>
-          <div><i className="ri-save-3-line" /><span><b>Safe resume</b> Continue without starting the whole slide again.</span></div>
+        <div className="outputCards">
+          <article>
+            <i className="ri-slideshow-3-line" />
+            <div><h3>Presentation images</h3><p>Full resolution PNG files for slides, figures, and visual comparison.</p><code>results/png/</code></div>
+          </article>
+          <article>
+            <i className="ri-stack-line" />
+            <div><h3>Research package</h3><p>Multichannel OME-TIFF files plus an ordered QuPath core project.</p><code>results/ome-tiff/</code></div>
+          </article>
         </div>
       </section>
 
-      <section className="finalCta">
-        <div><p className="eyebrow">Start here</p><h2>Download one script and open your slide in QuPath.</h2></div>
-        <div>
-          <a className="button light" href={release}>Download CoreAlign <i className="ri-arrow-right-line" /></a>
-          <a className="button outlineLight" href={path("/config-builder/")}>Create config</a>
-          <a className="button outlineLight" href={path("/docs/")}>Read the guide</a>
-        </div>
+      <section className="startCta">
+        <div><p className="eyebrow">Ready to start</p><h2>Download the script, open your slide, and press Run.</h2></div>
+        <a className="button" href={release}>Download latest release <i className="ri-arrow-right-line" /></a>
       </section>
 
       <footer>
-        <a className="siteBrand" href={path("/")}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
+        <a className="siteBrand" href={`${basePath}/`}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
         <p>Research software for TMA image preparation. Review results before clinical use.</p>
-        <div><a href={repo}>GitHub</a><a href={path("/docs/")}>Documentation</a><a href={release}>Download</a></div>
+        <div><a href={`${basePath}/docs/`}>Guide</a><a href={`${basePath}/config-builder/`}>Config</a><a href={repo}>GitHub</a></div>
       </footer>
     </main>
   );
