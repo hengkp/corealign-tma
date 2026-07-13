@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.8.1
+## Current workflow: v1.8.2
 
-Version 1.8.1 simplifies Orientation QC to one Edit button per core. Edit reveals only a rotation slider with Reset, Cancel, and Confirm. Confirmed cores appear under the Changes filter, and one compact Download changes bar creates the reusable full-resolution correction file. Grid QC keeps brighter tissue rendering and true Fit-to-view behavior. A config file is optional.
+Version 1.8.2 lets reviewers confirm a correct core directly from its card. The card then leaves Needs review and appears under QC pass. A direct confirmation needs no downloaded file. Edit remains available only when the angle needs adjustment, and Save angle changes appears only for actual angle changes. Grid QC keeps brighter tissue rendering and true Fit-to-view behavior. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -49,7 +49,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Open `START-HERE.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations, add an override only where needed, and resume.
+8. Review uncertain orientations. Confirm correct cards directly. If an angle is wrong, edit it and save `corealign-review-corrections.json` beside the slide and script. Then resume.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
