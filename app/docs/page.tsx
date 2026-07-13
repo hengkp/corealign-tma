@@ -9,6 +9,7 @@ const toc = [
   ["run", "Run CoreAlign"],
   ["grid-qc", "Grid QC"],
   ["orientation-qc", "Orientation QC"],
+  ["annotation-names", "Annotation names"],
   ["results", "Results"],
   ["qupath", "QuPath project"],
   ["resume", "Resume and upgrade"],
@@ -103,6 +104,20 @@ export default function Documentation() {
               <div><code>orientation_contact_sheet.png</code><span>All core positions in row and column order.</span></div>
               <div><code>rotated_previews/</code><span>Small images used by the visual review page.</span></div>
             </div>
+          </section>
+
+          <section className="docsSection" id="annotation-names">
+            <p className="docsEyebrow">QuPath object list</p>
+            <h2>One annotation format</h2>
+            <p>Every annotation uses the action first and the assigned position second. This keeps automatic QC and manual edits together in a predictable order.</p>
+            <div className="docsFileList annotationList">
+              <div><code>TMA orientation 4-C</code><span>Automatic ellipse showing the refined rotate-then-crop footprint.</span></div>
+              <div><code>TMA correction 4-C</code><span>Ellipse that corrects a missed or misplaced core.</span></div>
+              <div><code>TMA mark missing 4-C</code><span>Marks a truly empty grid position.</span></div>
+              <div><code>TMA crop override 4-C</code><span>Manual crop ellipse or rectangle.</span></div>
+              <div><code>Epidermis override 4-C</code><span>Small object placed on the true epidermal side.</span></div>
+            </div>
+            <div className="docsCallout"><i className="ri-shape-line" /><div><b>Why the ROI is now an ellipse</b><span>The previous automatic object used a line only to show epidermis direction. CoreAlign now shows the refined circular core footprint and stores direction, rotation, confidence, and QC status as metadata.</span></div></div>
           </section>
 
           <section className="docsSection" id="results">

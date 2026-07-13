@@ -62,6 +62,8 @@ If a core needs correction:
 
 - Use `TMA crop override <core name>` when the source region includes neighboring tissue.
 - Use `Epidermis override <core name>` to point to the true epidermal side.
+- Automatic orientation QC appears as an ellipse named `TMA orientation <core name>`. Older `<core name> epidermis` line objects are removed on the next run.
+- When an unnamed manual object is assigned successfully, CoreAlign renames it to the same action-first format, such as `TMA correction 4-C`.
 - Run the same file again. Only changed cores are recomputed.
 
 ## Output modes and expected time

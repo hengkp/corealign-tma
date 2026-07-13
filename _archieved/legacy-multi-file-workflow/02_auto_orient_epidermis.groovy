@@ -10,7 +10,7 @@
  *   3. Reads a rotation-safe window from the original slide.
  *   4. Rotates that window first, then crops the final individual core.
  *   5. Saves lossless full-resolution PNG, native OME-TIFF source crop,
- *      previews, contact sheet, review HTML, CSV, and QuPath direction arrows.
+ *      previews, contact sheet, review HTML, CSV, and circular QuPath QC ROIs.
  *
  * Manual override:
  *   Draw a tiny annotation/dot on the epidermis side of a core and set its class
@@ -122,7 +122,8 @@ def COMPATIBLE_LEGACY_PROFILE_HASHES =
 def json = new GsonBuilder().setPrettyPrinting().create()
 
 String DETECTED_CLASS_NAME = 'TMA core (detected)'
-String ARROW_CLASS_NAME = 'Epidermis direction'
+String ORIENTATION_QC_CLASS_NAME = 'TMA orientation QC'
+String LEGACY_DIRECTION_CLASS_NAME = 'Epidermis direction'
 String OVERRIDE_CLASS_NAME = cfgString('tma.orientation.overrideClassName', 'Epidermis override')
 String CROP_OVERRIDE_CLASS_NAME = cfgString('tma.orientation.cropOverrideClassName',
     'TMA crop override')
@@ -1328,12 +1329,17 @@ println "Output: ${outDir.getAbsolutePath()}"
 println "Approved grid hash: ${gridHash}"
 println "Per-core export: rotate source-support window first, crop second; downsample ${EXPORT_DOWNSAMPLE}; source OME-TIFF ${SAVE_NATIVE_OME_TIFF}; rotated multichannel OME-TIFF ${SAVE_ROTATED_MULTICHANNEL_OME_TIFF}"
 
-def arrowClass = makePathClass(ARROW_CLASS_NAME, COLOR_OK)
-def overrideClass = makePathClass(OVERRIDE_CLASS_NAME, COLOR_OVERRIDE)
-def oldArrows = hierarchy.getAnnotationObjects().findAll { classNameOf(it) == ARROW_CLASS_NAME }
-if (!oldArrows.isEmpty()) {
-    hierarchy.removeObjects(oldArrows, true)
-    println "Removed ${oldArrows.size()} old direction arrows"
+def orientationQcClass = makePathClass(ORIENTATION_QC_CLASS_NAME, COLOR_OK)
+def oldOrientationQc = hierarchy.getAnnotationObjects().findAll {
+    String className = classNameOf(it) ?: ''
+    String objectName = objectNameOf(it) ?: ''
+    return className == ORIENTATION_QC_CLASS_NAME ||
+        className == LEGACY_DIRECTION_CLASS_NAME ||
+        objectName ==~ /(?i)^\d+-[A-Za-z]+ epidermis$/
+}
+if (!oldOrientationQc.isEmpty()) {
+    hierarchy.removeObjects(oldOrientationQc, true)
+    println "Removed ${oldOrientationQc.size()} old CoreAlign orientation QC objects"
 }
 
 def overrideObjects = hierarchy.getAnnotationObjects().findAll {
@@ -1398,7 +1404,7 @@ def findCropOverride = { String coreName, double cx, double cy, double radius ->
 // -------------------------------------------------------------------------
 
 def records = []
-def newArrows = []
+def newOrientationQc = []
 int okCount = 0
 int reviewCount = 0
 int failCount = 0
@@ -1548,6 +1554,14 @@ coreEntries.each { entry ->
     def analysisRegion = null
     def analysisRgb = null
     def override = missing ? null : findOverride(cx, cy, radius)
+    if (cropOverride != null) {
+        try { cropOverride.obj.setName("${CROP_OVERRIDE_CLASS_NAME} ${coreName}") }
+        catch (Throwable ignored) {}
+    }
+    if (override != null) {
+        try { override.obj.setName("${OVERRIDE_CLASS_NAME} ${coreName}") }
+        catch (Throwable ignored) {}
+    }
     String overrideSignature = override == null ? 'none' :
         [override.obj.getID(), format3(override.x as double), format3(override.y as double)].join('|')
     String cropOverrideSignature = cropOverride == null ? 'none' :
@@ -1894,17 +1908,30 @@ coreEntries.each { entry ->
     try { core.setColor(color) } catch (Throwable ignored) {}
 
     if (!missing && !['no_tissue', 'processing_error'].contains(result.status)) {
-        double arrowLen = radius * 0.72d
-        double ex = cx + Math.cos(result.angle as double) * arrowLen
-        double ey = cy + Math.sin(result.angle as double) * arrowLen
         try {
-            def roi = ROIs.createLineROI(cx, cy, ex, ey, ImagePlane.getDefaultPlane())
-            def ann = PathObjects.createAnnotationObject(roi, arrowClass)
-            ann.setName("${coreName} epidermis")
+            // Use the refined crop footprint as an ellipse. The previous
+            // direction line made the annotation list look like the core ROI
+            // itself was linear, although TMA grid cores are circular.
+            def roi = ROIs.createEllipseROI(cx - radius, cy - radius,
+                diameter, diameter, ImagePlane.getDefaultPlane())
+            def ann = PathObjects.createAnnotationObject(roi, orientationQcClass)
+            ann.setName("TMA orientation ${coreName}")
             ann.setColor(color)
-            newArrows << ann
-        } catch (Throwable arrowError) {
-            println "WARNING: Could not create direction arrow for ${coreName}: ${arrowError.getMessage()}"
+            def metadata = ann.getMetadata()
+            metadata.put('CoreAlign core', coreName)
+            metadata.put('CoreAlign ROI role', 'refined_rotate_then_crop_footprint')
+            metadata.put('CoreAlign orientation status', result.status.toString())
+            metadata.put('CoreAlign orientation method',
+                (result.method ?: 'unknown').toString())
+            metadata.put('CoreAlign epidermis angle deg',
+                format1(angleToDegrees(result.angle as double)))
+            metadata.put('CoreAlign rotate to top deg',
+                format1(angleToDegrees(rotateRad)))
+            metadata.put('CoreAlign confidence',
+                format3(result.confidence as double))
+            newOrientationQc << ann
+        } catch (Throwable qcObjectError) {
+            println "WARNING: Could not create ellipse QC object for ${coreName}: ${qcObjectError.getMessage()}"
         }
     }
 
@@ -1986,7 +2013,7 @@ coreEntries.each { entry ->
     }
 }
 
-if (!newArrows.isEmpty()) hierarchy.addObjects(newArrows)
+if (!newOrientationQc.isEmpty()) hierarchy.addObjects(newOrientationQc)
 try { fireHierarchyUpdate() } catch (Throwable ignored) {}
 
 // -------------------------------------------------------------------------

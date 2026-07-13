@@ -570,7 +570,7 @@ try {
     float lineWidth = (float) Math.max(1.5d, Math.min(4.0d,
         overviewWidth / 1000.0d))
 
-    qg.setStroke(new BasicStroke(Math.max(1.0f, lineWidth * 0.55f)))
+    qg.setStroke(new BasicStroke((float) Math.max(1.0f, lineWidth * 0.55f)))
     qg.setColor(new Color(255, 255, 255, 80))
     for (int row = 0; row < grid.getGridHeight(); row++) {
         for (int col = 0; col + 1 < gridCols; col++) {
@@ -593,7 +593,7 @@ try {
         }
     }
 
-    qg.setStroke(new BasicStroke(lineWidth))
+    qg.setStroke(new BasicStroke((float) lineWidth))
     qg.setFont(new Font('SansSerif', Font.BOLD,
         Math.max(10, Math.min(15, (int) Math.round(overviewWidth / 180.0d)))))
     int totalHumanCorrected = 0

@@ -69,6 +69,10 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /results\/ome-tiff/);
   assert.match(docs, /qupath\/project\.qpproj/);
   assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
+  assert.match(docs, /One annotation format/);
+  assert.match(docs, /TMA orientation 4-C/);
+  assert.match(docs, /TMA correction 4-C/);
+  assert.match(docs, /Why the ROI is now an ellipse/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
@@ -167,6 +171,13 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
   assert.match(embeddedOrient, /corealign\.work\.runBaseDir/);
   assert.match(embeddedOrient, /corealign\.legacy\.runBaseDir/);
+  assert.match(embeddedOrient, /ROIs\.createEllipseROI\(cx - radius, cy - radius/);
+  assert.match(embeddedOrient, /ann\.getMetadata\(\)/);
+  assert.match(embeddedOrient, /ann\.setName\("TMA orientation \$\{coreName\}"\)/);
+  assert.match(embeddedOrient, /cropOverride\.obj\.setName\("\$\{CROP_OVERRIDE_CLASS_NAME\} \$\{coreName\}"\)/);
+  assert.match(embeddedOrient, /override\.obj\.setName\("\$\{OVERRIDE_CLASS_NAME\} \$\{coreName\}"\)/);
+  assert.doesNotMatch(embeddedOrient, /ROIs\.createLineROI/);
+  assert.doesNotMatch(embeddedOrient, /ann\.setName\("\$\{coreName\} epidermis"\)/);
   assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
 
   for (const [step, name, sourcePath] of [
