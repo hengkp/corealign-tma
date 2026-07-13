@@ -110,6 +110,15 @@ boolean ALLOW_ANNOTATION_FALLBACK_WITHOUT_GRID =
 String ORIENTATION_ALGORITHM_VERSION = cfgString('tma.orientation.algorithmVersion',
     'skin-epidermis-orient-3.7-rotated-multichannel')
 String CURRENT_PROFILE_HASH = System.getProperty('tma.config.profileHash', '')
+String CURRENT_PROCESSING_HASH = System.getProperty('tma.config.processingHash',
+    CURRENT_PROFILE_HASH)
+String CURRENT_OUTPUT_HASH = System.getProperty('tma.config.outputHash',
+    CURRENT_PROFILE_HASH)
+String CURRENT_DETECTION_CONFIG_HASH = System.getProperty('tma.config.detectionHash',
+    CURRENT_PROFILE_HASH)
+def COMPATIBLE_LEGACY_PROFILE_HASHES =
+    System.getProperty('tma.config.compatibleLegacyProfileHashes', CURRENT_PROFILE_HASH)
+        .split(',').collect { it.trim() }.findAll { !it.isEmpty() } as Set
 def json = new GsonBuilder().setPrettyPrinting().create()
 
 String DETECTED_CLASS_NAME = 'TMA core (detected)'
@@ -1232,9 +1241,13 @@ boolean approvalMatches = approval.status == 'APPROVED' &&
     approval.gridHash == gridHash && approval.imageName == imageNameForApproval &&
     (approval.imageWidth as long) == server.getWidth() &&
     (approval.imageHeight as long) == server.getHeight() &&
-    (approval.profileHash == null || approval.profileHash == CURRENT_PROFILE_HASH) &&
     (approval.approvalMode == 'human' ||
-        'true'.equalsIgnoreCase(System.getProperty('tma.approveForTest', 'false')))
+        ('true'.equalsIgnoreCase(System.getProperty('tma.approveForTest', 'false')) &&
+            ((approval.detectionConfigHash != null &&
+                approval.detectionConfigHash == CURRENT_DETECTION_CONFIG_HASH) ||
+             (approval.detectionConfigHash == null &&
+                (approval.profileHash == null ||
+                    approval.profileHash == CURRENT_PROFILE_HASH)))))
 if (!approvalMatches) {
     System.setProperty('tma.orientation.status', 'BLOCKED_GRID_CHANGED')
     Dialogs.showErrorMessage('Auto-orient TMA — grid changed',
@@ -1244,14 +1257,36 @@ if (!approvalMatches) {
     return
 }
 
-// Grid, profile, algorithm, and export geometry jointly identify a resumable
-// run.  A new rotation/crop algorithm never silently overwrites an older run.
-String runIdentity = sha256([gridHash, CURRENT_PROFILE_HASH,
+// Grid and processing settings identify a resumable run. Delivery switches
+// intentionally do not: a later research package reuses the accepted angle
+// and crop, then backfills only missing files.
+String runIdentity = sha256([gridHash, CURRENT_PROCESSING_HASH,
     ORIENTATION_ALGORITHM_VERSION, EXPORT_DOWNSAMPLE, CROP_SCALE,
-    ROTATION_SUPPORT_SCALE, SAVE_NATIVE_OME_TIFF,
-    SAVE_ROTATED_MULTICHANNEL_OME_TIFF].join('|')).substring(0, 12)
+    ROTATION_SUPPORT_SCALE].join('|')).substring(0, 12)
 def outDir = new File(exportBaseDir,
     "${imageStem}_grid_${gridHash.substring(0, 12)}_orient_${runIdentity}")
+File latestRunPointer = new File(exportBaseDir, 'LATEST_FINAL_RUN.txt')
+if (!new File(outDir, 'checkpoints').isDirectory() && latestRunPointer.isFile()) {
+    try {
+        File legacyRunDir = new File(latestRunPointer.getText('UTF-8').trim())
+        File legacyManifestFile = new File(legacyRunDir, 'run_manifest.json')
+        if (legacyRunDir.isDirectory() && legacyManifestFile.isFile()) {
+            def legacyManifest = json.fromJson(legacyManifestFile.getText('UTF-8'), Map.class)
+            boolean compatibleLegacyRun = legacyManifest.gridHash == gridHash &&
+                legacyManifest.algorithmVersion == ORIENTATION_ALGORITHM_VERSION &&
+                (legacyManifest.processingHash == CURRENT_PROCESSING_HASH ||
+                    (legacyManifest.processingHash == null &&
+                        COMPATIBLE_LEGACY_PROFILE_HASHES.contains(
+                            legacyManifest.profileHash?.toString() ?: '')))
+            if (compatibleLegacyRun) {
+                outDir = legacyRunDir
+                println "MIGRATION: Reusing compatible earlier run ${outDir.getName()} for output-only upgrade."
+            }
+        }
+    } catch (Throwable migrationError) {
+        println "WARNING: Could not inspect earlier run for output-only migration: ${migrationError.getMessage()}"
+    }
+}
 def previewDir = new File(outDir, 'rotated_previews')
 def originalDir = new File(outDir, 'unrotated_previews')
 def fullResDir = new File(outDir, 'rotated_fullres')
@@ -1355,6 +1390,7 @@ int overrideCount = 0
 int missingCount = 0
 int resumedCount = 0
 int processedThisRunCount = 0
+int exportOnlyThisRunCount = 0
 
 def recordsCsvText = { rows ->
     def sb = new StringBuilder()
@@ -1458,34 +1494,44 @@ coreEntries.each { entry ->
     String coreSignature = sha256([
         ORIENTATION_ALGORITHM_VERSION, gridHash, i, coreName, format3(cx), format3(cy),
         format3(diameter), missing, overrideSignature, cropOverrideSignature,
-        EXPORT_DOWNSAMPLE, PREVIEW_MAX_PIXELS, ROTATION_SUPPORT_SCALE,
-        SAVE_FULL_RESOLUTION_PNG, SAVE_NATIVE_OME_TIFF,
-        SAVE_ROTATED_MULTICHANNEL_OME_TIFF
+        EXPORT_DOWNSAMPLE, PREVIEW_MAX_PIXELS, ROTATION_SUPPORT_SCALE
     ].join('|'))
     boolean resumed = false
+    boolean checkpointNeedsWrite = false
+    boolean deliveryComplete = true
     String processingError = ''
 
     if (checkpointFile.isFile()) {
         try {
             def cp = json.fromJson(checkpointFile.getText('UTF-8'), Map.class)
             def cpRecord = cp.record
-            boolean expectedFilesExist = missing || (cpRecord != null &&
+            boolean baselineFilesExist = missing || (cpRecord != null &&
                 cpRecord.preview && cpRecord.original &&
                 new File(outDir, cpRecord.preview.toString()).isFile() &&
-                new File(outDir, cpRecord.original.toString()).isFile() &&
-                (!SAVE_FULL_RESOLUTION_PNG || (cpRecord.rotatedFullRes &&
-                    cpRecord.originalFullRes &&
-                    new File(outDir, cpRecord.rotatedFullRes.toString()).isFile() &&
-                    new File(outDir, cpRecord.originalFullRes.toString()).isFile())) &&
-                (!SAVE_NATIVE_OME_TIFF || (cpRecord.nativeOme &&
-                    new File(outDir, cpRecord.nativeOme.toString()).isFile())) &&
-                (!SAVE_ROTATED_MULTICHANNEL_OME_TIFF ||
-                    (cpRecord.rotatedMultichannelOme &&
-                    new File(outDir, cpRecord.rotatedMultichannelOme.toString()).isFile())))
-            if (cp.complete == true && cp.coreSignature == coreSignature &&
-                    cp.gridHash == gridHash &&
-                    (cp.profileHash == null || cp.profileHash == CURRENT_PROFILE_HASH) &&
-                    cpRecord != null && expectedFilesExist) {
+                new File(outDir, cpRecord.original.toString()).isFile())
+            boolean legacySavedFullRes = cpRecord?.rotatedFullRes &&
+                cpRecord?.originalFullRes
+            boolean legacySavedNative = cpRecord?.nativeOme
+            boolean legacySavedRotatedMultichannel = cpRecord?.rotatedMultichannelOme
+            String legacyCoreSignature = sha256([
+                ORIENTATION_ALGORITHM_VERSION, gridHash, i, coreName, format3(cx),
+                format3(cy), format3(diameter), missing, overrideSignature,
+                cropOverrideSignature, EXPORT_DOWNSAMPLE, PREVIEW_MAX_PIXELS,
+                ROTATION_SUPPORT_SCALE, legacySavedFullRes, legacySavedNative,
+                legacySavedRotatedMultichannel
+            ].join('|'))
+            boolean legacyProfileCompatible = cp.processingHash == null &&
+                (cp.profileHash == null || COMPATIBLE_LEGACY_PROFILE_HASHES.contains(
+                    cp.profileHash.toString()))
+            boolean processingMatches = cp.processingHash != null ?
+                cp.processingHash == CURRENT_PROCESSING_HASH :
+                legacyProfileCompatible
+            boolean signatureMatches = cp.coreSignature == coreSignature ||
+                (legacyProfileCompatible && cp.coreSignature == legacyCoreSignature)
+            if ((cp.complete == true || cp.processingComplete == true) &&
+                    signatureMatches &&
+                    cp.gridHash == gridHash && processingMatches &&
+                    cpRecord != null && baselineFilesExist) {
                 result = [status: cp.result.status.toString(), angle: cp.result.angle as double,
                     confidence: cp.result.confidence as double,
                     tissueFraction: cp.result.tissueFraction as double,
@@ -1501,10 +1547,10 @@ coreEntries.each { entry ->
                     cpRecord.rotatedMultichannelOme?.toString() ?: ''
                 resumed = true
                 resumedCount++
-                if (cp.profileHash == null && !CURRENT_PROFILE_HASH.isEmpty()) {
-                    cp.profileHash = CURRENT_PROFILE_HASH
-                    writeAtomic(checkpointFile, json.toJson(cp) + '\n')
-                }
+                checkpointNeedsWrite = cp.processingHash == null ||
+                    cp.outputHash != CURRENT_OUTPUT_HASH ||
+                    cp.profileHash != CURRENT_PROFILE_HASH
+                deliveryComplete = cp.deliveryComplete != false
             }
         } catch (Throwable checkpointReadError) {
             println "WARNING: Ignoring invalid checkpoint for ${coreName}: ${checkpointReadError.getMessage()}"
@@ -1645,13 +1691,14 @@ coreEntries.each { entry ->
                 }
                 if (!wroteOriginal || !wroteRotated || !wroteFullOriginal ||
                         !wroteFullRotated || !wroteNative ||
-                        !wroteRotatedMultichannel) result.status = 'export_error'
+                        !wroteRotatedMultichannel) deliveryComplete = false
                 else if ((regionResult.status == 'region_review' || !qcAvailable ||
                         postRotationResidualDeg > POST_ROTATION_TOLERANCE_DEG) &&
                         result.status == 'ok') result.status = 'review'
             }
         } catch (Throwable coreError) {
             processingError = coreError.getClass().getSimpleName() + ': ' + (coreError.getMessage() ?: 'unknown error')
+            deliveryComplete = false
             result = [status: 'processing_error', angle: 0.0d, confidence: 0.0d,
                 tissueFraction: 0.0d, method: 'exception']
             rotateRad = 0.0d
@@ -1662,6 +1709,114 @@ coreEntries.each { entry ->
             nativeOmeRel = ''
             rotatedMultichannelOmeRel = ''
             println "ERROR: ${coreName} failed but the run will continue: ${processingError}"
+        }
+    }
+
+    // Delivery-only resume.  If the user later enables the research package,
+    // keep the approved center, crop and angle, read the source pixels once,
+    // and create only the newly requested artifacts.
+    if (resumed && !missing) {
+        if (SAVE_FULL_RESOLUTION_PNG && originalFullResFile.isFile() &&
+                fullResFile.isFile()) {
+            originalFullResRel = 'unrotated_fullres/' + outName
+            rotatedFullResRel = 'rotated_fullres/' + outName
+        }
+        if (SAVE_NATIVE_OME_TIFF && nativeOmeFile.isFile() && nativeOmeFile.length() > 0)
+            nativeOmeRel = 'source_native_ome/' + nativeOmeFile.getName()
+        if (SAVE_ROTATED_MULTICHANNEL_OME_TIFF &&
+                rotatedMultichannelOmeFile.isFile() &&
+                rotatedMultichannelOmeFile.length() > 0)
+            rotatedMultichannelOmeRel = 'rotated_multichannel_ome/' +
+                rotatedMultichannelOmeFile.getName()
+
+        boolean requestedOutputsExist =
+            (!SAVE_FULL_RESOLUTION_PNG ||
+                (originalFullResFile.isFile() && fullResFile.isFile())) &&
+            (!SAVE_NATIVE_OME_TIFF ||
+                (nativeOmeFile.isFile() && nativeOmeFile.length() > 0)) &&
+            (!SAVE_ROTATED_MULTICHANNEL_OME_TIFF ||
+                (rotatedMultichannelOmeFile.isFile() &&
+                    rotatedMultichannelOmeFile.length() > 0))
+        if (deliveryComplete != requestedOutputsExist) checkpointNeedsWrite = true
+        deliveryComplete = requestedOutputsExist
+
+        boolean needFullRes = SAVE_FULL_RESOLUTION_PNG &&
+            (!originalFullResFile.isFile() || !fullResFile.isFile())
+        boolean needNative = SAVE_NATIVE_OME_TIFF &&
+            (!nativeOmeFile.isFile() || nativeOmeFile.length() == 0)
+        boolean needRotatedMultichannel = SAVE_ROTATED_MULTICHANNEL_OME_TIFF &&
+            (!rotatedMultichannelOmeFile.isFile() ||
+                rotatedMultichannelOmeFile.length() == 0)
+        if (needFullRes || needNative || needRotatedMultichannel) {
+            exportOnlyThisRunCount++
+            checkpointNeedsWrite = true
+            deliveryComplete = true
+            try {
+                def exportRegion = null
+                double exportCx = 0.0d
+                double exportCy = 0.0d
+                int finalSidePx = Math.max(1,
+                    (int) Math.round(diameter / EXPORT_DOWNSAMPLE))
+                if (needFullRes || needRotatedMultichannel) {
+                    double supportSide = diameter * Math.max(
+                        Math.sqrt(2.0d) + 0.01d, ROTATION_SUPPORT_SCALE)
+                    exportRegion = readSquare(cx, cy, supportSide, EXPORT_DOWNSAMPLE)
+                    exportCx = (cx - exportRegion.originX) / EXPORT_DOWNSAMPLE
+                    exportCy = (cy - exportRegion.originY) / EXPORT_DOWNSAMPLE
+                }
+                if (needFullRes) {
+                    def rgbSupport = makeRgb(exportRegion.image)
+                    def unrotatedCrop = cropAround(rgbSupport, exportCx, exportCy,
+                        finalSidePx)
+                    def rotatedSupport = rotateImageAround(rgbSupport, rotateRad,
+                        exportCx, exportCy)
+                    def rotatedCrop = cropAround(rotatedSupport, exportCx, exportCy,
+                        finalSidePx)
+                    boolean wroteOriginalFull = ImageIO.write(unrotatedCrop, 'PNG',
+                        originalFullResFile)
+                    boolean wroteRotatedFull = ImageIO.write(rotatedCrop, 'PNG',
+                        fullResFile)
+                    if (!wroteOriginalFull || !wroteRotatedFull)
+                        throw new IOException('Could not write full-resolution PNG')
+                    originalFullResRel = 'unrotated_fullres/' + outName
+                    rotatedFullResRel = 'rotated_fullres/' + outName
+                }
+                if (needNative) {
+                    int nativeSide = Math.max(1, (int) Math.round(diameter))
+                    int nativeX = Math.max(0, Math.min(imgW - nativeSide,
+                        (int) Math.round(cx - nativeSide / 2.0d)))
+                    int nativeY = Math.max(0, Math.min(imgH - nativeSide,
+                        (int) Math.round(cy - nativeSide / 2.0d)))
+                    nativeSide = Math.min(nativeSide,
+                        Math.min(imgW - nativeX, imgH - nativeY))
+                    new OMEPyramidWriter.Builder(server)
+                        .region(nativeX, nativeY, nativeSide, nativeSide)
+                        .downsamples(1.0d)
+                        .losslessCompression()
+                        .channelsPlanar()
+                        .build()
+                        .writeSeries(nativeOmeFile.getAbsolutePath())
+                    if (!nativeOmeFile.isFile() || nativeOmeFile.length() == 0)
+                        throw new IOException('Could not write native OME-TIFF')
+                    nativeOmeRel = 'source_native_ome/' + nativeOmeFile.getName()
+                }
+                if (needRotatedMultichannel) {
+                    boolean wroteRotatedMultichannel = writeRotatedMultichannelOme(
+                        exportRegion.image, rotateRad, exportCx, exportCy,
+                        finalSidePx, rotatedMultichannelOmeFile)
+                    if (!wroteRotatedMultichannel)
+                        throw new IOException('Could not write rotated multichannel OME-TIFF')
+                    rotatedMultichannelOmeRel = 'rotated_multichannel_ome/' +
+                        rotatedMultichannelOmeFile.getName()
+                }
+                println "EXPORT-ONLY: ${coreName} reused its accepted rotation and crop."
+            } catch (Throwable exportOnlyError) {
+                deliveryComplete = false
+                processingError = 'Export-only: ' + exportOnlyError.getClass().getSimpleName() +
+                    ': ' + (exportOnlyError.getMessage() ?: 'unknown error')
+                println "ERROR: ${coreName} research-package backfill failed; " +
+                    "the accepted rotation checkpoint was preserved: ${processingError}"
+            }
         }
     }
 
@@ -1731,15 +1886,21 @@ coreEntries.each { entry ->
         nativeOme: nativeOmeRel,
         rotatedMultichannelOme: rotatedMultichannelOmeRel,
         resumed: resumed,
+        deliveryStatus: deliveryComplete ? 'complete' : 'export_error',
         processingError: processingError
     ]
     records << record
 
-    if (!resumed) {
-        boolean complete = result.status != 'export_error' && result.status != 'processing_error'
-        def checkpoint = [schemaVersion: 1, complete: complete,
+    if (!resumed || checkpointNeedsWrite) {
+        boolean processingComplete = result.status != 'processing_error'
+        boolean complete = processingComplete && deliveryComplete
+        def checkpoint = [schemaVersion: 2, complete: complete,
+            processingComplete: processingComplete,
+            deliveryComplete: deliveryComplete,
             algorithmVersion: ORIENTATION_ALGORITHM_VERSION, gridHash: gridHash,
             profileHash: CURRENT_PROFILE_HASH,
+            processingHash: CURRENT_PROCESSING_HASH,
+            outputHash: CURRENT_OUTPUT_HASH,
             coreSignature: coreSignature,
             savedAt: new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date()),
             rotateRad: rotateRad,
@@ -1780,14 +1941,17 @@ int postRotationReviewCount = records.count {
     !it.status.equals('missing') && (it.postRotationResidualDeg as double) > POST_ROTATION_TOLERANCE_DEG
 }
 def runManifestFile = new File(outDir, 'run_manifest.json')
-def runManifest = [schemaVersion: 1, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE',
+def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE',
     completedAt: new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date()),
     image: server.getMetadata().getName(), gridHash: gridHash,
     profileHash: CURRENT_PROFILE_HASH,
+    processingHash: CURRENT_PROCESSING_HASH,
+    outputHash: CURRENT_OUTPUT_HASH,
     approvalFile: approvalFile.getAbsolutePath(),
     algorithmVersion: ORIENTATION_ALGORITHM_VERSION,
     coreCount: records.size(), resumedFromCheckpoint: resumedCount,
     processedThisRun: processedThisRunCount,
+    exportOnlyThisRun: exportOnlyThisRunCount,
     ok: okCount, review: reviewCount, failedOrMissing: failCount,
     missing: missingCount, manualOverrides: overrideCount,
     regionReview: regionReviewCount, postRotationReview: postRotationReviewCount,
@@ -1912,6 +2076,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println("Approved grid hash: ${gridHash}")
     pw.println("Resumed from checkpoint: ${resumedCount}")
     pw.println("Processed this run: ${processedThisRunCount}")
+    pw.println("Export-only backfill this run: ${exportOnlyThisRunCount}")
     if (!gridEmptyRows.isEmpty() || !gridEmptyCols.isEmpty()) {
         pw.println("Grid warning: empty rows ${gridEmptyRows}; empty columns ${gridEmptyCols}")
     }
@@ -1943,7 +2108,7 @@ println '=== Step 2 done ==='
 println "Cores: ${records.size()}"
 println "OK: ${okCount}, review: ${reviewCount}, failed/missing: ${failCount}, missing grid positions: ${missingCount}, manual overrides: ${overrideCount}"
 println "Region review: ${regionReviewCount}; post-rotation residual review: ${postRotationReviewCount}"
-println "Resumed from checkpoint: ${resumedCount}; processed this run: ${processedThisRunCount}"
+println "Resumed from checkpoint: ${resumedCount}; processed this run: ${processedThisRunCount}; export-only backfill: ${exportOnlyThisRunCount}"
 println "CSV: ${csvFile.getAbsolutePath()}"
 println "Contact sheet: ${sheetFile.getAbsolutePath()}"
 println "Review queue: ${reviewQueueFile.getAbsolutePath()}"
@@ -1957,6 +2122,7 @@ if (!PARTIAL_CORE_TEST)
     writeAtomic(new File(exportBaseDir, 'LATEST_FINAL_RUN.txt'), outDir.getAbsolutePath() + '\n')
 System.setProperty('tma.orientation.status', PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE')
 System.setProperty('tma.orientation.processedThisRun', processedThisRunCount.toString())
+System.setProperty('tma.orientation.exportOnlyThisRun', exportOnlyThisRunCount.toString())
 
 int needsReview = records.count { r ->
     !(r.status in ['ok', 'manual_override', 'missing']) ||

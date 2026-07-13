@@ -120,6 +120,7 @@ export default function ConfigBuilder() {
                 <span><b>Other tissue</b><small>Places the strongest peripheral tissue edge at the top.</small></span>
               </button>
             </div>
+            <p className="presetHint"><i className="ri-history-line" /> Start with Presentation images if you prefer. You can download a Research package config later and run the same script again. CoreAlign reuses every accepted grid, rotation, and crop checkpoint, then creates only the missing OME-TIFF files.</p>
           </section>
 
           <section className="formCard outputCard">
