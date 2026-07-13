@@ -623,17 +623,6 @@ try {
             (int) Math.round(cy + 4.0d))
     }
 
-    int legendWidth = Math.max(1, Math.min(overviewWidth - 24, 520))
-    qg.setColor(new Color(8, 13, 22, 210))
-    qg.fillRoundRect(12, 12, legendWidth, 66, 12, 12)
-    qg.setFont(new Font('SansSerif', Font.BOLD, 14))
-    qg.setColor(Color.WHITE)
-    qg.drawString("Latest grid QC  ${grid.getGridHeight()} x ${gridCols}  " +
-        "${presentCount} present  ${missingCount} missing", 25, 36)
-    qg.setFont(new Font('SansSerif', Font.PLAIN, 12))
-    qg.setColor(new Color(0, 235, 230)); qg.drawString('AUTO DETECTED', 25, 60)
-    qg.setColor(new Color(80, 240, 125)); qg.drawString('HUMAN CORRECTED', 145, 60)
-    qg.setColor(new Color(255, 70, 80)); qg.drawString('MISSING', 300, 60)
     qg.dispose()
 
     File latestPng = new File(qcDir, "${imageStem}_grid_qc_latest.png")

@@ -40,6 +40,8 @@ test("includes persistent navigation and a theme control on both pages", async (
 
   assert.match(home, /Toggle color theme/);
   assert.match(builder, /Toggle color theme/);
+  assert.match(builder, />Home</);
+  assert.match(builder, />Theme</);
   assert.match(builder, /Two choices\. One ready-to-use config/);
   assert.match(builder, /Geometry is automatic/);
   assert.match(builder, /Presentation images/);
@@ -63,10 +65,14 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
   assert.match(docs, /TMA orientation 4-C/);
   assert.match(docs, /TMA correction 4-C/);
+  assert.match(docs, /Change a wrong rotation/);
+  assert.match(docs, /The rerun is required, but CoreAlign recalculates only the changed core/);
+  assert.match(docs, /aria-current="location"/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.docsToc\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(css, /\.docsToc nav a\.active/);
   assert.match(css, /\.automaticStrip\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /--bg:\s*#ffffff/);
@@ -106,7 +112,14 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(groovy, /new File\(completionDir, 'completion_report\.html'\)/);
   assert.match(groovy, /COMPLETE_HUMAN_APPROVED/);
   assert.match(groovy, /START-HERE\.html/);
-  assert.match(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
+  assert.doesNotMatch(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
+  assert.doesNotMatch(groovy, /Three clear steps/);
+  assert.match(groovy, /CoreAlign quality-control report/);
+  assert.match(groovy, /gridZoomIn/);
+  assert.match(groovy, /gridViewport/);
+  assert.match(groovy, /coreSearch/);
+  assert.match(groovy, /data-core-view/);
+  assert.match(groovy, /A rerun is required, but only the changed core is recalculated/);
   assert.match(groovy, /removeLegacyWorkflowHtml/);
   assert.match(groovy, /PROJECT-README\.txt/);
   assert.match(groovy, /qc\/01-grid/);
@@ -149,6 +162,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedReview, /_grid_qc_latest\.png/);
   assert.match(embeddedReview, /correctionsAppliedThisRun/);
   assert.match(embeddedReview, /LATEST_GRID_QC_EXPORTED/);
+  assert.doesNotMatch(embeddedReview, /Latest grid QC/);
+  assert.doesNotMatch(embeddedReview, /AUTO DETECTED/);
 
   const orientPayload = groovy.match(/def step2 = new EmbeddedWorkflowScript\(name: '02_auto_orient_epidermis\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(orientPayload, "Step 2 payload should be embedded");

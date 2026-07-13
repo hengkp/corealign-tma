@@ -19,6 +19,7 @@ export default function ThemeToggle() {
     >
       <i className="ri-moon-clear-line themeMoon" aria-hidden="true" />
       <i className="ri-sun-line themeSun" aria-hidden="true" />
+      <span>Theme</span>
     </button>
   );
 }
