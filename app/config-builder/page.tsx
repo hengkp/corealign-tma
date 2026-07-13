@@ -132,7 +132,7 @@ export default function ConfigBuilder() {
               </button>
               <button type="button" className={form.output === "research" ? "selected" : ""} aria-pressed={form.output === "research"} onClick={() => set("output", "research")}>
                 <span className="outputIcon research"><i className="ri-stack-line" /></span>
-                <span><b>Research package</b><small>PNG plus rotated UINT16 OME-TIFF with every channel.</small></span>
+                <span><b>Research package</b><small>Every channel plus an analysis-ready QuPath project.</small></span>
               </button>
             </div>
             <p className="presetHint"><i className="ri-history-line" /> Start with Presentation images if you prefer. You can download a Research package config later and run the same script again. CoreAlign reuses every accepted grid, rotation, and crop checkpoint, then creates only the missing OME-TIFF files.</p>

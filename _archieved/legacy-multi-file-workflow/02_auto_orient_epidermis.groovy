@@ -142,6 +142,8 @@ if (imageData == null) {
     return
 }
 System.setProperty('tma.orientation.status', 'RUNNING')
+long runStartedAtMs = System.currentTimeMillis()
+String runStartedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date(runStartedAtMs))
 
 def server = imageData.getServer()
 def hierarchy = imageData.getHierarchy()
@@ -1438,12 +1440,62 @@ coreEntries.each { entry ->
     double rawDiameter = geom.rawDiameter
     boolean missing = false
     try { missing = core.isMissing() } catch (Throwable ignored) {}
+    def checkpointFile = new File(checkpointDir,
+        String.format(Locale.US, '%03d_%s.json', i + 1,
+            coreName.replaceAll(/[^A-Za-z0-9._-]+/, '_')))
+    def cropOverride = missing ? null :
+        findCropOverride(coreName, nominalCx, nominalCy, rawDiameter / 2.0d)
+    def orientationOverrideProbe = missing ? null :
+        findOverride(nominalCx, nominalCy, rawDiameter * 0.75d)
+
+    // Fast checkpoint resume must happen before region refinement, because
+    // refinement reads source pixels.  The approved grid hash already binds
+    // every nominal core center and diameter. Existing no-override checkpoints
+    // can therefore restore their accepted refined center and crop directly.
+    // Any current or previous manual override deliberately falls back to the
+    // full signature path so additions, moves and removals are never hidden.
+    def fastCheckpoint = null
+    if (!missing && checkpointFile.isFile() && cropOverride == null &&
+            orientationOverrideProbe == null) {
+        try {
+            def candidate = json.fromJson(checkpointFile.getText('UTF-8'), Map.class)
+            def candidateRecord = candidate.record
+            boolean legacyProfileCompatible = candidate.processingHash == null &&
+                (candidate.profileHash == null || COMPATIBLE_LEGACY_PROFILE_HASHES.contains(
+                    candidate.profileHash.toString()))
+            boolean processingMatches = candidate.processingHash != null ?
+                candidate.processingHash == CURRENT_PROCESSING_HASH :
+                legacyProfileCompatible
+            boolean checkpointHadManualOverride =
+                candidate.result?.method?.toString() == 'manual_override' ||
+                candidateRecord?.regionStatus?.toString() == 'manual_override'
+            boolean baselineFilesExist = candidateRecord?.preview &&
+                candidateRecord?.original &&
+                new File(outDir, candidateRecord.preview.toString()).isFile() &&
+                new File(outDir, candidateRecord.original.toString()).isFile()
+            if ((candidate.complete == true || candidate.processingComplete == true) &&
+                    candidate.gridHash == gridHash && processingMatches &&
+                    candidateRecord != null && baselineFilesExist &&
+                    !checkpointHadManualOverride) {
+                fastCheckpoint = candidate
+            }
+        } catch (Throwable fastResumeError) {
+            println "WARNING: Fast-resume preflight failed for ${coreName}: ${fastResumeError.getMessage()}"
+        }
+    }
     def regionResult = missing ? [cx: nominalCx, cy: nominalCy,
         cropSide: rawDiameter * CROP_SCALE, confidence: 0.0d, status: 'missing',
         centerShiftPx: 0.0d, tissueSpanPx: 0.0d, method: 'missing'] :
-        refineCoreGeometry(nominalCx, nominalCy, rawDiameter)
-    def cropOverride = missing ? null :
-        findCropOverride(coreName, nominalCx, nominalCy, rawDiameter / 2.0d)
+        (fastCheckpoint != null ? [
+            cx: fastCheckpoint.record.centerX as double,
+            cy: fastCheckpoint.record.centerY as double,
+            cropSide: fastCheckpoint.record.diameter as double,
+            confidence: (fastCheckpoint.record.regionConfidence ?: 0.0d) as double,
+            status: fastCheckpoint.record.regionStatus?.toString() ?: 'ok',
+            centerShiftPx: (fastCheckpoint.record.regionCenterShiftPx ?: 0.0d) as double,
+            tissueSpanPx: fastCheckpoint.record.diameter as double,
+            method: 'checkpoint_fast_resume'
+        ] : refineCoreGeometry(nominalCx, nominalCy, rawDiameter))
     if (cropOverride != null) {
         regionResult = [cx: cropOverride.x, cy: cropOverride.y,
             cropSide: Math.min(rawDiameter * REGION_MAX_CROP_SCALE,
@@ -1469,10 +1521,6 @@ coreEntries.each { entry ->
         outName.replaceFirst(/(?i)\.png$/, '.ome.tif'))
     def rotatedMultichannelOmeFile = new File(rotatedMultichannelOmeDir,
         outName.replaceFirst(/(?i)\.png$/, '.ome.tif'))
-    def checkpointFile = new File(checkpointDir,
-        String.format(Locale.US, '%03d_%s.json', i + 1,
-            coreName.replaceAll(/[^A-Za-z0-9._-]+/, '_')))
-
     def result = [status: 'missing', angle: 0.0d, confidence: 0.0d,
                   tissueFraction: 0.0d, method: 'missing']
     double rotateRad = 0.0d
@@ -1940,9 +1988,27 @@ int regionReviewCount = records.count { it.regionStatus == 'region_review' }
 int postRotationReviewCount = records.count {
     !it.status.equals('missing') && (it.postRotationResidualDeg as double) > POST_ROTATION_TOLERANCE_DEG
 }
+def reviewRecords = records.findAll { r ->
+    !(r.status in ['ok', 'manual_override', 'missing']) ||
+        r.regionStatus == 'region_review' ||
+        (r.status != 'missing' &&
+            (r.postRotationResidualDeg as double) > POST_ROTATION_TOLERANCE_DEG)
+}
+int needsReview = reviewRecords.size()
+long runCompletedAtMs = System.currentTimeMillis()
+long elapsedSeconds = Math.max(0L, Math.round((runCompletedAtMs - runStartedAtMs) / 1000.0d))
+String runCompletedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
+    .format(new Date(runCompletedAtMs))
+def formatDuration = { long totalSeconds ->
+    long hours = totalSeconds.intdiv(3600)
+    long minutes = (totalSeconds % 3600L).intdiv(60)
+    long seconds = totalSeconds % 60L
+    return String.format(Locale.US, '%02d:%02d:%02d', hours, minutes, seconds)
+}
 def runManifestFile = new File(outDir, 'run_manifest.json')
 def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE',
-    completedAt: new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date()),
+    startedAt: runStartedAt, completedAt: runCompletedAt,
+    elapsedSeconds: elapsedSeconds, elapsed: formatDuration(elapsedSeconds),
     image: server.getMetadata().getName(), gridHash: gridHash,
     profileHash: CURRENT_PROFILE_HASH,
     processingHash: CURRENT_PROCESSING_HASH,
@@ -1952,7 +2018,8 @@ def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' 
     coreCount: records.size(), resumedFromCheckpoint: resumedCount,
     processedThisRun: processedThisRunCount,
     exportOnlyThisRun: exportOnlyThisRunCount,
-    ok: okCount, review: reviewCount, failedOrMissing: failCount,
+    ok: okCount, review: reviewCount, needsReview: needsReview,
+    failedOrMissing: failCount,
     missing: missingCount, manualOverrides: overrideCount,
     regionReview: regionReviewCount, postRotationReview: postRotationReviewCount,
     exportDownsample: EXPORT_DOWNSAMPLE, rotationThenCrop: true,
@@ -2059,6 +2126,125 @@ htmlFile.withPrintWriter('UTF-8') { pw ->
     pw.println('<script>function filterCards(s){document.querySelectorAll(".card").forEach(function(c){c.style.display=(s==="all"||c.dataset.status===s)?"block":"none";});} filterCards("review");</script>')
 }
 
+// -------------------------------------------------------------------------
+// Human-readable run report.  This is deliberately separate from review.html:
+// the report explains whether the run stopped safely, what was produced, and
+// exactly what the user should do next.
+// -------------------------------------------------------------------------
+
+def reviewReasons = { r ->
+    def reasons = []
+    if (!(r.status in ['ok', 'manual_override', 'missing']))
+        reasons << "orientation status ${r.status}".toString()
+    if (r.regionStatus == 'region_review') reasons << 'crop region review'
+    if (r.status != 'missing' &&
+            (r.postRotationResidualDeg as double) > POST_ROTATION_TOLERANCE_DEG)
+        reasons << "residual ${format1(r.postRotationResidualDeg)} deg".toString()
+    return reasons
+}
+String reportStatus = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'ORIENTATION_REVIEW_REQUIRED'
+def runReportFile = new File(outDir, 'run_report.html')
+def runReportJsonFile = new File(outDir, 'run_report.json')
+def runReport = [
+    schemaVersion: 1,
+    status: reportStatus,
+    stoppedSafely: true,
+    message: PARTIAL_CORE_TEST ?
+        'The selected test cores finished.' :
+        'Orientation processing finished successfully. The workflow paused intentionally for human review.',
+    image: server.getMetadata().getName(),
+    profileHash: CURRENT_PROFILE_HASH,
+    processingHash: CURRENT_PROCESSING_HASH,
+    outputHash: CURRENT_OUTPUT_HASH,
+    gridHash: gridHash,
+    startedAt: runStartedAt,
+    completedAt: runCompletedAt,
+    elapsedSeconds: elapsedSeconds,
+    elapsed: formatDuration(elapsedSeconds),
+    counts: [positions: records.size(), ok: okCount, review: reviewCount,
+        needsReview: needsReview, failedOrMissing: failCount, missing: missingCount,
+        manualOverrides: overrideCount, resumedFromCheckpoint: resumedCount,
+        processedThisRun: processedThisRunCount,
+        exportOnlyThisRun: exportOnlyThisRunCount],
+    qc: [regionReview: regionReviewCount,
+        postRotationResidualReview: postRotationReviewCount,
+        postRotationToleranceDeg: POST_ROTATION_TOLERANCE_DEG],
+    outputs: [runDirectory: outDir.getAbsolutePath(),
+        reportHtml: runReportFile.getAbsolutePath(),
+        reviewHtml: htmlFile.getAbsolutePath(),
+        contactSheet: sheetFile.getAbsolutePath(),
+        resultsCsv: csvFile.getAbsolutePath(),
+        reviewQueueCsv: reviewQueueFile.getAbsolutePath(),
+        rotatedPreviewDirectory: previewDir.getAbsolutePath(),
+        rotatedFullResolutionPngDirectory:
+            SAVE_FULL_RESOLUTION_PNG ? fullResDir.getAbsolutePath() : null,
+        rotatedMultichannelOmeTiffDirectory:
+            SAVE_ROTATED_MULTICHANNEL_OME_TIFF ?
+                rotatedMultichannelOmeDir.getAbsolutePath() : null],
+    analysisProject: [status: SAVE_ROTATED_MULTICHANNEL_OME_TIFF ?
+            'WAITING_FOR_FINAL_HUMAN_APPROVAL' : 'RESEARCH_OUTPUT_REQUIRED',
+        note: SAVE_ROTATED_MULTICHANNEL_OME_TIFF ?
+            'The QuPath core project will be built after final human approval.' :
+            'Presentation PNG files are not used for quantitative analysis. Choose Research package and run CoreAlign again to backfill multichannel OME-TIFF files without repeating detection or rotation.'],
+    reviewCores: reviewRecords.collect { r ->
+        [core: r.core, row: r.row, col: r.col, status: r.status,
+            confidence: r.confidence, regionStatus: r.regionStatus,
+            postRotationResidualDeg: r.postRotationResidualDeg,
+            reasons: reviewReasons(r)]
+    },
+    nextSteps: PARTIAL_CORE_TEST ?
+        ['Inspect the selected test-core outputs.'] :
+        ['Open run_report.html or review.html.',
+         'Check the listed review cores and correct only those that need changes in QuPath.',
+         'Run CoreAlign.groovy again. Accepted checkpoints will be reused.']
+]
+writeAtomic(runReportJsonFile, json.toJson(runReport) + '\n')
+runReportFile.withPrintWriter('UTF-8') { pw ->
+    String accent = needsReview > 0 ? '#c46a00' : '#087f5b'
+    pw.println('<!doctype html><html><head><meta charset="utf-8">')
+    pw.println('<meta name="viewport" content="width=device-width,initial-scale=1">')
+    pw.println('<title>CoreAlign run report</title><style>')
+    pw.println(':root{color-scheme:light dark}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f4f6f8;color:#17202a}main{max-width:1100px;margin:auto;padding:32px 22px 64px}.hero,.card{background:white;border:1px solid #dfe5eb;border-radius:14px;box-shadow:0 4px 18px rgba(20,35,50,.06)}.hero{padding:26px;border-top:7px solid ' + accent + '}h1{margin:0 0 8px;font-size:30px}h2{font-size:20px;margin:30px 0 12px}.status{font-weight:700;color:' + accent + '}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:20px}.metric{padding:15px;background:#f7f9fb;border-radius:10px}.metric strong{display:block;font-size:25px}.card{padding:18px;margin-top:14px}ol{line-height:1.65}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #e3e8ed}th{background:#f7f9fb}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;font-size:13px}a{color:#0969da}@media(prefers-color-scheme:dark){body{background:#101418;color:#eef2f5}.hero,.card{background:#171d23;border-color:#303842}.metric,th{background:#202830}td,th{border-color:#303842}a{color:#6eb6ff}}</style></head><body><main>')
+    pw.println('<section class="hero">')
+    pw.println('<div class="status">' + htmlEscape(reportStatus.replace('_', ' ')) + '</div>')
+    pw.println('<h1>CoreAlign run finished safely</h1>')
+    pw.println('<p>Orientation processing completed. This is a planned review pause, not an error.</p>')
+    pw.println('<p><strong>Image:</strong> ' + htmlEscape(server.getMetadata().getName()) +
+        ' &nbsp; <strong>Duration:</strong> ' + formatDuration(elapsedSeconds) + '</p>')
+    pw.println('<div class="metrics">')
+    [[records.size(), 'Positions'], [okCount, 'Automatic QC pass'],
+     [needsReview, 'Needs review'], [missingCount, 'Missing'],
+     [processedThisRunCount, 'Processed now'], [resumedCount, 'Reused checkpoints']].each { metric ->
+        pw.println('<div class="metric"><strong>' + metric[0] + '</strong>' + metric[1] + '</div>')
+    }
+    pw.println('</div></section>')
+    pw.println('<h2>What to do next</h2><section class="card"><ol>')
+    runReport.nextSteps.each { step -> pw.println('<li>' + htmlEscape(step) + '</li>') }
+    pw.println('</ol></section>')
+    pw.println('<h2>Files</h2><section class="card">')
+    pw.println('<p><a href="review.html">Open visual core review</a></p>')
+    pw.println('<p><a href="orientation_contact_sheet.png">Open contact sheet</a></p>')
+    pw.println('<p><a href="orientation_results.csv">Open all results CSV</a></p>')
+    pw.println('<p class="path">' + htmlEscape(outDir.getAbsolutePath()) + '</p></section>')
+    pw.println('<h2>QuPath analysis project</h2><section class="card"><p>' +
+        htmlEscape(runReport.analysisProject.note) + '</p></section>')
+    pw.println('<h2>Cores requiring review</h2><section class="card">')
+    if (reviewRecords.isEmpty()) {
+        pw.println('<p>No automatic QC flags. Final human approval is still required.</p>')
+    } else {
+        pw.println('<table><thead><tr><th>Core</th><th>Row</th><th>Column</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>')
+        reviewRecords.each { r ->
+            pw.println('<tr><td>' + htmlEscape(r.core) + '</td><td>' + r.row +
+                '</td><td>' + r.col + '</td><td>' + format3(r.confidence) +
+                '</td><td>' + htmlEscape(reviewReasons(r).join(', ')) + '</td></tr>')
+        }
+        pw.println('</tbody></table>')
+    }
+    pw.println('</section></main></body></html>')
+}
+writeAtomic(new File(exportBaseDir, 'LATEST_RUN_REPORT.txt'),
+    runReportFile.getAbsolutePath() + '\n')
+
 def summaryFile = new File(outDir, 'workflow_summary.txt')
 summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println('TMA auto-orientation summary')
@@ -2092,6 +2278,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println("Contact sheet: ${sheetFile.getName()}")
     pw.println("Review queue CSV: ${reviewQueueFile.getName()}")
     pw.println("Review HTML: ${htmlFile.getName()}")
+    pw.println("Run report: ${runReportFile.getName()}")
     pw.println("Unrotated previews: ${originalDir.getName()}/")
     pw.println("Rotated previews: ${previewDir.getName()}/")
     if (SAVE_FULL_RESOLUTION_PNG) {
@@ -2113,22 +2300,27 @@ println "CSV: ${csvFile.getAbsolutePath()}"
 println "Contact sheet: ${sheetFile.getAbsolutePath()}"
 println "Review queue: ${reviewQueueFile.getAbsolutePath()}"
 println "Review page: ${htmlFile.getAbsolutePath()}"
+println "Run report: ${runReportFile.getAbsolutePath()}"
 println "Summary: ${summaryFile.getAbsolutePath()}"
 
 runManifest.status = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE'
-runManifest.completedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date())
+runManifest.completedAt = runCompletedAt
+runManifest.runReport = runReportFile.getAbsolutePath()
 writeAtomic(runManifestFile, json.toJson(runManifest) + '\n')
 if (!PARTIAL_CORE_TEST)
     writeAtomic(new File(exportBaseDir, 'LATEST_FINAL_RUN.txt'), outDir.getAbsolutePath() + '\n')
 System.setProperty('tma.orientation.status', PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE')
 System.setProperty('tma.orientation.processedThisRun', processedThisRunCount.toString())
 System.setProperty('tma.orientation.exportOnlyThisRun', exportOnlyThisRunCount.toString())
+System.setProperty('tma.orientation.reportPath', runReportFile.getAbsolutePath())
+System.setProperty('tma.orientation.reportJsonPath', runReportJsonFile.getAbsolutePath())
+System.setProperty('tma.orientation.runDir', outDir.getAbsolutePath())
+System.setProperty('tma.orientation.totalCount', records.size().toString())
+System.setProperty('tma.orientation.okCount', okCount.toString())
+System.setProperty('tma.orientation.reviewCount', needsReview.toString())
+System.setProperty('tma.orientation.missingCount', missingCount.toString())
+System.setProperty('tma.orientation.elapsed', formatDuration(elapsedSeconds))
 
-int needsReview = records.count { r ->
-    !(r.status in ['ok', 'manual_override', 'missing']) ||
-        r.regionStatus == 'region_review' ||
-        (r.status != 'missing' && (r.postRotationResidualDeg as double) > POST_ROTATION_TOLERANCE_DEG)
-}
 if (needsReview > 0) {
     Dialogs.showWarningNotification('Auto-orient TMA done',
         "Exported ${records.size()} cores. Review ${needsReview} yellow/red cores in review.html.")
