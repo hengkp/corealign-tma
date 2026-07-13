@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.6.0
+## Current workflow: v1.6.1
 
-Version 1.6.0 uses a clear project layout inspired by modular image pipelines. Researcher-facing QC, results, and QuPath files have stable folder names, while checkpoints and technical runs stay under `work/`. It retains the automatic geometry, run reports, safe resume, and ordered QuPath core project from v1.5. A config file is optional.
+Version 1.6.1 uses circular orientation QC ROIs and one action-first annotation naming format. Researcher-facing QC, results, and QuPath files have stable folder names, while checkpoints and technical runs stay under `work/`. It retains automatic geometry, run reports, safe resume, and the ordered QuPath core project. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -87,6 +87,18 @@ PNG files alone cannot be converted back into a multichannel research file. The 
 - `TMA mark missing 14-G`: mark a truly empty position
 - `TMA crop override 4-C`: define the source region to rotate and crop
 - `Epidermis override 4-C`: point to the epidermal side
+
+CoreAlign uses the same action-first format for every object shown in the annotation list:
+
+| Annotation name | Created by | ROI shape | Purpose |
+|---|---|---|---|
+| `TMA orientation 4-C` | CoreAlign | Ellipse | Refined rotate-then-crop footprint and orientation QC metadata |
+| `TMA correction 4-C` | User, then named by CoreAlign | Ellipse | Correct a missed or misplaced core |
+| `TMA mark missing 4-C` | User | Ellipse | Confirm an empty grid position |
+| `TMA crop override 4-C` | User | Ellipse or rectangle | Replace the crop footprint |
+| `Epidermis override 4-C` | User | Small ellipse or point | Identify the true epidermal side |
+
+The old `<row-col> epidermis` line objects are removed automatically on the next run. TMA grid cores remain circular TMA objects; `TMA orientation <row-col>` is a separate ellipse annotation that shows the refined crop used by orientation and export.
 
 Overrides are part of each core signature. A new run invalidates only the affected checkpoint.
 
