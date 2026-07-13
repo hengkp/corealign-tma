@@ -90,99 +90,89 @@ export default function ConfigBuilder() {
 
   return (
     <main className="builderPage">
+      <a className="skipLink" href="#builder">Skip to builder</a>
       <SiteHeader />
 
-      <section className="builderHero" id="content">
-        <div>
-          <p className="kicker"><i className="ri-magic-line" /> Optional Config Builder</p>
-          <h1>Choose two things. CoreAlign handles the rest.</h1>
-          <p>Rows, columns, core size, channels, and array position are detected from the slide.</p>
-        </div>
-        <div className="builderSteps" aria-label="Three builder steps">
-          <span className="active"><b>1</b> Tissue</span><i className="ri-arrow-right-s-line" />
-          <span><b>2</b> Output</span><i className="ri-arrow-right-s-line" />
-          <span><b>3</b> Download</span>
-        </div>
+      <section className="builderIntro" id="builder">
+        <p className="kicker"><i className="ri-magic-line" /> Config builder</p>
+        <h1>Two choices. One ready-to-use config.</h1>
+        <p>CoreAlign detects rows, columns, core size, and array position automatically.</p>
       </section>
 
       <section className="builderLayout">
         <div className="builderForm">
-          <section className="formCard outputCard">
-            <StepHeading number="1" title="What tissue are you preparing?" text="This controls the direction used for consistent rotation." />
-            <div className="outputChoices">
-              <button type="button" className={form.tissue === "skin" ? "selected" : ""} aria-pressed={form.tissue === "skin"} onClick={() => set("tissue", "skin")}>
-                <span className="outputIcon presentation"><i className="ri-focus-2-line" /></span>
-                <span><b>Skin</b><small>Places the epidermis at the top of every accepted core.</small></span>
-                <em>Recommended</em>
-              </button>
-              <button type="button" className={form.tissue === "other" ? "selected" : ""} aria-pressed={form.tissue === "other"} onClick={() => set("tissue", "other")}>
-                <span className="outputIcon research"><i className="ri-shape-line" /></span>
-                <span><b>Other tissue</b><small>Places the strongest peripheral tissue edge at the top.</small></span>
-              </button>
+          <section className="choiceSection">
+            <div className="choiceHeading"><span>1</span><div><h2>Choose the tissue</h2><p>This sets the direction used for rotation.</p></div></div>
+            <div className="choiceGrid">
+              <Choice
+                selected={form.tissue === "skin"}
+                icon="ri-focus-2-line"
+                title="Skin"
+                text="Keep the epidermis at the top"
+                badge="Recommended"
+                onClick={() => set("tissue", "skin")}
+              />
+              <Choice
+                selected={form.tissue === "other"}
+                icon="ri-shape-line"
+                title="Other tissue"
+                text="Keep the strongest outer edge at the top"
+                onClick={() => set("tissue", "other")}
+              />
             </div>
           </section>
 
-          <section className="formCard outputCard">
-            <StepHeading number="2" title="What do you need?" text="Every core is refined, rotated, checked, and then cropped." />
-            <div className="outputChoices">
-              <button type="button" className={form.output === "presentation" ? "selected" : ""} aria-pressed={form.output === "presentation"} onClick={() => set("output", "presentation")}>
-                <span className="outputIcon presentation"><i className="ri-slideshow-3-line" /></span>
-                <span><b>Presentation images</b><small>Full resolution PNG files for PowerPoint and figures.</small></span>
-                <em>Faster</em>
-              </button>
-              <button type="button" className={form.output === "research" ? "selected" : ""} aria-pressed={form.output === "research"} onClick={() => set("output", "research")}>
-                <span className="outputIcon research"><i className="ri-stack-line" /></span>
-                <span><b>Research package</b><small>Every channel plus an analysis-ready QuPath project.</small></span>
-              </button>
+          <section className="choiceSection">
+            <div className="choiceHeading"><span>2</span><div><h2>Choose the output</h2><p>You can upgrade later without repeating accepted work.</p></div></div>
+            <div className="choiceGrid">
+              <Choice
+                selected={form.output === "presentation"}
+                icon="ri-slideshow-3-line"
+                title="Presentation images"
+                text="Full resolution PNG files"
+                badge="Faster"
+                onClick={() => set("output", "presentation")}
+              />
+              <Choice
+                selected={form.output === "research"}
+                icon="ri-stack-line"
+                title="Research package"
+                text="PNG, OME-TIFF, and QuPath project"
+                onClick={() => set("output", "research")}
+              />
             </div>
-            <p className="presetHint"><i className="ri-history-line" /> Start with Presentation images if you prefer. You can download a Research package config later and run the same script again. CoreAlign reuses every accepted grid, rotation, and crop checkpoint, then creates only the missing OME-TIFF files.</p>
           </section>
 
-          <section className="formCard presetCard">
-            <StepHeading number="3" title="Detection is fully automatic" text="No array geometry or punch size is required." />
-            <div className="autoGeometryCard">
-              <span><i className="ri-radar-line" /></span>
-              <div><h3>Automatic slide scan</h3><p>CoreAlign finds the array, estimates core size, detects the grid, and checks confidence before processing.</p></div>
-              <em><i className="ri-checkbox-circle-fill" /> On</em>
-            </div>
-            <p className="presetHint"><i className="ri-shield-check-line" /> If confidence is low, CoreAlign pauses and keeps completed work. It never silently accepts an uncertain grid.</p>
-          </section>
+          <div className="automaticStrip"><i className="ri-radar-line" /><div><b>Geometry is automatic</b><span>No row count, column count, or core diameter is required.</span></div><i className="ri-checkbox-circle-fill" /></div>
 
-          <details className="advancedPanel">
-            <summary><span><i className="ri-price-tag-3-line" /> Channel name helper</span><small>Usually not needed</small></summary>
-            <div className="advancedBody">
-              <div className="fieldGrid two">
-                <Field label="Nuclear channel words" hint="CoreAlign already recognizes common DAPI names and falls back safely.">
-                  <input value={form.nuclear} onChange={(event) => set("nuclear", event.target.value)} />
-                </Field>
-                <Field label="Surface marker words" hint="Optional markers that can support skin orientation.">
-                  <input value={form.surface} onChange={(event) => set("surface", event.target.value)} />
-                </Field>
-              </div>
+          <details className="optionalSettings">
+            <summary><span><i className="ri-settings-3-line" /> Optional channel words</span><small>Most users can skip this</small></summary>
+            <div className="optionalBody">
+              <label><span>Nuclear channel words</span><input value={form.nuclear} onChange={(event) => set("nuclear", event.target.value)} /></label>
+              <label><span>Surface marker words</span><input value={form.surface} onChange={(event) => set("surface", event.target.value)} /></label>
             </div>
           </details>
         </div>
 
         <aside className="builderAside" aria-label="Configuration summary">
-          <div className="builderSummary isReady">
-            <div className="summaryTop"><span><i className="ri-checkbox-circle-fill" /></span><div><p>Your config</p><h2>Ready to download</h2></div></div>
+          <div className="configReady">
+            <div className="readyTitle"><span><i className="ri-checkbox-circle-fill" /></span><div><p>Your config</p><h2>Ready</h2></div></div>
             <dl>
-              <div><dt>Tissue</dt><dd>{form.tissue === "skin" ? "Skin" : "Other tissue"}</dd></div>
-              <div><dt>Geometry</dt><dd>Automatic</dd></div>
-              <div><dt>Core size</dt><dd>Automatic</dd></div>
-              <div><dt>Output</dt><dd>{form.output === "presentation" ? "PNG" : "PNG and OME-TIFF"}</dd></div>
-              <div><dt>Safety</dt><dd>Review exceptions</dd></div>
+              <div><dt>Tissue</dt><dd>{form.tissue === "skin" ? "Skin" : "Other"}</dd></div>
+              <div><dt>Detection</dt><dd>Automatic</dd></div>
+              <div><dt>Output</dt><dd>{form.output === "presentation" ? "PNG" : "Research"}</dd></div>
+              <div><dt>Review</dt><dd>Human checked</dd></div>
             </dl>
-            <a className="downloadButton" href={`data:application/json;charset=utf-8,${encodeURIComponent(`${json}\n`)}`} download="corealign.config.json"><i className="ri-download-2-line" /> Download config</a>
-            <p className="privacyNote"><i className="ri-lock-2-line" /> Nothing is uploaded. The file is created in your browser.</p>
+            <a className="downloadConfig" href={`data:application/json;charset=utf-8,${encodeURIComponent(`${json}\n`)}`} download="corealign.config.json"><i className="ri-download-2-line" /> Download config</a>
+            <p className="localOnly"><i className="ri-lock-2-line" /> Created in your browser. Nothing is uploaded.</p>
           </div>
 
-          <div className="afterDownload">
-            <p>Run in QuPath</p>
+          <div className="runNext">
+            <h3>Then run it</h3>
             <ol>
-              <li><span>1</span><p>Put the slide, <b>CoreAlign.groovy</b>, and this config in one folder.</p></li>
-              <li><span>2</span><p>Open the slide and run <b>CoreAlign.groovy</b>.</p></li>
-              <li><span>3</span><p>Review the grid and flagged cores. Run the same file to continue.</p></li>
+              <li><span>1</span><p>Put the config beside your slide and <b>CoreAlign.groovy</b>.</p></li>
+              <li><span>2</span><p>Open the slide in QuPath and run the script.</p></li>
+              <li><span>3</span><p>Open <b>START-HERE.html</b> to review and continue.</p></li>
             </ol>
           </div>
         </aside>
@@ -191,10 +181,13 @@ export default function ConfigBuilder() {
   );
 }
 
-function StepHeading({ number, title, text }: { number: string; title: string; text: string }) {
-  return <div className="stepHeading"><span>{number}</span><div><h2>{title}</h2><p>{text}</p></div></div>;
-}
-
-function Field({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
-  return <label className="field"><span>{label}</span>{children}<small>{hint}</small></label>;
+function Choice({ selected, icon, title, text, badge, onClick }: { selected: boolean; icon: string; title: string; text: string; badge?: string; onClick: () => void }) {
+  return (
+    <button type="button" className={`choiceCard${selected ? " selected" : ""}`} aria-pressed={selected} onClick={onClick}>
+      <span className="choiceIcon"><i className={icon} /></span>
+      <span className="choiceCopy"><b>{title}</b><small>{text}</small></span>
+      {badge && <em>{badge}</em>}
+      <i className={selected ? "ri-checkbox-circle-fill selectedMark" : "ri-checkbox-blank-circle-line selectedMark"} />
+    </button>
+  );
 }

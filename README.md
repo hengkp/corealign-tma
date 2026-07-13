@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.6.1
+## Current workflow: v1.7.0
 
-Version 1.6.1 uses circular orientation QC ROIs and one action-first annotation naming format. Researcher-facing QC, results, and QuPath files have stable folder names, while checkpoints and technical runs stay under `work/`. It retains automatic geometry, run reports, safe resume, and the ordered QuPath core project. A config file is optional.
+Version 1.7.0 uses one self-contained `START-HERE.html` dashboard for grid QC, orientation QC, results, and help. It keeps circular orientation QC ROIs, one action-first annotation format, automatic geometry, safe resume, and the ordered QuPath core project. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -28,7 +28,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 - Refines, orients, rotates, checks, and crops each core in that order
 - Saves an atomic checkpoint after every core
 - Resumes only failed or corrected cores
-- Writes `run_report.html` and `run_report.json` after orientation
+- Refreshes one `START-HERE.html` dashboard and writes machine-readable JSON and CSV audit data
 - Shows a modal result summary when processing pauses or completes
 - Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
 - Builds an analysis-ready QuPath project with row, column, QC, and transform metadata
@@ -48,7 +48,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 4. Open `Automate`, then `Show script editor`.
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
-7. Review the detected grid and run the same file again.
+7. Open `START-HERE.html`, review the detected grid, and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 

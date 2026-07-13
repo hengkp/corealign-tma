@@ -2132,45 +2132,8 @@ if (!wroteSheet)
     println "WARNING: Could not write contact sheet PNG: ${sheetFile.getAbsolutePath()}"
 
 // -------------------------------------------------------------------------
-// Lightweight HTML review page.
-// -------------------------------------------------------------------------
-
-def htmlFile = new File(outDir, 'review.html')
-htmlFile.withPrintWriter('UTF-8') { pw ->
-    pw.println('<!doctype html>')
-    pw.println('<meta charset="utf-8">')
-    pw.println('<title>TMA auto-orientation review</title>')
-    pw.println('<style>')
-    pw.println('body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:24px;background:#f6f7f8;color:#111}')
-    pw.println('h1{font-size:22px;margin:0 0 4px} .meta{color:#555;margin-bottom:18px}')
-    pw.println('.toolbar{position:sticky;top:0;z-index:5;background:#f6f7f8;padding:8px 0 12px}.toolbar button{margin-right:7px;padding:7px 12px;border:1px solid #bbb;border-radius:6px;background:white;cursor:pointer}.toolbar button:hover{background:#eef3f6}')
-    pw.println('.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}')
-    pw.println('.card{background:white;border:4px solid #ddd;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}')
-    pw.println('.ok{border-color:#00b45a}.review{border-color:#f5a500}.uncertain,.no_tissue,.missing,.export_error,.processing_error{border-color:#dc3737}.manual_override{border-color:#a046e6}')
-    pw.println('img{display:block;width:100%;aspect-ratio:1/1;object-fit:contain;background:#000}')
-    pw.println('.label{padding:8px 10px;font-size:13px;line-height:1.35}.small{color:#666}')
-    pw.println('</style>')
-    pw.println('<h1>TMA auto-orientation review</h1>')
-    pw.println("<div class=\"meta\">${records.size()} cores; ${okCount} ok, ${reviewCount} review, ${failCount} failed/missing, ${missingCount} missing grid positions, ${overrideCount} manual overrides.</div>")
-    pw.println('<div class="toolbar"><button onclick="filterCards(\'review\')">Needs review</button><button onclick="filterCards(\'missing\')">Missing</button><button onclick="filterCards(\'ok\')">OK</button><button onclick="filterCards(\'all\')">All</button></div>')
-    pw.println('<div class="grid">')
-    records.each { r ->
-        pw.println("<div class=\"card ${htmlEscape(r.status)}\" data-status=\"${htmlEscape(r.status)}\">")
-        if (r.preview) pw.println("<img src=\"${htmlEscape(r.preview)}\">")
-        else pw.println('<img alt="">')
-        pw.println('<div class="label">')
-        pw.println("<strong>${htmlEscape(r.core)}</strong> - ${htmlEscape(r.status)}<br>")
-        pw.println("<span class=\"small\">conf ${format3(r.confidence)}; rotate ${format1(r.rotateToTopDeg)} deg; residual ${format1(r.postRotationResidualDeg)} deg; region ${htmlEscape(r.regionStatus)}; row ${r.row}, col ${r.col}</span>")
-        pw.println('</div></div>')
-    }
-    pw.println('</div>')
-    pw.println('<script>function filterCards(s){document.querySelectorAll(".card").forEach(function(c){c.style.display=(s==="all"||c.dataset.status===s)?"block":"none";});} filterCards("review");</script>')
-}
-
-// -------------------------------------------------------------------------
-// Human-readable run report.  This is deliberately separate from review.html:
-// the report explains whether the run stopped safely, what was produced, and
-// exactly what the user should do next.
+// Machine-readable run report. The one user-facing HTML file is always the
+// project-root START-HERE.html, rebuilt by the one-file runner after publish.
 // -------------------------------------------------------------------------
 
 def reviewReasons = { r ->
@@ -2184,8 +2147,9 @@ def reviewReasons = { r ->
     return reasons
 }
 String reportStatus = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'ORIENTATION_REVIEW_REQUIRED'
-def runReportFile = new File(outDir, 'run_report.html')
 def runReportJsonFile = new File(outDir, 'run_report.json')
+def startHereFile = new File(System.getProperty('corealign.project.root', base.getAbsolutePath()),
+    'START-HERE.html')
 def runReport = [
     schemaVersion: 1,
     status: reportStatus,
@@ -2211,8 +2175,7 @@ def runReport = [
         postRotationResidualReview: postRotationReviewCount,
         postRotationToleranceDeg: POST_ROTATION_TOLERANCE_DEG],
     outputs: [runDirectory: outDir.getAbsolutePath(),
-        reportHtml: runReportFile.getAbsolutePath(),
-        reviewHtml: htmlFile.getAbsolutePath(),
+        startHereHtml: startHereFile.getAbsolutePath(),
         contactSheet: sheetFile.getAbsolutePath(),
         resultsCsv: csvFile.getAbsolutePath(),
         reviewQueueCsv: reviewQueueFile.getAbsolutePath(),
@@ -2233,58 +2196,26 @@ def runReport = [
             postRotationResidualDeg: r.postRotationResidualDeg,
             reasons: reviewReasons(r)]
     },
+    cores: records.collect { r ->
+        [index: r.index, core: r.core, row: r.row, col: r.col,
+            status: r.status, confidence: r.confidence,
+            regionStatus: r.regionStatus,
+            rotateToTopDeg: r.rotateToTopDeg,
+            postRotationResidualDeg: r.postRotationResidualDeg,
+            reasons: reviewReasons(r),
+            rotatedPreview: r.preview ? "qc/02-orientation/${r.preview}" : null,
+            unrotatedPreview: r.original ? "qc/02-orientation/${r.original}" : null]
+    },
     nextSteps: PARTIAL_CORE_TEST ?
         ['Inspect the selected test-core outputs.'] :
-        ['Open run_report.html or review.html.',
+        ['Open START-HERE.html.',
          'Check the listed review cores and correct only those that need changes in QuPath.',
          'Run CoreAlign.groovy again. Accepted checkpoints will be reused.']
 ]
 writeAtomic(runReportJsonFile, json.toJson(runReport) + '\n')
-runReportFile.withPrintWriter('UTF-8') { pw ->
-    String accent = needsReview > 0 ? '#c46a00' : '#087f5b'
-    pw.println('<!doctype html><html><head><meta charset="utf-8">')
-    pw.println('<meta name="viewport" content="width=device-width,initial-scale=1">')
-    pw.println('<title>CoreAlign run report</title><style>')
-    pw.println(':root{color-scheme:light dark}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f4f6f8;color:#17202a}main{max-width:1100px;margin:auto;padding:32px 22px 64px}.hero,.card{background:white;border:1px solid #dfe5eb;border-radius:14px;box-shadow:0 4px 18px rgba(20,35,50,.06)}.hero{padding:26px;border-top:7px solid ' + accent + '}h1{margin:0 0 8px;font-size:30px}h2{font-size:20px;margin:30px 0 12px}.status{font-weight:700;color:' + accent + '}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:20px}.metric{padding:15px;background:#f7f9fb;border-radius:10px}.metric strong{display:block;font-size:25px}.card{padding:18px;margin-top:14px}ol{line-height:1.65}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #e3e8ed}th{background:#f7f9fb}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;font-size:13px}a{color:#0969da}@media(prefers-color-scheme:dark){body{background:#101418;color:#eef2f5}.hero,.card{background:#171d23;border-color:#303842}.metric,th{background:#202830}td,th{border-color:#303842}a{color:#6eb6ff}}</style></head><body><main>')
-    pw.println('<section class="hero">')
-    pw.println('<div class="status">' + htmlEscape(reportStatus.replace('_', ' ')) + '</div>')
-    pw.println('<h1>CoreAlign run finished safely</h1>')
-    pw.println('<p>Orientation processing completed. This is a planned review pause, not an error.</p>')
-    pw.println('<p><strong>Image:</strong> ' + htmlEscape(server.getMetadata().getName()) +
-        ' &nbsp; <strong>Duration:</strong> ' + formatDuration(elapsedSeconds) + '</p>')
-    pw.println('<div class="metrics">')
-    [[records.size(), 'Positions'], [okCount, 'Automatic QC pass'],
-     [needsReview, 'Needs review'], [missingCount, 'Missing'],
-     [processedThisRunCount, 'Processed now'], [resumedCount, 'Reused checkpoints']].each { metric ->
-        pw.println('<div class="metric"><strong>' + metric[0] + '</strong>' + metric[1] + '</div>')
-    }
-    pw.println('</div></section>')
-    pw.println('<h2>What to do next</h2><section class="card"><ol>')
-    runReport.nextSteps.each { step -> pw.println('<li>' + htmlEscape(step) + '</li>') }
-    pw.println('</ol></section>')
-    pw.println('<h2>Files</h2><section class="card">')
-    pw.println('<p><a href="review.html">Open visual core review</a></p>')
-    pw.println('<p><a href="orientation_contact_sheet.png">Open contact sheet</a></p>')
-    pw.println('<p><a href="orientation_results.csv">Open all results CSV</a></p>')
-    pw.println('<p class="path">' + htmlEscape(outDir.getAbsolutePath()) + '</p></section>')
-    pw.println('<h2>QuPath analysis project</h2><section class="card"><p>' +
-        htmlEscape(runReport.analysisProject.note) + '</p></section>')
-    pw.println('<h2>Cores requiring review</h2><section class="card">')
-    if (reviewRecords.isEmpty()) {
-        pw.println('<p>No automatic QC flags. Final human approval is still required.</p>')
-    } else {
-        pw.println('<table><thead><tr><th>Core</th><th>Row</th><th>Column</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>')
-        reviewRecords.each { r ->
-            pw.println('<tr><td>' + htmlEscape(r.core) + '</td><td>' + r.row +
-                '</td><td>' + r.col + '</td><td>' + format3(r.confidence) +
-                '</td><td>' + htmlEscape(reviewReasons(r).join(', ')) + '</td></tr>')
-        }
-        pw.println('</tbody></table>')
-    }
-    pw.println('</section></main></body></html>')
-}
-writeAtomic(new File(exportBaseDir, 'LATEST_RUN_REPORT.txt'),
-    runReportFile.getAbsolutePath() + '\n')
+writeAtomic(new File(exportBaseDir, 'LATEST_START_HERE.txt'),
+    startHereFile.getAbsolutePath() + '\n')
+try { new File(exportBaseDir, 'LATEST_RUN_REPORT.txt').delete() } catch (Throwable ignored) {}
 
 def summaryFile = new File(outDir, 'workflow_summary.txt')
 summaryFile.withPrintWriter('UTF-8') { pw ->
@@ -2309,7 +2240,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     }
     pw.println('')
     pw.println('Review order:')
-    pw.println('1. Open review.html or orientation_contact_sheet.png.')
+    pw.println('1. Open the project-root START-HERE.html.')
     pw.println('2. Check red and yellow cores first.')
     pw.println("3. If a direction is wrong, draw a small annotation on the true epidermis side, set class or name to '${OVERRIDE_CLASS_NAME}', and re-run this script.")
     pw.println("4. If the crop region is wrong, draw an annotation named '${CROP_OVERRIDE_CLASS_NAME} <core name>' around the desired core crop and re-run.")
@@ -2318,8 +2249,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println("CSV: ${csvFile.getName()}")
     pw.println("Contact sheet: ${sheetFile.getName()}")
     pw.println("Review queue CSV: ${reviewQueueFile.getName()}")
-    pw.println("Review HTML: ${htmlFile.getName()}")
-    pw.println("Run report: ${runReportFile.getName()}")
+    pw.println('Interactive dashboard: START-HERE.html')
     pw.println("Unrotated previews: ${originalDir.getName()}/")
     pw.println("Rotated previews: ${previewDir.getName()}/")
     if (SAVE_FULL_RESOLUTION_PNG) {
@@ -2340,20 +2270,19 @@ println "Resumed from checkpoint: ${resumedCount}; processed this run: ${process
 println "CSV: ${csvFile.getAbsolutePath()}"
 println "Contact sheet: ${sheetFile.getAbsolutePath()}"
 println "Review queue: ${reviewQueueFile.getAbsolutePath()}"
-println "Review page: ${htmlFile.getAbsolutePath()}"
-println "Run report: ${runReportFile.getAbsolutePath()}"
+println "Interactive dashboard: ${startHereFile.getAbsolutePath()}"
 println "Summary: ${summaryFile.getAbsolutePath()}"
 
 runManifest.status = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE'
 runManifest.completedAt = runCompletedAt
-runManifest.runReport = runReportFile.getAbsolutePath()
+runManifest.projectDashboard = startHereFile.getAbsolutePath()
 writeAtomic(runManifestFile, json.toJson(runManifest) + '\n')
 if (!PARTIAL_CORE_TEST)
     writeAtomic(new File(exportBaseDir, 'LATEST_FINAL_RUN.txt'), outDir.getAbsolutePath() + '\n')
 System.setProperty('tma.orientation.status', PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE')
 System.setProperty('tma.orientation.processedThisRun', processedThisRunCount.toString())
 System.setProperty('tma.orientation.exportOnlyThisRun', exportOnlyThisRunCount.toString())
-System.setProperty('tma.orientation.reportPath', runReportFile.getAbsolutePath())
+System.setProperty('tma.orientation.reportPath', startHereFile.getAbsolutePath())
 System.setProperty('tma.orientation.reportJsonPath', runReportJsonFile.getAbsolutePath())
 System.setProperty('tma.orientation.runDir', outDir.getAbsolutePath())
 System.setProperty('tma.orientation.totalCount', records.size().toString())
@@ -2364,7 +2293,7 @@ System.setProperty('tma.orientation.elapsed', formatDuration(elapsedSeconds))
 
 if (needsReview > 0) {
     Dialogs.showWarningNotification('Auto-orient TMA done',
-        "Exported ${records.size()} cores. Review ${needsReview} yellow/red cores in review.html.")
+        "Exported ${records.size()} cores. Open START-HERE.html and review ${needsReview} flagged cores.")
 } else {
     Dialogs.showInfoNotification('Auto-orient TMA done',
         "Exported ${records.size()} cores. All exported cores passed confidence checks.")

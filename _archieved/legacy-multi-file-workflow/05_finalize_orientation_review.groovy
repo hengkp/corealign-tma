@@ -1,7 +1,7 @@
 /**
  * STEP 5 - Final human approval of the checkpointed orientation result.
  *
- * Run only after inspecting review.html/contact sheet and applying any
+ * Run only after inspecting START-HERE.html/contact sheet and applying any
  * "Epidermis override" annotations.  Approval is bound to every per-core
  * signature and orientation result; changing one core invalidates it.
  */
@@ -140,7 +140,7 @@ if (approveForTest) {
         .addEmptyParameter("${manifest.coreCount as int} positions; ${manifest.missing as int} missing; ${manifest.review as int} automated review flags")
         .addEmptyParameter("${(manifest.regionReview ?: 0) as int} region flags; ${(manifest.postRotationReview ?: 0) as int} post-rotation residual flags; rotate-then-crop=${manifest.rotationThenCrop == true}")
         .addBooleanParameter('allReviewed',
-            'I inspected every non-missing core in the contact sheet/review page', false)
+            'I inspected every non-missing core in START-HERE.html or the contact sheet', false)
         .addBooleanParameter('epidermisConfirmed',
             'I confirm epidermis is at the top for every non-missing core', false)
         .addBooleanParameter('regionsConfirmed',
