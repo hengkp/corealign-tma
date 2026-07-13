@@ -37,6 +37,7 @@ export default function Documentation() {
 |-- CoreAlign.groovy
 |-- corealign.config.json   optional
 |-- START-HERE.html
+|-- corealign-review-corrections.json   created after an angle edit
 |-- qc/
 |   |-- 01-grid/
 |   +-- 02-orientation/
@@ -63,7 +64,7 @@ export default function Documentation() {
               <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Switch between Before and Rotated. Missing positions use a synthetic black no-core image. Filters follow All cores, QC pass, Missing, Needs review, and Changes.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
             </div>
-            <p className="docsSmall">If no cores need review, All cores opens automatically. A direct confirmation is saved in this browser and moves the card from Needs review to QC pass. No download is needed. To reverse a confirmation, open QC pass or All cores and click Undo. When the review is finished, run CoreAlign again. Editing shows one slider with Reset, Cancel, and Confirm. For an angle change, choose Save angle changes and save <code>corealign-review-corrections.json</code> beside the slide and <code>CoreAlign.groovy</code>. If the browser saves it in Downloads, move it into the project folder before running CoreAlign. Only edited cores are recalculated.</p>
+            <p className="docsSmall">If no cores need review, All cores opens automatically. A direct confirmation is saved in this browser and moves the card from Needs review to QC pass. To reverse it, open QC pass or All cores and click Undo. Editing shows one slider with Reset, Cancel, and Confirm. When you confirm an angle, QuPath saves <code>corealign-review-corrections.json</code> automatically beside <code>START-HERE.html</code>. Keep QuPath open while reviewing. If QuPath is unavailable, the report reveals a normal Save button so no edit is lost. Run CoreAlign again when the review is finished. Only edited cores are recalculated.</p>
           </section>
 
           <section className="docsSection" id="correct">
@@ -82,7 +83,7 @@ export default function Documentation() {
               <li>Give it the matching action and row-column name, for example <code>TMA correction 4-C</code>.</li>
               <li>Run CoreAlign.groovy again. The full QC summary is refreshed, but unchanged cores are reused.</li>
             </ol>
-            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>If it looks correct, click Confirm and run <code>CoreAlign.groovy</code> again. No download is needed. If it is wrong, click Edit, adjust the slider, and Confirm. Save angle changes in the project folder before running again.</span></div></div>
+            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>If it looks correct, click Confirm. If it is wrong, click Edit, adjust the slider, and Confirm. The angle saves beside <code>START-HERE.html</code> automatically while QuPath is open. Then run <code>CoreAlign.groovy</code> again.</span></div></div>
           </section>
 
           <section className="docsSection" id="results">
