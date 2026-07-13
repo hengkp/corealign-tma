@@ -60,10 +60,11 @@ export default function Documentation() {
             <p>This is the only workflow HTML file. Use its tabs to move between Grid QC, Orientation QC, Results, and Help.</p>
             <div className="featureList">
               <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Check that every circle covers the correct core and every row and column is present.</span></div>
-              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Review flagged cores first. Switch between Before and Rotated on each card.</span></div>
+              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Switch between Before and Rotated, zoom each card, or open its current image in a new window.</span></div>
+              <div><i className="ri-checkbox-circle-line" /><span><b>Review board</b> Turn on review mode to rotate previews, select cores, and flag Accepted, Needs review, Wrong rotation, Wrong crop, or Missing.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
             </div>
-            <p className="docsSmall">Technical data remains available as JSON and CSV. There are no separate review.html, run_report.html, or completion_report.html pages.</p>
+            <p className="docsSmall">Review flags and manual angle adjustments stay in your browser. Choose Save corrections and save <code>corealign-review-corrections.json</code> beside the slide. Run CoreAlign again to apply those angles to full resolution PNG and multichannel outputs. Only changed cores are recalculated. Technical data remains available as JSON and CSV. There are no separate review.html, run_report.html, or completion_report.html pages.</p>
           </section>
 
           <section className="docsSection" id="correct">

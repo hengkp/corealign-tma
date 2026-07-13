@@ -85,9 +85,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .themeToggle:hover { border-color: var(--green); color: var(--green-dark); }
 .themeToggle i { font-size: 19px; }
 .themeToggle span { font-size: 13px; font-weight: 700; }
-.themeSun { display: none; }
-:root[data-theme="dark"] .themeMoon { display: none; }
-:root[data-theme="dark"] .themeSun { display: block; }
+.themeMoon { display: none; }
+:root[data-theme="dark"] .themeSun { display: none; }
+:root[data-theme="dark"] .themeMoon { display: block; }
 
 .button {
   min-height: 48px;

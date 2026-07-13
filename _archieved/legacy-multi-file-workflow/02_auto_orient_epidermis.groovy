@@ -120,6 +120,26 @@ def COMPATIBLE_LEGACY_PROFILE_HASHES =
     System.getProperty('tma.config.compatibleLegacyProfileHashes', CURRENT_PROFILE_HASH)
         .split(',').collect { it.trim() }.findAll { !it.isEmpty() } as Set
 def json = new GsonBuilder().setPrettyPrinting().create()
+File webCorrectionFile = new File(System.getProperty('corealign.project.root', '.'),
+    'corealign-review-corrections.json')
+def webCorrectionsByCore = [:]
+String webCorrectionImageName = ''
+if (webCorrectionFile.isFile()) {
+    try {
+        def webReview = json.fromJson(webCorrectionFile.getText('UTF-8'), Map.class)
+        webCorrectionImageName = webReview?.image?.toString()?.trim() ?: ''
+        if (webReview?.corrections instanceof List) {
+            webReview.corrections.each { correction ->
+                String key = correction?.core?.toString()?.trim()?.toLowerCase()
+                if (key) webCorrectionsByCore[key] = correction
+            }
+        }
+        println "Web review corrections loaded: ${webCorrectionsByCore.size()} from ${webCorrectionFile.getName()}"
+    } catch (Throwable webReviewError) {
+        println "WARNING: Ignoring invalid ${webCorrectionFile.getName()}: ${webReviewError.getMessage()}"
+        webCorrectionsByCore.clear()
+    }
+}
 
 String DETECTED_CLASS_NAME = 'TMA core (detected)'
 String ORIENTATION_QC_CLASS_NAME = 'TMA orientation QC'
@@ -148,6 +168,12 @@ String runStartedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(ne
 
 def server = imageData.getServer()
 def hierarchy = imageData.getHierarchy()
+if (!webCorrectionImageName.isEmpty() &&
+        webCorrectionImageName != server.getMetadata().getName()) {
+    println "WARNING: ${webCorrectionFile.getName()} belongs to ${webCorrectionImageName}; " +
+        "ignoring it for ${server.getMetadata().getName()}."
+    webCorrectionsByCore.clear()
+}
 def channelObjs = server.getMetadata().getChannels()
 def channelNames = channelObjs.collect { it.getName() }
 int imgW = server.getWidth()
@@ -1421,7 +1447,7 @@ def recordsCsvText = { rows ->
         'nominal_center_x_px', 'nominal_center_y_px',
         'refined_center_x_px', 'refined_center_y_px', 'crop_diameter_px',
         'region_status', 'region_confidence', 'region_center_shift_px',
-        'epidermis_angle_deg', 'rotate_to_top_deg',
+        'epidermis_angle_deg', 'rotate_to_top_deg', 'web_rotation_adjustment_deg',
         'post_rotation_residual_deg',
         'confidence', 'tissue_fraction', 'status', 'orientation_method',
         'unrotated_preview_png', 'rotated_preview_png', 'checkpoint_reused',
@@ -1436,6 +1462,7 @@ def recordsCsvText = { rows ->
             format1(r.centerX), format1(r.centerY), format1(r.diameter),
             csv(r.regionStatus), format3(r.regionConfidence), format1(r.regionCenterShiftPx),
             format1(r.epidermisAngleDeg), format1(r.rotateToTopDeg),
+            format1(r.webRotationAdjustmentDeg ?: 0.0d),
             format1(r.postRotationResidualDeg),
             format3(r.confidence), format3(r.tissueFraction), csv(r.status),
             csv(r.method), csv(r.original), csv(r.preview), r.resumed,
@@ -1454,6 +1481,15 @@ coreEntries.each { entry ->
     def core = entry.core
     int i = entry.index as int
     String coreName = core.getName() ?: String.format(Locale.US, 'C%03d', i + 1)
+    def webCorrection = webCorrectionsByCore[coreName.toLowerCase()]
+    double webRotationAdjustmentDeg = 0.0d
+    try {
+        webRotationAdjustmentDeg = (webCorrection?.rotationAdjustmentDeg ?: 0.0d) as double
+        if (!Double.isFinite(webRotationAdjustmentDeg)) webRotationAdjustmentDeg = 0.0d
+        webRotationAdjustmentDeg = Math.max(-180.0d, Math.min(180.0d,
+            webRotationAdjustmentDeg))
+    } catch (Throwable ignored) { webRotationAdjustmentDeg = 0.0d }
+    boolean webManualRotation = Math.abs(webRotationAdjustmentDeg) >= 0.05d
     def geom = getRoiCenterAndDiameter(core)
     double nominalCx = geom.cx
     double nominalCy = geom.cy
@@ -1476,7 +1512,7 @@ coreEntries.each { entry ->
     // full signature path so additions, moves and removals are never hidden.
     def fastCheckpoint = null
     if (!missing && checkpointFile.isFile() && cropOverride == null &&
-            orientationOverrideProbe == null) {
+            orientationOverrideProbe == null && !webManualRotation) {
         try {
             def candidate = json.fromJson(checkpointFile.getText('UTF-8'), Map.class)
             def candidateRecord = candidate.record
@@ -1567,9 +1603,12 @@ coreEntries.each { entry ->
     String cropOverrideSignature = cropOverride == null ? 'none' :
         [cropOverride.obj.getID(), format3(cropOverride.x as double),
             format3(cropOverride.y as double), format3(cropOverride.side as double)].join('|')
+    String webCorrectionSignature = webManualRotation ?
+        "web_rotation_${format3(webRotationAdjustmentDeg)}" : 'none'
     String coreSignature = sha256([
         ORIENTATION_ALGORITHM_VERSION, gridHash, i, coreName, format3(cx), format3(cy),
         format3(diameter), missing, overrideSignature, cropOverrideSignature,
+        webCorrectionSignature,
         EXPORT_DOWNSAMPLE, PREVIEW_MAX_PIXELS, ROTATION_SUPPORT_SCALE
     ].join('|'))
     boolean resumed = false
@@ -1691,6 +1730,9 @@ coreEntries.each { entry ->
                 }
 
                 rotateRad = normalizeRadians(-Math.PI / 2.0d - (result.angle as double))
+                if (webManualRotation)
+                    rotateRad = normalizeRadians(rotateRad +
+                        Math.toRadians(webRotationAdjustmentDeg))
                 double supportSide = diameter * Math.max(Math.sqrt(2.0d) + 0.01d,
                     ROTATION_SUPPORT_SCALE)
                 def exportRegion = readSquare(cx, cy, supportSide, EXPORT_DOWNSAMPLE)
@@ -1712,12 +1754,18 @@ coreEntries.each { entry ->
                     qcAvailable = true
                     double correction = normalizeRadians(-Math.PI / 2.0d - (qcResult.angle as double))
                     postRotationResidualDeg = Math.abs(angleToDegrees(correction))
-                    if (override != null || postRotationResidualDeg <= POST_ROTATION_TOLERANCE_DEG ||
+                    if (override != null || webManualRotation ||
+                            postRotationResidualDeg <= POST_ROTATION_TOLERANCE_DEG ||
                             iteration + 1 >= POST_ROTATION_MAX_ITERATIONS ||
                             postRotationResidualDeg > 65.0d) break
                     rotateRad = normalizeRadians(rotateRad + correction)
                 }
                 if (!qcAvailable) postRotationResidualDeg = 180.0d
+                if (webManualRotation) {
+                    result.status = 'manual_override'
+                    result.method = 'web_manual_rotation'
+                    result.confidence = 1.0d
+                }
 
                 def originalPreview = scaleForPreview(unrotatedCrop, PREVIEW_MAX_PIXELS)
                 def rotatedPreview = scaleForPreview(rotatedCrop, PREVIEW_MAX_PIXELS)
@@ -1963,6 +2011,7 @@ coreEntries.each { entry ->
         regionCenterShiftPx: (regionResult.centerShiftPx ?: 0.0d) as double,
         epidermisAngleDeg: angleToDegrees(result.angle as double),
         rotateToTopDeg: angleToDegrees(rotateRad),
+        webRotationAdjustmentDeg: webRotationAdjustmentDeg,
         postRotationResidualDeg: postRotationResidualDeg,
         confidence: result.confidence as double,
         tissueFraction: result.tissueFraction as double,
@@ -2201,6 +2250,7 @@ def runReport = [
             status: r.status, confidence: r.confidence,
             regionStatus: r.regionStatus,
             rotateToTopDeg: r.rotateToTopDeg,
+            webRotationAdjustmentDeg: r.webRotationAdjustmentDeg,
             postRotationResidualDeg: r.postRotationResidualDeg,
             reasons: reviewReasons(r),
             rotatedPreview: r.preview ? "qc/02-orientation/${r.preview}" : null,
