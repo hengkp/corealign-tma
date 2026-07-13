@@ -1,4 +1,5 @@
 import SiteHeader from "../site-header";
+import DocsToc from "./docs-toc";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const release = "https://github.com/hengkp/corealign-tma/releases/latest";
@@ -10,7 +11,7 @@ const toc = [
   ["correct", "Correct a core"],
   ["results", "Find your files"],
   ["resume", "Resume or upgrade"],
-];
+] as const;
 
 export default function Documentation() {
   return (
@@ -18,11 +19,7 @@ export default function Documentation() {
       <a className="skipLink" href="#docs-content">Skip to content</a>
       <SiteHeader />
       <div className="docsShell">
-        <aside className="docsToc" aria-label="Documentation table of contents">
-          <p>CoreAlign guide</p>
-          <nav>{toc.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}</nav>
-          <a className="tocDownload" href={release}><i className="ri-download-2-line" /> Download</a>
-        </aside>
+        <DocsToc toc={toc} release={release} />
 
         <article className="docsContent" id="docs-content">
           <header className="docsHero" id="overview">
@@ -63,7 +60,7 @@ export default function Documentation() {
             <p>This is the only workflow HTML file. Use its tabs to move between Grid QC, Orientation QC, Results, and Help.</p>
             <div className="featureList">
               <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Check that every circle covers the correct core and every row and column is present.</span></div>
-              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Review only flagged cores and compare rotated previews.</span></div>
+              <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Review flagged cores first. Switch between Before and Rotated on each card.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
             </div>
             <p className="docsSmall">Technical data remains available as JSON and CSV. There are no separate review.html, run_report.html, or completion_report.html pages.</p>
@@ -85,6 +82,7 @@ export default function Documentation() {
               <li>Give it the matching action and row-column name, for example <code>TMA correction 4-C</code>.</li>
               <li>Run CoreAlign.groovy again. The full QC summary is refreshed, but unchanged cores are reused.</li>
             </ol>
+            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Change a wrong rotation</b><span>Draw a small annotation on the true epidermis side of the core. Name or classify it <code>Epidermis override 4-C</code>, using that core&apos;s row-column. Then run the same <code>CoreAlign.groovy</code> again. The rerun is required, but CoreAlign recalculates only the changed core and reuses accepted cores.</span></div></div>
           </section>
 
           <section className="docsSection" id="results">
