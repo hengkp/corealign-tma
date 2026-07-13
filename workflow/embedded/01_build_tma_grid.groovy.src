@@ -2042,7 +2042,8 @@ if (EXPORT_GRID_QC) {
         if (qcBase == null)
             qcBase = new File(System.getProperty('user.home'), 'QuPath-TMA-export')
 
-        File qcDir = new File(qcBase, 'tma_grid_qc')
+        File qcDir = new File(System.getProperty('corealign.qc.gridDir',
+            new File(qcBase, 'tma_grid_qc').getAbsolutePath()))
         if (!qcDir.isDirectory()) qcDir.mkdirs()
         String qcStem = server.getMetadata().getName() ?: 'image'
         qcStem = qcStem.replaceAll(/(?i)\.ome\.tif+$/, '')

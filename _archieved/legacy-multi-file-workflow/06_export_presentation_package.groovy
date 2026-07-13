@@ -77,7 +77,8 @@ if (conditions.isEmpty() || treatmentColumns.isEmpty() || comparisons.isEmpty())
     return
 }
 
-File exportBase = new File(workflowDir, 'tma_auto_orient_export')
+File exportBase = new File(System.getProperty('corealign.work.runBaseDir',
+    new File(workflowDir, 'tma_auto_orient_export').getAbsolutePath()))
 File latestPointer = new File(exportBase, 'LATEST_FINAL_RUN.txt')
 if (!latestPointer.isFile()) {
     Dialogs.showErrorMessage('TMA presentation export',
@@ -160,8 +161,9 @@ def chooseRepresentative = { String conditionId, String treatmentId ->
     return candidates[0]
 }
 
-File finalApprovalFile = new File(new File(new File(workflowDir, 'tma_pipeline_state'), imageStem),
-    'final_orientation_approval.json')
+File stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(workflowDir, 'tma_pipeline_state'), imageStem).getAbsolutePath()))
+File finalApprovalFile = new File(stateDir, 'final_orientation_approval.json')
 def approval = finalApprovalFile.isFile() ?
     json.fromJson(finalApprovalFile.getText('UTF-8'), Map.class) : [:]
 boolean humanApproved = approval.status == 'APPROVED' && approval.approvalMode == 'human'
@@ -169,8 +171,9 @@ String gridHash = approval.gridHash?.toString() ?:
     (records.isEmpty() ? 'unknown' : records[0].approved_grid_hash?.toString() ?: 'unknown')
 String gridShort = gridHash == 'unknown' ? 'unknown' : gridHash.take(12)
 
-File packageDir = new File(new File(workflowDir, 'presentation_ready'),
-    "${imageStem}_grid_${gridShort}")
+File presentationRoot = new File(System.getProperty('corealign.results.presentationDir',
+    new File(workflowDir, 'presentation_ready').getAbsolutePath()))
+File packageDir = new File(presentationRoot, "${imageStem}_grid_${gridShort}")
 File panelDir = new File(packageDir, 'presentation_panels')
 panelDir.mkdirs()
 

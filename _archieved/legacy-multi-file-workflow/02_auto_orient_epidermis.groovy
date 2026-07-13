@@ -242,8 +242,10 @@ if (imageStem == null || imageStem.trim().isEmpty())
 imageStem = imageStem.replaceAll(/(?i)\.ome\.tif+$/, '')
 imageStem = imageStem.replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
-def exportBaseDir = new File(projectDir, 'tma_auto_orient_export')
-def stateDir = new File(new File(projectDir, 'tma_pipeline_state'), imageStem)
+def exportBaseDir = new File(System.getProperty('corealign.work.runBaseDir',
+    new File(projectDir, 'tma_auto_orient_export').getAbsolutePath()))
+def stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(projectDir, 'tma_pipeline_state'), imageStem).getAbsolutePath()))
 def approvalFile = new File(stateDir, 'approved_grid.json')
 
 // -------------------------------------------------------------------------
@@ -1268,22 +1270,34 @@ String runIdentity = sha256([gridHash, CURRENT_PROCESSING_HASH,
 def outDir = new File(exportBaseDir,
     "${imageStem}_grid_${gridHash.substring(0, 12)}_orient_${runIdentity}")
 File latestRunPointer = new File(exportBaseDir, 'LATEST_FINAL_RUN.txt')
-if (!new File(outDir, 'checkpoints').isDirectory() && latestRunPointer.isFile()) {
+def compatibleRunPointers = [latestRunPointer]
+String legacyRunBasePath = System.getProperty('corealign.legacy.runBaseDir', '').trim()
+if (!legacyRunBasePath.isEmpty()) {
+    File legacyPointer = new File(new File(legacyRunBasePath), 'LATEST_FINAL_RUN.txt')
+    if (legacyPointer.getAbsolutePath() != latestRunPointer.getAbsolutePath())
+        compatibleRunPointers << legacyPointer
+}
+if (!new File(outDir, 'checkpoints').isDirectory()) {
     try {
-        File legacyRunDir = new File(latestRunPointer.getText('UTF-8').trim())
-        File legacyManifestFile = new File(legacyRunDir, 'run_manifest.json')
-        if (legacyRunDir.isDirectory() && legacyManifestFile.isFile()) {
-            def legacyManifest = json.fromJson(legacyManifestFile.getText('UTF-8'), Map.class)
-            boolean compatibleLegacyRun = legacyManifest.gridHash == gridHash &&
-                legacyManifest.algorithmVersion == ORIENTATION_ALGORITHM_VERSION &&
-                (legacyManifest.processingHash == CURRENT_PROCESSING_HASH ||
-                    (legacyManifest.processingHash == null &&
-                        COMPATIBLE_LEGACY_PROFILE_HASHES.contains(
-                            legacyManifest.profileHash?.toString() ?: '')))
-            if (compatibleLegacyRun) {
-                outDir = legacyRunDir
-                println "MIGRATION: Reusing compatible earlier run ${outDir.getName()} for output-only upgrade."
+        compatibleRunPointers.find { pointer ->
+            if (!pointer.isFile()) return false
+            File legacyRunDir = new File(pointer.getText('UTF-8').trim())
+            File legacyManifestFile = new File(legacyRunDir, 'run_manifest.json')
+            if (legacyRunDir.isDirectory() && legacyManifestFile.isFile()) {
+                def legacyManifest = json.fromJson(legacyManifestFile.getText('UTF-8'), Map.class)
+                boolean compatibleLegacyRun = legacyManifest.gridHash == gridHash &&
+                    legacyManifest.algorithmVersion == ORIENTATION_ALGORITHM_VERSION &&
+                    (legacyManifest.processingHash == CURRENT_PROCESSING_HASH ||
+                        (legacyManifest.processingHash == null &&
+                            COMPATIBLE_LEGACY_PROFILE_HASHES.contains(
+                                legacyManifest.profileHash?.toString() ?: '')))
+                if (compatibleLegacyRun) {
+                    outDir = legacyRunDir
+                    println "MIGRATION: Reusing compatible earlier run ${outDir.getName()} for output-only upgrade."
+                    return true
+                }
             }
+            return false
         }
     } catch (Throwable migrationError) {
         println "WARNING: Could not inspect earlier run for output-only migration: ${migrationError.getMessage()}"

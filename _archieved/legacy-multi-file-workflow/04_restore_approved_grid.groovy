@@ -33,7 +33,9 @@ String imageName = server.getMetadata().getName() ?: 'image'
 String imageStem = imageName.replaceAll(/(?i)\.ome\.tif+$/, '')
     .replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
-File approvalFile = new File(new File(new File(base, 'tma_pipeline_state'), imageStem), 'approved_grid.json')
+File stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(base, 'tma_pipeline_state'), imageStem).getAbsolutePath()))
+File approvalFile = new File(stateDir, 'approved_grid.json')
 if (!approvalFile.isFile()) {
     Dialogs.showErrorMessage('Restore approved TMA grid',
         "No approved checkpoint exists for this image:\n${approvalFile.getAbsolutePath()}")

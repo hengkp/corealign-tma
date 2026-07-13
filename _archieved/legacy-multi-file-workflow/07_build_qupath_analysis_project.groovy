@@ -42,7 +42,8 @@ String imageStem = imageName.replaceAll(/(?i)\.ome\.tif+$/, '')
     .replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
 
-File exportBase = new File(workflowDir, 'tma_auto_orient_export')
+File exportBase = new File(System.getProperty('corealign.work.runBaseDir',
+    new File(workflowDir, 'tma_auto_orient_export').getAbsolutePath()))
 File latestPointer = new File(exportBase, 'LATEST_FINAL_RUN.txt')
 File runDir = System.getProperty('tma.orientation.runDir', '').trim() ?
     new File(System.getProperty('tma.orientation.runDir')) :
@@ -53,7 +54,8 @@ if (runDir == null || !runDir.isDirectory()) {
     return
 }
 
-File stateDir = new File(new File(workflowDir, 'tma_pipeline_state'), imageStem)
+File stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(workflowDir, 'tma_pipeline_state'), imageStem).getAbsolutePath()))
 File finalApprovalFile = new File(stateDir, 'final_orientation_approval.json')
 if (!finalApprovalFile.isFile()) {
     System.setProperty('tma.analysisProject.status', 'WAITING_FOR_FINAL_APPROVAL')
@@ -134,8 +136,9 @@ def writeAtomic = { File target, String content ->
     }
 }
 
-File projectDir = new File(runDir, 'qupath_analysis_project')
-File statusFile = new File(runDir, 'qupath_analysis_project_status.json')
+File projectDir = new File(System.getProperty('corealign.qupath.projectDir',
+    new File(runDir, 'qupath_analysis_project').getAbsolutePath()))
+File statusFile = new File(projectDir, 'project_status.json')
 if (!unavailable.isEmpty()) {
     def status = [schemaVersion: 1, status: 'RESEARCH_OUTPUT_REQUIRED',
         image: imageName, runDirectory: runDir.getAbsolutePath(),
