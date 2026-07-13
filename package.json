@@ -1,6 +1,6 @@
 {
   "name": "corealign-tma-docs",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "private": true,
   "description": "English documentation and visual config builder for CoreAlign TMA",
   "repository": "https://github.com/hengkp/corealign-tma",
