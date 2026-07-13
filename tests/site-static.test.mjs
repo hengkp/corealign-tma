@@ -50,6 +50,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /No array geometry or punch size is required/);
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
   assert.match(builder, /%22autoEstimateCoreDiameter%22%3A%20true/);
+  assert.match(builder, /%22cropPaddingFactor%22%3A%201.9/);
   assert.match(builder, /Channel name helper/);
   assert.doesNotMatch(builder, /Fallback rows|Fallback columns|Core-size seed|Profile name/);
   assert.match(builder, /download="corealign\.config\.json"/);
@@ -93,6 +94,7 @@ test("ships one guarded production workflow", async () => {
   assert.equal(profile.grid.showAdvancedDialog, false);
   assert.equal(profile.grid.autoDetectGeometry, true);
   assert.equal(profile.grid.autoEstimateCoreDiameter, true);
+  assert.equal(profile.grid.cropPaddingFactor, 1.9);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
   assert.equal(profile.detection.autoRetryMergedChannels, true);
 
@@ -104,6 +106,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedDetector, /Automatic core-size estimate/);
   assert.match(embeddedDetector, /Automatic merged-channel retry/);
   assert.match(embeddedDetector, /AUTO_GEOMETRY_BLOCKED/);
+  assert.match(embeddedDetector, /MAX_PRESENT_DIAM_SPACING_FRACTION = 0\.80/);
 
   const reviewPayload = groovy.match(/def step3 = new EmbeddedWorkflowScript\(name: '03_review_correct_and_approve_grid\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(reviewPayload, "Step 3 payload should be embedded");

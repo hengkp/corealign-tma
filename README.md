@@ -20,6 +20,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 
 - Runs from one production script: `workflow/CoreAlign.groovy`
 - Estimates core diameter, row count, and column count without operator input
+- Uses a slightly generous 1.90x core footprint with a spacing cap so circles cover peripheral tissue without touching adjacent cores
 - Creates an automatic config when no config is supplied
 - Detects the grid and asks for review before processing
 - Refines, orients, rotates, checks, and crops each core in that order

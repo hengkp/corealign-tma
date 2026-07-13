@@ -35,6 +35,7 @@ function makeConfig(form: FormState) {
         grid: {
           geometryMode: "automatic",
           coreDiameterMode: "automatic",
+          cropPaddingFactor: 1.9,
           autoDetectGeometry: true,
           autoEstimateCoreDiameter: true,
           autoInferLayout: true,

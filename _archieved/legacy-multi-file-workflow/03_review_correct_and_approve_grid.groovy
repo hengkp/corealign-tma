@@ -150,6 +150,50 @@ def median = { values ->
 // the row/column order fixed and makes the operation deterministic/idempotent.
 def cores = new ArrayList(grid.getTMACoreList())
 int gridCols = grid.getGridWidth()
+
+// v1.4 originally used 1.75x padding.  The slightly larger 1.90x default
+// covers peripheral tissue more reliably while retaining a visible gap between
+// adjacent cores.  Existing live grids are migrated once and tagged so later
+// runs remain idempotent.
+double desiredCropPaddingFactor = 1.90d
+try {
+    desiredCropPaddingFactor = Double.parseDouble(
+        System.getProperty('tma.grid.cropPaddingFactor', '1.90'))
+} catch (Throwable ignored) {}
+desiredCropPaddingFactor = Math.max(1.0d, Math.min(2.10d, desiredCropPaddingFactor))
+int resizedCoreCount = 0
+cores.eachWithIndex { core, i ->
+    if (core.isMissing() || core.getROI() == null) return
+    double storedPaddingFactor = 1.75d
+    try {
+        String stored = core.getMetadataString('CoreAlign crop padding factor')
+        if (stored != null && !stored.trim().isEmpty()) storedPaddingFactor = Double.parseDouble(stored)
+    } catch (Throwable ignored) {}
+    if (!(storedPaddingFactor > 0.0d)) storedPaddingFactor = 1.75d
+    if (Math.abs(storedPaddingFactor - desiredCropPaddingFactor) <= 0.0001d) return
+    def roi = core.getROI()
+    double oldDiameter = Math.max(roi.getBoundsWidth(), roi.getBoundsHeight())
+    double newDiameter = oldDiameter * desiredCropPaddingFactor / storedPaddingFactor
+    def resized = PathObjects.createTMACoreObject(
+        roi.getCentroidX(), roi.getCentroidY(), newDiameter, false)
+    resized.setName(core.getName())
+    try { resized.setColor(core.getColor()) } catch (Throwable ignored) {}
+    try { resized.setLocked(core.isLocked()) } catch (Throwable ignored) { resized.setLocked(false) }
+    copyCoreMetadata(core, resized)
+    resized.putMetadataValue('CoreAlign crop padding factor',
+        String.format(Locale.US, '%.3f', desiredCropPaddingFactor))
+    cores[i] = resized
+    resizedCoreCount++
+}
+if (resizedCoreCount > 0) {
+    grid = DefaultTMAGrid.create(cores, gridCols)
+    hierarchy.setTMAGrid(grid)
+    try { fireHierarchyUpdate() } catch (Throwable ignored) {}
+    appendEvent([event: 'CORE_CIRCLES_RESIZED', count: resizedCoreCount,
+        cropPaddingFactor: desiredCropPaddingFactor])
+    println "Resized ${resizedCoreCount} present core circles to ${String.format(Locale.US, '%.2f', desiredCropPaddingFactor)}x padding"
+}
+
 def presentDiameters = cores.findAll { !it.isMissing() }.collect {
     Math.max(it.getROI().getBoundsWidth(), it.getROI().getBoundsHeight())
 }.findAll { it > 1.0d }

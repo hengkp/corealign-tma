@@ -176,14 +176,14 @@ double MIN_RESCUE_MERGED_SUPPORT_FRACTION = 0.050
 double RESCUE_MERGED_THRESHOLD_SCALE = 0.65
 double MAX_SHARED_FOOTPRINT_DISTANCE_FRACTION = 0.62
 double MIN_PRESENT_COVER_DIAM_FRACTION = 0.80
-double MAX_PRESENT_DIAM_SPACING_FRACTION = 0.72
+double MAX_PRESENT_DIAM_SPACING_FRACTION = 0.80
 double MISSING_MARKER_DIAM_FRACTION = 0.05
 
 def mode = MODE_DETECT
 def rows = cfgInt('tma.grid.rows', 18)
 def cols = cfgInt('tma.grid.columns', 7)
 def coreDiameterMM = cfgDouble('tma.grid.coreDiameterMM', 0.6d)
-def cropPaddingFactor = cfgDouble('tma.grid.cropPaddingFactor', 1.75d)
+def cropPaddingFactor = cfgDouble('tma.grid.cropPaddingFactor', 1.90d)
 def rowScheme = cfgString('tma.grid.rowScheme', '1, 2, 3...')
 def colScheme = cfgString('tma.grid.columnScheme', 'A, B, C...')
 String channelModeKey = cfgString('tma.detection.channelMode', 'nuclear').toLowerCase()
@@ -1955,6 +1955,10 @@ if (mode == MODE_DETECT) {
             try {
                 core.putMetadataValue('Detection source', detectionSource)
                 core.putMetadataValue('Detection algorithm version', DETECTION_ALGORITHM_VERSION)
+                core.putMetadataValue('CoreAlign crop padding factor',
+                    String.format(Locale.US, '%.3f', cropPaddingFactor))
+                core.putMetadataValue('CoreAlign spacing diameter cap fraction',
+                    String.format(Locale.US, '%.3f', MAX_PRESENT_DIAM_SPACING_FRACTION))
                 core.putMetadataValue('Detection confidence', String.format(Locale.US, '%.3f', detectionConfidence))
                 core.putMetadataValue('Grid assignment score', b?.gridScore == null ? '' :
                     String.format(Locale.US, '%.4f', (double) b.gridScore))
