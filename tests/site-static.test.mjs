@@ -64,8 +64,9 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
   assert.match(docs, /TMA orientation 4-C/);
   assert.match(docs, /TMA correction 4-C/);
-  assert.match(docs, /Change a wrong rotation/);
-  assert.match(docs, /Edit shows one slider with Reset, Cancel, and Confirm/);
+  assert.match(docs, /Review a rotation/);
+  assert.match(docs, /Confirm a correct core directly/);
+  assert.match(docs, /Editing shows one slider with Reset, Cancel, and Confirm/);
   assert.match(docs, /complete array opens in Fit view/);
   assert.match(docs, /corealign-review-corrections\.json/);
   assert.match(docs, /Only edited cores are recalculated/);
@@ -92,10 +93,11 @@ test("keeps the website runtime lightweight", async () => {
 });
 
 test("ships one guarded production workflow", async () => {
-  const [groovy, configText, detectorSource] = await Promise.all([
+  const [groovy, configText, detectorSource, orientationSource] = await Promise.all([
     readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
     readFile(new URL("workflow/corealign.config.json", root), "utf8"),
     readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
+    readFile(new URL("_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy", root), "utf8"),
   ]);
   const config = JSON.parse(configText);
   const profile = config.profiles.automatic;
@@ -129,6 +131,10 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /coreSearchClear/);
   assert.match(groovy, /data-core-view/);
   assert.match(groovy, /data-filter="changes"/);
+  assert.match(groovy, /data-card-confirm/);
+  assert.match(groovy, /data-confirmed/);
+  assert.match(groovy, /confirmed-badge/);
+  assert.match(groovy, /reviewState\.confirmed/);
   assert.match(groovy, /data-edit/);
   assert.match(groovy, /data-edit-reset/);
   assert.match(groovy, /data-edit-cancel/);
@@ -144,7 +150,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /rotationAdjustmentDeg/);
   assert.match(groovy, /String\.fromCharCode\(10\)/);
   assert.match(groovy, /Current theme:/);
-  assert.match(groovy, /Only edited cores are rebuilt/);
+  assert.match(groovy, /No download is needed/);
+  assert.match(groovy, /Save angle changes/);
   assert.match(groovy, /removeLegacyWorkflowHtml/);
   assert.match(groovy, /PROJECT-README\.txt/);
   assert.match(groovy, /qc\/01-grid/);
@@ -172,6 +179,14 @@ test("ships one guarded production workflow", async () => {
   assert.equal(embeddedDetector, detectorSource);
   assert.match(embeddedDetector, /Automatic geometry accepted/);
   assert.match(embeddedDetector, /Automatic core-size estimate/);
+
+  const orientationPayload = groovy.match(/def step2 = new EmbeddedWorkflowScript\(name: '02_auto_orient_epidermis\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
+  assert.ok(orientationPayload, "Step 2 payload should be embedded");
+  const embeddedOrientation = gunzipSync(Buffer.from(orientationPayload[1], "base64")).toString("utf8");
+  assert.equal(embeddedOrientation, orientationSource);
+  assert.match(embeddedOrientation, /corealign-review-corrections\.json/);
+  assert.match(embeddedOrientation, /webCorrectionsByCore/);
+  assert.match(embeddedOrientation, /web_manual_rotation/);
   assert.match(embeddedDetector, /Automatic merged-channel retry/);
   assert.match(embeddedDetector, /AUTO_GEOMETRY_BLOCKED/);
   assert.match(embeddedDetector, /MAX_PRESENT_DIAM_SPACING_FRACTION = 0\.80/);
