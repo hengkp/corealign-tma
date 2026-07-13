@@ -555,6 +555,57 @@ try {
             0, 0, server.getWidth(), server.getHeight())
         sourceOverview = server.readRegion(request)
     }
+    // Fluorescence thumbnails can be very dark when QuPath has conservative
+    // display ranges. Brighten non-black signal adaptively so tissue remains
+    // visible beneath the QC outlines without washing out the background.
+    int sourceWidth = Math.max(1, sourceOverview.getWidth())
+    int sourceHeight = Math.max(1, sourceOverview.getHeight())
+    int[] sourcePixels = sourceOverview.getRGB(0, 0, sourceWidth, sourceHeight,
+        null, 0, sourceWidth)
+    int[] signalHistogram = new int[256]
+    int signalCount = 0
+    int sampleStep = Math.max(1, sourcePixels.length.intdiv(350000))
+    for (int i = 0; i < sourcePixels.length; i += sampleStep) {
+        int pixel = sourcePixels[i]
+        int peak = Math.max((pixel >> 16) & 0xff,
+            Math.max((pixel >> 8) & 0xff, pixel & 0xff))
+        if (peak >= 3) {
+            signalHistogram[peak]++
+            signalCount++
+        }
+    }
+    int signalP995 = 64
+    if (signalCount > 0) {
+        int targetCount = Math.max(1, (int) Math.ceil(signalCount * 0.990d))
+        int cumulative = 0
+        for (int value = 0; value < 256; value++) {
+            cumulative += signalHistogram[value]
+            if (cumulative >= targetCount) {
+                signalP995 = Math.max(1, value)
+                break
+            }
+        }
+    }
+    double displayGain = Math.max(1.0d, Math.min(8.0d, 245.0d / signalP995))
+    double displayGamma = 0.58d
+    for (int i = 0; i < sourcePixels.length; i++) {
+        int pixel = sourcePixels[i]
+        int r = (pixel >> 16) & 0xff
+        int g = (pixel >> 8) & 0xff
+        int b = pixel & 0xff
+        r = (int) Math.round(255.0d * Math.pow(
+            Math.min(1.0d, r * displayGain / 255.0d), displayGamma))
+        g = (int) Math.round(255.0d * Math.pow(
+            Math.min(1.0d, g * displayGain / 255.0d), displayGamma))
+        b = (int) Math.round(255.0d * Math.pow(
+            Math.min(1.0d, b * displayGain / 255.0d), displayGamma))
+        sourcePixels[i] = (r << 16) | (g << 8) | b
+    }
+    BufferedImage brightOverview = new BufferedImage(sourceWidth, sourceHeight,
+        BufferedImage.TYPE_INT_RGB)
+    brightOverview.setRGB(0, 0, sourceWidth, sourceHeight, sourcePixels, 0,
+        sourceWidth)
+    sourceOverview = brightOverview
     int overviewWidth = Math.max(1, sourceOverview.getWidth())
     int overviewHeight = Math.max(1, sourceOverview.getHeight())
     BufferedImage overview = new BufferedImage(overviewWidth, overviewHeight,
@@ -571,7 +622,7 @@ try {
         overviewWidth / 1000.0d))
 
     qg.setStroke(new BasicStroke((float) Math.max(1.0f, lineWidth * 0.55f)))
-    qg.setColor(new Color(255, 255, 255, 80))
+    qg.setColor(new Color(255, 255, 255, 58))
     for (int row = 0; row < grid.getGridHeight(); row++) {
         for (int col = 0; col + 1 < gridCols; col++) {
             def a = cores[row * gridCols + col].getROI()
@@ -614,7 +665,7 @@ try {
         int x = (int) Math.round(cx - dd / 2.0d)
         int y = (int) Math.round(cy - dd / 2.0d)
         int d = (int) Math.round(dd)
-        qg.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 42))
+        qg.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 14))
         qg.fillOval(x, y, d, d)
         qg.setColor(color)
         qg.drawOval(x, y, d, d)

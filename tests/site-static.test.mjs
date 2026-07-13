@@ -67,6 +67,9 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /TMA correction 4-C/);
   assert.match(docs, /Change a wrong rotation/);
   assert.match(docs, /The rerun is required, but CoreAlign recalculates only the changed core/);
+  assert.match(docs, /rotate previews, select cores, and flag Accepted/);
+  assert.match(docs, /corealign-review-corrections\.json/);
+  assert.match(docs, /Only changed cores are recalculated/);
   assert.match(docs, /aria-current="location"/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
@@ -78,6 +81,8 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(css, /\.automaticStrip\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /--bg:\s*#ffffff/);
+  assert.match(css, /\.themeMoon\s*\{\s*display:\s*none/);
+  assert.match(css, /:root\[data-theme="dark"\] \.themeMoon\s*\{\s*display:\s*block/);
 });
 
 test("keeps the website runtime lightweight", async () => {
@@ -119,8 +124,20 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /CoreAlign quality-control report/);
   assert.match(groovy, /gridZoomIn/);
   assert.match(groovy, /gridViewport/);
+  assert.match(groovy, /fitGridImage/);
+  assert.match(groovy, /gridZoomValue">Fit/);
   assert.match(groovy, /coreSearch/);
   assert.match(groovy, /data-core-view/);
+  assert.match(groovy, /reviewModeToggle/);
+  assert.match(groovy, /data-core-zoom-in/);
+  assert.match(groovy, /data-core-open/);
+  assert.match(groovy, /data-core-flag/);
+  assert.match(groovy, /data-rotation-adjust/);
+  assert.match(groovy, /saveCorrections/);
+  assert.match(groovy, /corealign-review-corrections\.json/);
+  assert.match(groovy, /rotationAdjustmentDeg/);
+  assert.match(groovy, /String\.fromCharCode\(10\)/);
+  assert.match(groovy, /Current theme:/);
   assert.match(groovy, /A rerun is required, but only the changed core is recalculated/);
   assert.match(groovy, /removeLegacyWorkflowHtml/);
   assert.match(groovy, /PROJECT-README\.txt/);
@@ -164,6 +181,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedReview, /_grid_qc_latest\.png/);
   assert.match(embeddedReview, /correctionsAppliedThisRun/);
   assert.match(embeddedReview, /LATEST_GRID_QC_EXPORTED/);
+  assert.match(embeddedReview, /signalP995/);
+  assert.match(embeddedReview, /displayGamma = 0\.58d/);
+  assert.match(embeddedReview, /new Color\(color\.getRed\(\), color\.getGreen\(\), color\.getBlue\(\), 14\)/);
   assert.doesNotMatch(embeddedReview, /Latest grid QC/);
   assert.doesNotMatch(embeddedReview, /AUTO DETECTED/);
 
@@ -181,6 +201,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
   assert.match(embeddedOrient, /corealign\.work\.runBaseDir/);
   assert.match(embeddedOrient, /corealign\.legacy\.runBaseDir/);
+  assert.match(embeddedOrient, /Web review corrections loaded/);
+  assert.match(embeddedOrient, /web_manual_rotation/);
+  assert.match(embeddedOrient, /webRotationAdjustmentDeg/);
   assert.match(embeddedOrient, /ROIs\.createEllipseROI\(cx - radius, cy - radius/);
   assert.match(embeddedOrient, /ann\.getMetadata\(\)/);
   assert.match(embeddedOrient, /ann\.setName\("TMA orientation \$\{coreName\}"\)/);
