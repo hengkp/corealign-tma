@@ -80,11 +80,12 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /PREFLIGHT_BLOCKED: multiple config files/);
   assert.match(groovy, /Gson represents JSON integers as doubles/);
   assert.match(groovy, /TMA runtime config verified/);
-  assert.match(groovy, /known slide.*requires/);
   assert.match(groovy, /CoreAlign adopted automatic geometry/);
-  assert.match(groovy, /AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.match(groovy, /STRUCTURAL QC:/);
   assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
+  assert.match(groovy, /not_configured; human_grid_approval_required/);
+  assert.doesNotMatch(groovy, /knownReferenceLayouts|AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
+  assert.doesNotMatch(groovy, /'TMA_0\.6mm_7_backsub':/);
   assert.equal(config.schemaVersion, 2);
   assert.equal(profile.grid.rows, undefined);
   assert.equal(profile.grid.columns, undefined);
@@ -103,4 +104,12 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedDetector, /Automatic core-size estimate/);
   assert.match(embeddedDetector, /Automatic merged-channel retry/);
   assert.match(embeddedDetector, /AUTO_GEOMETRY_BLOCKED/);
+
+  const reviewPayload = groovy.match(/def step3 = new EmbeddedWorkflowScript\(name: '03_review_correct_and_approve_grid\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
+  assert.ok(reviewPayload, "Step 3 payload should be embedded");
+  const embeddedReview = gunzipSync(Buffer.from(reviewPayload[1], "base64")).toString("utf8");
+  assert.match(embeddedReview, /fitted_lattice/);
+  assert.match(embeddedReview, /row labels remain aligned/);
+  assert.match(embeddedReview, /POST_CORRECTION_REVIEW_REQUIRED/);
+  assert.match(embeddedReview, /Inspect the updated circles, labels and connecting lines/);
 });

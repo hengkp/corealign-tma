@@ -64,7 +64,8 @@ Rows, columns, punch size, and layout are automatic. Use the Config Builder only
 
 ## Human overrides
 
-- `TMA correction 4-C`: mark the correct core center
+- For the usual case, draw an ellipse over the missed or misplaced tissue and name or classify it `TMA correction`. Run CoreAlign again. It fits the array lattice, assigns the row and column, and shifts later labels into the next missing slot when one missed core caused an off-by-one row.
+- If the position is genuinely ambiguous, use an explicit name such as `TMA correction 4-C`.
 - `TMA mark missing 14-G`: mark a truly empty position
 - `TMA crop override 4-C`: define the source region to rotate and crop
 - `Epidermis override 4-C`: point to the epidermal side
@@ -91,7 +92,7 @@ The rotated multichannel OME TIFF uses the same accepted transform for every ori
 
 ## Accuracy policy
 
-Reference slide technical validation assigned 126 of 126 positions with zero processing errors. The set contained 117 present cores and 9 known empty positions. This does not prove autonomous biological accuracy on unseen slides.
+CoreAlign does not use a filename-specific geometry or missing-core answer key. Technical accuracy must be measured against an independently adjudicated reference set, not against a result derived from the same detector.
 
 One hundred percent in this workflow means every position is accepted after human review and the exact grid and result hashes are approved. See [the validation protocol](docs/ACCURACY_99_9_PROTOCOL.md).
 
