@@ -294,8 +294,11 @@ footer > div { display: flex; gap: 20px; }
 .docsEnd > div { display: flex; gap: 10px; }
 
 @media (max-width: 900px) {
-  .siteHeader { gap: 16px; }
-  .siteHeader nav { display: none; }
+  .siteHeader { height: auto; min-height: 72px; flex-wrap: wrap; gap: 8px 16px; padding-top: 8px; padding-bottom: 8px; }
+  .siteHeader nav { width: 100%; order: 3; display: flex; gap: 8px; margin-left: 0; padding-top: 6px; overflow-x: auto; border-top: 1px solid var(--line); scrollbar-width: none; }
+  .siteHeader nav::-webkit-scrollbar { display: none; }
+  .siteHeader nav a { min-height: 34px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; white-space: nowrap; }
+  .siteHeader nav a:hover { background: var(--surface-green); }
   .headerActions { margin-left: auto; }
   .homeHero { grid-template-columns: 1fr; gap: 48px; padding-top: 64px; }
   .productPreview { transform: none; }
@@ -315,7 +318,7 @@ footer > div { display: flex; gap: 20px; }
 }
 
 @media (max-width: 620px) {
-  .siteHeader { height: 64px; padding: 0 16px; }
+  .siteHeader { min-height: 64px; padding: 8px 16px; }
   .siteHeader .button.small { width: 42px; padding: 0; font-size: 0; }
   .siteHeader .button.small i { font-size: 18px; }
   .themeToggle { width: 42px; padding: 0; }

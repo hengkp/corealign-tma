@@ -70,6 +70,8 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /aria-current="location"/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(css, /\.siteHeader nav\s*\{\s*width:\s*100%;\s*order:\s*3;\s*display:\s*flex/);
+  assert.doesNotMatch(css, /\.siteHeader nav\s*\{\s*display:\s*none/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.docsToc\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.docsToc nav a\.active/);
