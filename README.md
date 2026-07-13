@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.8.3
+## Current workflow: v1.8.4
 
-Version 1.8.3 lets reviewers confirm a correct core directly from its card. The card then leaves Needs review and appears under QC pass with a clear Undo button. A direct confirmation needs no downloaded file. Edit remains available only when the angle needs adjustment, and Save angle changes appears only for actual angle changes. Grid QC keeps brighter tissue rendering and true Fit-to-view behavior. A config file is optional.
+Version 1.8.4 gives missing positions a polished synthetic black no-core image instead of an empty card. Orientation filters now follow All cores, QC pass, Missing, Needs review, and Changes. If nothing needs review, All cores opens automatically. Confirmed cards keep the clear Undo action introduced in v1.8.3. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 

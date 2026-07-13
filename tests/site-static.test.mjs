@@ -65,7 +65,9 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /TMA orientation 4-C/);
   assert.match(docs, /TMA correction 4-C/);
   assert.match(docs, /Review a rotation/);
-  assert.match(docs, /Confirm a correct core directly/);
+  assert.match(docs, /Missing positions use a synthetic black no-core image/);
+  assert.match(docs, /All cores, QC pass, Missing, Needs review, and Changes/);
+  assert.match(docs, /If no cores need review, All cores opens automatically/);
   assert.match(docs, /click Undo/);
   assert.match(docs, /Editing shows one slider with Reset, Cancel, and Confirm/);
   assert.match(docs, /complete array opens in Fit view/);
@@ -94,11 +96,12 @@ test("keeps the website runtime lightweight", async () => {
 });
 
 test("ships one guarded production workflow", async () => {
-  const [groovy, configText, detectorSource, orientationSource] = await Promise.all([
+  const [groovy, configText, detectorSource, orientationSource, placeholderJpeg] = await Promise.all([
     readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
     readFile(new URL("workflow/corealign.config.json", root), "utf8"),
     readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
     readFile(new URL("_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy", root), "utf8"),
+    readFile(new URL("workflow/assets/no-core-placeholder.jpg", root)),
   ]);
   const config = JSON.parse(configText);
   const profile = config.profiles.automatic;
@@ -132,6 +135,12 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /coreSearchClear/);
   assert.match(groovy, /data-core-view/);
   assert.match(groovy, /data-filter="changes"/);
+  assert.match(groovy, /data-filter="all"[\s\S]*?data-filter="ok"[\s\S]*?data-filter="missing"[\s\S]*?data-filter="review"[\s\S]*?data-filter="changes"/);
+  assert.match(groovy, /reviewCountForPage > 0 \? filterStatus != 'review' : false/);
+  assert.match(groovy, /no-core-placeholder\.jpg/);
+  assert.match(groovy, /boolean previewAvailable = !preview\.isEmpty\(\) &&/);
+  assert.match(groovy, /new File\(workflowDir, preview\)\.isFile\(\)/);
+  assert.match(groovy, /Synthetic empty placeholder for missing TMA core/);
   assert.match(groovy, /data-card-confirm/);
   assert.match(groovy, /data-confirmed/);
   assert.match(groovy, /confirmed-badge/);
@@ -175,6 +184,13 @@ test("ships one guarded production workflow", async () => {
   assert.equal(profile.grid.cropPaddingFactor, 1.9);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
   assert.equal(profile.detection.autoRetryMergedChannels, true);
+
+  const placeholderPayload = groovy.match(/String NO_CORE_PLACEHOLDER_JPEG_BASE64 = '''\n([\s\S]*?)\n'''/);
+  assert.ok(placeholderPayload, "No-core placeholder should be embedded");
+  const embeddedPlaceholder = Buffer.from(placeholderPayload[1], "base64");
+  assert.deepEqual(embeddedPlaceholder, placeholderJpeg);
+  assert.equal(placeholderJpeg[0], 0xff);
+  assert.equal(placeholderJpeg[1], 0xd8);
 
   const payload = groovy.match(/def step1 = new EmbeddedWorkflowScript\(name: '01_build_tma_grid\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(payload, "Step 1 payload should be embedded");
