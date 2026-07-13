@@ -20,7 +20,7 @@ Complete this setup before the screen recorder starts:
 4. Use a clean logged-out browser profile with no bookmarks bar, account avatar, history suggestions, downloads list, or extensions visible.
 5. Keep only one browser tab open at a time.
 6. In Finder, open the prepared `CoreAlign-Run` folder before recording. Hide the sidebar, path bar, recent files, tags, and unrelated folders.
-7. The visible folder must contain only the slide, `CoreAlign.groovy`, `corealign.config.json`, and `READ-ME-FIRST.md`.
+7. The visible folder must contain only the slide, `CoreAlign.groovy`, and `corealign.config.json`. After the run, open `REPORT.html`.
 8. In QuPath Script Editor, close all old saved scripts. Discard only known temporary Untitled test tabs. Open only the production `CoreAlign.groovy` from the demonstration folder.
 9. Open the slide from that same demonstration folder. The folder containing the open slide determines which config CoreAlign uses.
 10. Confirm that no patient name, specimen identifier, staff name, username, private path, project title, or institutional file is visible at any time.

@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.8.5
+## Current workflow: v1.8.6
 
-Version 1.8.5 saves orientation angle corrections automatically as `corealign-review-corrections.json` beside `START-HERE.html` while QuPath is open. The report shows a browser Save fallback only if the local QuPath save bridge is unavailable. Missing positions keep the synthetic black no-core image and the filters remain All cores, QC pass, Missing, Needs review, and Changes. A config file is optional.
+Version 1.8.6 uses one `REPORT.html` dashboard. Rotation edits save automatically while QuPath is open. Changed cards move to Changes, and Undo restores the original angle. Results has a Presentation and Research toggle that updates `corealign.config.json`. The Open QuPath button returns to the running QuPath window on macOS, Windows, and Linux. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -28,7 +28,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 - Refines, orients, rotates, checks, and crops each core in that order
 - Saves an atomic checkpoint after every core
 - Resumes only failed or corrected cores
-- Refreshes one `START-HERE.html` dashboard and writes machine-readable JSON and CSV audit data
+- Refreshes one `REPORT.html` dashboard and writes machine-readable JSON and CSV audit data
 - Shows a modal result summary when processing pauses or completes
 - Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
 - Builds an analysis-ready QuPath project with row, column, QC, and transform metadata
@@ -48,8 +48,8 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 4. Open `Automate`, then `Show script editor`.
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
-7. Open `START-HERE.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations. Confirm correct cards directly. If an angle is wrong, click Edit, adjust the slider, and Confirm. QuPath saves the correction beside `START-HERE.html` automatically. Then resume.
+7. Open `REPORT.html`, review the detected grid, and run the same file again.
+8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Confirm. Click Open QuPath, then run the same script again.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
@@ -71,8 +71,8 @@ Rows, columns, punch size, and layout are automatic. Use the Config Builder only
 ### Upgrade PNG results to a research package later
 
 1. Keep the original slide folder and its `work` folder. For a project created before v1.6, also keep any legacy `tma_pipeline_state` and `tma_auto_orient_export` folders until CoreAlign has resumed it successfully.
-2. Open the Config Builder, choose `Research package`, and replace only `corealign.config.json` beside the slide.
-3. Open the same original slide in QuPath and run the same `CoreAlign.groovy` file.
+2. Keep QuPath open. Open `REPORT.html`, select Results, and choose `Research`.
+3. Return to the same original slide in QuPath and run the same `CoreAlign.groovy` file.
 
 CoreAlign uses separate processing and output identities. If only the output choice changed, it reuses the approved grid, refined core region, accepted rotation angle, and final crop. It reads the source slide and creates only the missing rotated multichannel OME-TIFF files. It does not redetect or reorient the cores. If an export stops, run the same script again and it resumes the missing files.
 
@@ -111,9 +111,8 @@ my-project/
 |-- slide.ome.tif
 |-- CoreAlign.groovy
 |-- corealign.config.json
-|-- START-HERE.html
+|-- REPORT.html
 |-- corealign-review-corrections.json
-|-- PROJECT-README.txt
 |-- qc/
 |   |-- 01-grid/
 |   `-- 02-orientation/
@@ -130,7 +129,7 @@ my-project/
     `-- runs/
 ```
 
-Open `START-HERE.html` to see the current stage and direct links. The `qupath` project is created only in Research package mode after final approval. The rotated multichannel OME TIFF uses the same accepted transform for every original channel. Keep the original whole slide as the immutable source of truth.
+Open `REPORT.html` to see the current stage and direct links. The `qupath` project is created only in Research package mode after final approval. The rotated multichannel OME TIFF uses the same accepted transform for every original channel. Keep the original whole slide as the immutable source of truth.
 
 `work/` contains the run identity, checkpoints, and approvals required for safe resume. It is intentionally separated from the files a researcher normally opens. CoreAlign can read legacy v1.5 `tma_*` folders and publishes their current files into the v1.6 layout without repeating completed cores.
 

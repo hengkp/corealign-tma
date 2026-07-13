@@ -11,17 +11,27 @@ export default function DocsToc({ toc, release }: { toc: readonly TocItem[]; rel
     const sections = toc
       .map(([id]) => document.getElementById(id))
       .filter((section): section is HTMLElement => Boolean(section));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]?.target.id) setActive(visible[0].target.id);
-      },
-      { rootMargin: "-96px 0px -68% 0px", threshold: [0, 0.05, 0.25] },
-    );
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    const updateActive = () => {
+      const readingLine = 130;
+      let current = sections[0]?.id ?? "overview";
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= readingLine) current = section.id;
+        else break;
+      }
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8) {
+        current = sections.at(-1)?.id ?? current;
+      }
+      setActive(current);
+    };
+    updateActive();
+    window.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive);
+    window.addEventListener("hashchange", updateActive);
+    return () => {
+      window.removeEventListener("scroll", updateActive);
+      window.removeEventListener("resize", updateActive);
+      window.removeEventListener("hashchange", updateActive);
+    };
   }, [toc]);
 
   return (

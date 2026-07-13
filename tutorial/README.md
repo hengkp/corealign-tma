@@ -27,7 +27,7 @@ There must be only one config file. Delete or archive names such as `corealign.c
 1. Download the latest GitHub Release.
 2. Copy `workflow/CoreAlign.groovy` into the new working folder.
 3. Copy or move the slide into the same folder.
-4. Optionally use the Config Builder when changing output type, tissue type, or channel names.
+4. Optionally use the Config Builder when changing tissue type or channel names. Output can also be changed later in REPORT.html.
 
 ## Run in QuPath
 
@@ -56,7 +56,7 @@ The first valid run stops after detection. Inspect the live grid and QC image. R
 
 CoreAlign saves an atomic checkpoint after each core. If QuPath stops, run the same file again. Completed cores are reused.
 
-When orientation processing finishes, CoreAlign shows a modal summary, refreshes `START-HERE.html`, and writes `run_report.json` in the run folder. A message such as `PAUSED AT FINAL ORIENTATION REVIEW GATE` is an intentional human review stop, not a crash.
+When orientation processing finishes, CoreAlign shows a modal summary, refreshes `REPORT.html`, and writes `run_report.json` in the run folder. A message such as `PAUSED AT FINAL ORIENTATION REVIEW GATE` is an intentional human review stop, not a crash.
 
 If a core needs correction:
 
@@ -70,7 +70,7 @@ If a core needs correction:
 
 `rotated_fullres` contains presentation PNG files. Each file is rotated first and cropped second at source pixel dimensions.
 
-`rotated_multichannel_ome` contains UINT16 OME-TIFF files with every original channel. These are much slower and larger. In the validated test, one 2,606 by 2,606 core with 19 channels produced an approximately 99 MB OME-TIFF and required several minutes. Disable multichannel OME-TIFF in the Config Builder when only presentation PNG files are required.
+`rotated_multichannel_ome` contains UINT16 OME-TIFF files with every original channel. These are much slower and larger. In the validated test, one 2,606 by 2,606 core with 19 channels produced an approximately 99 MB OME-TIFF and required several minutes. In REPORT.html, open Results and switch between Presentation and Research. The config updates automatically while QuPath is open. Run CoreAlign again after switching.
 
 After final approval, Research package mode creates `qupath/project.qpproj`. Open it with `File`, `Project`, `Open project`. Core images are named in row-major order and include core, row, column, QC status, confidence, rotation, grid hash, and approval hash metadata. Presentation mode does not create this project because PNG composites are not suitable for quantitative multichannel analysis.
 
