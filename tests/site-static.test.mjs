@@ -48,6 +48,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Presentation images/);
   assert.match(builder, /run the same script again/);
   assert.match(builder, /reuses every accepted grid, rotation, and crop checkpoint/);
+  assert.match(builder, /analysis-ready QuPath project/);
   assert.match(builder, /Detection is fully automatic/);
   assert.match(builder, /No array geometry or punch size is required/);
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
@@ -92,6 +93,11 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /tma\.config\.outputHash/);
   assert.match(groovy, /compatibleLegacyProfileHashes/);
   assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
+  assert.match(groovy, /CoreAlign run finished: review required/);
+  assert.match(groovy, /This is a planned review pause, not an error/);
+  assert.match(groovy, /tma\.analysisProject\.status/);
+  assert.match(groovy, /completion_report\.html/);
+  assert.match(groovy, /COMPLETE_HUMAN_APPROVED/);
   assert.doesNotMatch(groovy, /knownReferenceLayouts|AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.doesNotMatch(groovy, /'TMA_0\.6mm_7_backsub':/);
   assert.equal(config.schemaVersion, 2);
@@ -134,15 +140,28 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /EXPORT-ONLY:/);
   assert.match(embeddedOrient, /MIGRATION: Reusing compatible earlier run/);
   assert.match(embeddedOrient, /CURRENT_PROCESSING_HASH/);
+  assert.match(embeddedOrient, /run_report\.html/);
+  assert.match(embeddedOrient, /ORIENTATION_REVIEW_REQUIRED/);
+  assert.match(embeddedOrient, /LATEST_RUN_REPORT\.txt/);
+  assert.match(embeddedOrient, /checkpoint_fast_resume/);
+  assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
   assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
 
   for (const [step, name] of [
     ["4", "04_restore_approved_grid.groovy"],
     ["5", "05_finalize_orientation_review.groovy"],
     ["6", "06_export_presentation_package.groovy"],
+    ["7", "07_build_qupath_analysis_project.groovy"],
   ]) {
     const match = groovy.match(new RegExp(`def step${step} = new EmbeddedWorkflowScript\\(name: '${name.replaceAll(".", "\\.")}', payload: '''\\n([\\s\\S]*?)\\n'''\\)`));
     assert.ok(match, `Step ${step} payload should be embedded`);
     assert.ok(gunzipSync(Buffer.from(match[1], "base64")).toString("utf8").length > 500);
   }
+
+  const projectPayload = groovy.match(/def step7 = new EmbeddedWorkflowScript\(name: '07_build_qupath_analysis_project\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
+  const embeddedProject = gunzipSync(Buffer.from(projectPayload[1], "base64")).toString("utf8");
+  assert.match(embeddedProject, /rotated_multichannel_ome_tiff/);
+  assert.match(embeddedProject, /RESEARCH_OUTPUT_REQUIRED/);
+  assert.match(embeddedProject, /CoreAlign row/);
+  assert.match(embeddedProject, /project\.qpproj/);
 });

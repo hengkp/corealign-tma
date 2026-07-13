@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.4.0
+## Current workflow: v1.5.0
 
-Version 1.4.0 estimates the array region, physical core size, rows, columns, and usable detection channels from the slide. A config file is optional. New slides must pass structural confidence checks before CoreAlign creates or approves a grid.
+Version 1.5.0 estimates the array region, physical core size, rows, columns, and usable detection channels from the slide. It also writes a run report, shows a persistent completion dialog, and builds an ordered QuPath core project when Research package files are available. A config file is optional. New slides must pass structural confidence checks before CoreAlign creates or approves a grid.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -26,7 +26,10 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 - Refines, orients, rotates, checks, and crops each core in that order
 - Saves an atomic checkpoint after every core
 - Resumes only failed or corrected cores
+- Writes `run_report.html` and `run_report.json` after orientation
+- Shows a modal result summary when processing pauses or completes
 - Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
+- Builds an analysis-ready QuPath project with row, column, QC, and transform metadata
 - Supports skin and other TMA tissues without array geometry input
 
 ## Requirements
@@ -45,7 +48,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Review the detected grid and run the same file again.
 8. Review uncertain orientations, add an override only where needed, and resume.
-9. Approve the final reviewed result to create the presentation package.
+9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
 
@@ -70,6 +73,8 @@ Rows, columns, punch size, and layout are automatic. Use the Config Builder only
 3. Open the same original slide in QuPath and run the same `CoreAlign.groovy` file.
 
 CoreAlign uses separate processing and output identities. If only the output choice changed, it reuses the approved grid, refined core region, accepted rotation angle, and final crop. It reads the source slide and creates only the missing rotated multichannel OME-TIFF files. It does not redetect or reorient the cores. If an export stops, run the same script again and it resumes the missing files.
+
+After final human approval, Research package mode creates `qupath_analysis_project/project.qpproj`. Each non-missing core is a separate multichannel image entry named in row-major order and tagged with its row and QC status. Open the project through `File > Project > Open project`. CoreAlign does not switch projects automatically because QuPath closes the current viewers when a different project is opened.
 
 PNG files alone cannot be converted back into a multichannel research file. The original slide and checkpoint folders are therefore required. Do not rename or delete them until the research package is complete.
 
@@ -98,10 +103,17 @@ tma_auto_orient_export/<image>_grid_<hash>_orient_<run-id>/
   orientation_review_queue.csv
   orientation_contact_sheet.png
   review.html
+  run_report.html
+  run_report.json
+  completion_report.html
+  completion_report.json
   run_manifest.json
+  qupath_analysis_project/
+    project.qpproj
+    corealign_project_manifest.json
 ```
 
-The rotated multichannel OME TIFF uses the same accepted transform for every original channel. Keep the original whole slide as the immutable source of truth.
+The `qupath_analysis_project` folder is created only in Research package mode after final approval. The rotated multichannel OME TIFF uses the same accepted transform for every original channel. Keep the original whole slide as the immutable source of truth.
 
 ## Accuracy policy
 

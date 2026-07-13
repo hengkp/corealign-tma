@@ -14,7 +14,7 @@ const steps = [
 
 const outputs = [
   { icon: "ri-slideshow-3-line", label: "For slides and figures", title: "Full resolution PNG", text: "Fast, lossless images ready for PowerPoint, figures, and contact sheets." },
-  { icon: "ri-stack-line", label: "For downstream analysis", title: "Multichannel OME-TIFF", text: "Optional rotated UINT16 files that preserve every original channel." },
+  { icon: "ri-stack-line", label: "For downstream analysis", title: "QuPath core project", text: "Optional rotated OME-TIFF files, ordered by row and column with QC metadata." },
 ];
 
 export default function Home() {
