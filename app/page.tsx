@@ -18,7 +18,7 @@ const workflow = [
   {
     icon: "ri-eye-line",
     title: "Review and use",
-    text: "Open START-HERE.html, check flagged cores, and continue with the saved results.",
+    text: "Open REPORT.html, check flagged cores, and continue with the saved results.",
   },
 ];
 
@@ -42,7 +42,7 @@ export default function Home() {
 
         <div className="productPreview" aria-label="Example CoreAlign project dashboard">
           <div className="previewBar">
-            <span><i className="ri-focus-3-line" /> START-HERE.html</span>
+            <span><i className="ri-focus-3-line" /> REPORT.html</span>
             <span className="previewReady"><i className="ri-checkbox-blank-circle-fill" /> Review ready</span>
           </div>
           <div className="previewContent">

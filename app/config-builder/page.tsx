@@ -172,7 +172,7 @@ export default function ConfigBuilder() {
             <ol>
               <li><span>1</span><p>Put the config beside your slide and <b>CoreAlign.groovy</b>.</p></li>
               <li><span>2</span><p>Open the slide in QuPath and run the script.</p></li>
-              <li><span>3</span><p>Open <b>START-HERE.html</b> to review and continue.</p></li>
+              <li><span>3</span><p>Open <b>REPORT.html</b> to review and continue.</p></li>
             </ol>
           </div>
         </aside>
