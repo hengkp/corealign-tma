@@ -59,7 +59,7 @@ export default function Documentation() {
             <h2>Review everything in START-HERE.html</h2>
             <p>This is the only workflow HTML file. Use its tabs to move between Grid QC, Orientation QC, Results, and Help.</p>
             <div className="featureList">
-              <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Check that every circle covers the correct core and every row and column is present.</span></div>
+              <div><i className="ri-layout-grid-line" /><span><b>Grid QC</b> Tissue is brightened under lighter outlines. The complete array opens in Fit view, and Reset always returns to the full image.</span></div>
               <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Switch between Before and Rotated, zoom each card, or open its current image in a new window.</span></div>
               <div><i className="ri-checkbox-circle-line" /><span><b>Review board</b> Turn on review mode to rotate previews, select cores, and flag Accepted, Needs review, Wrong rotation, Wrong crop, or Missing.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open the current PNG, OME-TIFF, table, or QuPath project folder.</span></div>
