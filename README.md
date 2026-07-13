@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.8.4
+## Current workflow: v1.8.5
 
-Version 1.8.4 gives missing positions a polished synthetic black no-core image instead of an empty card. Orientation filters now follow All cores, QC pass, Missing, Needs review, and Changes. If nothing needs review, All cores opens automatically. Confirmed cards keep the clear Undo action introduced in v1.8.3. A config file is optional.
+Version 1.8.5 saves orientation angle corrections automatically as `corealign-review-corrections.json` beside `START-HERE.html` while QuPath is open. The report shows a browser Save fallback only if the local QuPath save bridge is unavailable. Missing positions keep the synthetic black no-core image and the filters remain All cores, QC pass, Missing, Needs review, and Changes. A config file is optional.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -49,7 +49,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Open `START-HERE.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations. Confirm correct cards directly. If an angle is wrong, edit it and save `corealign-review-corrections.json` beside the slide and script. Then resume.
+8. Review uncertain orientations. Confirm correct cards directly. If an angle is wrong, click Edit, adjust the slider, and Confirm. QuPath saves the correction beside `START-HERE.html` automatically. Then resume.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
@@ -112,6 +112,7 @@ my-project/
 |-- CoreAlign.groovy
 |-- corealign.config.json
 |-- START-HERE.html
+|-- corealign-review-corrections.json
 |-- PROJECT-README.txt
 |-- qc/
 |   |-- 01-grid/

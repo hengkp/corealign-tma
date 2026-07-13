@@ -70,6 +70,9 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /If no cores need review, All cores opens automatically/);
   assert.match(docs, /click Undo/);
   assert.match(docs, /Editing shows one slider with Reset, Cancel, and Confirm/);
+  assert.match(docs, /saves <code>corealign-review-corrections\.json<\/code> automatically beside/);
+  assert.match(docs, /Keep QuPath open while reviewing/);
+  assert.match(docs, /reveals a normal Save button so no edit is lost/);
   assert.match(docs, /complete array opens in Fit view/);
   assert.match(docs, /corealign-review-corrections\.json/);
   assert.match(docs, /Only edited cores are recalculated/);
@@ -153,6 +156,15 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-edit-confirm/);
   assert.match(groovy, /data-rotation-adjust/);
   assert.match(groovy, /downloadChanges/);
+  assert.match(groovy, /class CoreAlignCorrectionBridge/);
+  assert.match(groovy, /InetAddress\.getByName\('127\.0\.0\.1'\)/);
+  assert.match(groovy, /data-auto-save-url/);
+  assert.match(groovy, /queueAutoSaveCorrections/);
+  assert.match(groovy, /fetch\(correctionAutoSaveUrl/);
+  assert.match(groovy, /Saved beside START-HERE\.html/);
+  assert.match(groovy, /Access-Control-Allow-Private-Network: true/);
+  assert.match(groovy, /StandardCopyOption\.ATOMIC_MOVE/);
+  assert.match(groovy, /COREALIGN_AUTOSAVE_SELF_TEST_PASSED/);
   assert.doesNotMatch(groovy, /Interactive review board/);
   assert.doesNotMatch(groovy, /reviewModeToggle/);
   assert.doesNotMatch(groovy, /data-core-zoom-in/);
@@ -162,8 +174,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /rotationAdjustmentDeg/);
   assert.match(groovy, /String\.fromCharCode\(10\)/);
   assert.match(groovy, /Current theme:/);
-  assert.match(groovy, /No download is needed/);
-  assert.match(groovy, /Save angle changes/);
+  assert.match(groovy, /Angle changes save automatically beside START-HERE\.html while QuPath is open/);
+  assert.doesNotMatch(groovy, />Save angle changes</);
   assert.match(groovy, /removeLegacyWorkflowHtml/);
   assert.match(groovy, /PROJECT-README\.txt/);
   assert.match(groovy, /qc\/01-grid/);

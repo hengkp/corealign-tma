@@ -17,12 +17,284 @@
 
 import com.google.gson.Gson
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.charset.StandardCharsets
 
 import java.io.ByteArrayInputStream
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.util.Base64
 import java.util.zip.GZIPInputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.SocketTimeoutException
+
+/**
+ * Loopback-only bridge that lets START-HERE.html save validated orientation
+ * edits beside itself while QuPath remains open. Browsers cannot write beside
+ * a local HTML file silently, so QuPath owns the fixed destination path.
+ */
+class CoreAlignCorrectionBridge {
+    private static final int MAX_REQUEST_BYTES = 1024 * 1024
+    private static final long IDLE_TIMEOUT_MS = 12L * 60L * 60L * 1000L
+    private static ServerSocket activeSocket
+    private static Thread activeThread
+
+    static synchronized Map start(File targetFile, String expectedImage,
+            String expectedRun, Set<String> allowedCores) {
+        stop()
+        try {
+            byte[] tokenBytes = new byte[24]
+            new SecureRandom().nextBytes(tokenBytes)
+            String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes)
+            ServerSocket serverSocket = new ServerSocket(0, 16,
+                InetAddress.getByName('127.0.0.1'))
+            serverSocket.setSoTimeout(60000)
+            activeSocket = serverSocket
+            Set<String> normalizedCores = allowedCores.collect {
+                it == null ? '' : it.toString().trim().toLowerCase(Locale.ROOT)
+            }.findAll { !it.isEmpty() } as Set<String>
+            long startedAt = System.currentTimeMillis()
+            Thread thread = new Thread({
+                long lastRequestAt = startedAt
+                try {
+                    while (!serverSocket.isClosed()) {
+                        try {
+                            Socket client = serverSocket.accept()
+                            lastRequestAt = System.currentTimeMillis()
+                            handle(client, token, targetFile, expectedImage,
+                                expectedRun, normalizedCores)
+                        } catch (SocketTimeoutException ignored) {
+                            if (System.currentTimeMillis() - lastRequestAt > IDLE_TIMEOUT_MS)
+                                break
+                        } catch (Throwable requestError) {
+                            if (!serverSocket.isClosed())
+                                println "WARNING: CoreAlign auto-save request failed: ${requestError.getMessage()}"
+                        }
+                    }
+                } finally {
+                    try { serverSocket.close() } catch (Throwable ignored) {}
+                }
+            }, 'CoreAlign orientation correction auto-save')
+            thread.setDaemon(true)
+            activeThread = thread
+            thread.start()
+            return [available: true,
+                endpoint: "http://127.0.0.1:${serverSocket.getLocalPort()}/corealign/save?token=${token}"]
+        } catch (Throwable startError) {
+            stop()
+            println "WARNING: CoreAlign correction auto-save is unavailable: ${startError.getMessage()}"
+            return [available: false, endpoint: '', error: startError.getMessage()]
+        }
+    }
+
+    static synchronized void stop() {
+        try { activeSocket?.close() } catch (Throwable ignored) {}
+        activeSocket = null
+        activeThread = null
+    }
+
+    static void runSelfTest() {
+        File folder = Files.createTempDirectory('corealign-autosave-test-').toFile()
+        File target = new File(folder, 'corealign-review-corrections.json')
+        try {
+            Map bridge = start(target, 'test.ome.tif', 'test-run', ['1-a'] as Set<String>)
+            if (!bridge.available) throw new IOException('Auto-save bridge did not start')
+            def preflight = new URL(bridge.endpoint.toString()).openConnection()
+            preflight.setRequestMethod('OPTIONS')
+            preflight.setConnectTimeout(3000)
+            preflight.setReadTimeout(3000)
+            preflight.setRequestProperty('Origin', 'null')
+            preflight.setRequestProperty('Access-Control-Request-Method', 'POST')
+            preflight.setRequestProperty('Access-Control-Request-Private-Network', 'true')
+            if (preflight.getResponseCode() != 204 ||
+                    preflight.getHeaderField('Access-Control-Allow-Origin') != '*' ||
+                    preflight.getHeaderField('Access-Control-Allow-Private-Network') != 'true')
+                throw new IOException('Browser preflight was not accepted')
+            Map payload = [schemaVersion: 1, image: 'test.ome.tif', baseRun: 'test-run',
+                corrections: [[core: '1-A', rotationAdjustmentDeg: 17.4d]]]
+            byte[] body = new Gson().toJson(payload).getBytes(StandardCharsets.UTF_8)
+            def connection = new URL(bridge.endpoint.toString()).openConnection()
+            connection.setRequestMethod('POST')
+            connection.setDoOutput(true)
+            connection.setConnectTimeout(3000)
+            connection.setReadTimeout(3000)
+            connection.setRequestProperty('Content-Type', 'text/plain;charset=UTF-8')
+            connection.getOutputStream().withCloseable { it.write(body) }
+            if (connection.getResponseCode() != 200)
+                throw new IOException("Auto-save returned HTTP ${connection.getResponseCode()}")
+            connection.getInputStream().withCloseable { it.readAllBytes() }
+            if (!target.isFile()) throw new IOException('Correction file was not written')
+            Map saved = new Gson().fromJson(target.getText('UTF-8'), Map.class)
+            if (saved.image != 'test.ome.tif' || saved.baseRun != 'test-run' ||
+                    !(saved.corrections instanceof List) || saved.corrections.size() != 1 ||
+                    saved.corrections[0].core != '1-A' ||
+                    Math.abs((saved.corrections[0].rotationAdjustmentDeg as Number).doubleValue() - 17.4d) > 0.001d)
+                throw new IOException('Saved correction content is incorrect')
+            println 'COREALIGN_AUTOSAVE_SELF_TEST_PASSED'
+        } finally {
+            stop()
+            try { Files.deleteIfExists(target.toPath()) } catch (Throwable ignored) {}
+            try { Files.deleteIfExists(folder.toPath()) } catch (Throwable ignored) {}
+        }
+    }
+
+    private static void handle(Socket client, String token, File targetFile,
+            String expectedImage, String expectedRun, Set<String> allowedCores) {
+        client.setSoTimeout(5000)
+        try {
+            InputStream input = new BufferedInputStream(client.getInputStream())
+            String requestLine = readAsciiLine(input, 8192)
+            if (requestLine == null) return
+            String[] requestParts = requestLine.split(' ', 3)
+            if (requestParts.length < 2) {
+                respond(client, 400, 'Bad Request', [ok: false, error: 'Invalid request'])
+                return
+            }
+            String method = requestParts[0]
+            String target = requestParts[1]
+            Map<String, String> headers = [:]
+            int headerBytes = requestLine.length()
+            while (true) {
+                String line = readAsciiLine(input, 8192)
+                if (line == null || line.isEmpty()) break
+                headerBytes += line.length()
+                if (headerBytes > 65536) {
+                    respond(client, 431, 'Request Header Fields Too Large',
+                        [ok: false, error: 'Request headers are too large'])
+                    return
+                }
+                int colon = line.indexOf(':')
+                if (colon > 0)
+                    headers[line.substring(0, colon).trim().toLowerCase(Locale.ROOT)] =
+                        line.substring(colon + 1).trim()
+            }
+            String expectedTarget = "/corealign/save?token=${token}"
+            if (target != expectedTarget) {
+                respond(client, 403, 'Forbidden', [ok: false, error: 'Invalid save token'])
+                return
+            }
+            if (method == 'OPTIONS') {
+                respond(client, 204, 'No Content', null)
+                return
+            }
+            if (method != 'POST') {
+                respond(client, 405, 'Method Not Allowed',
+                    [ok: false, error: 'POST is required'])
+                return
+            }
+            int length
+            try { length = Integer.parseInt(headers['content-length'] ?: '-1') }
+            catch (Throwable ignored) { length = -1 }
+            if (length < 0 || length > MAX_REQUEST_BYTES) {
+                respond(client, 413, 'Content Too Large',
+                    [ok: false, error: 'Invalid correction size'])
+                return
+            }
+            byte[] body = input.readNBytes(length)
+            if (body.length != length) {
+                respond(client, 400, 'Bad Request',
+                    [ok: false, error: 'Incomplete correction data'])
+                return
+            }
+            Map payload
+            try {
+                payload = new Gson().fromJson(
+                    new String(body, StandardCharsets.UTF_8), Map.class) ?: [:]
+            } catch (Throwable ignored) {
+                respond(client, 400, 'Bad Request',
+                    [ok: false, error: 'Invalid correction data'])
+                return
+            }
+            if (payload.image?.toString() != expectedImage ||
+                    payload.baseRun?.toString() != expectedRun ||
+                    !(payload.corrections instanceof List) ||
+                    payload.corrections.size() > allowedCores.size()) {
+                respond(client, 409, 'Conflict',
+                    [ok: false, error: 'This report does not match the current QuPath run'])
+                return
+            }
+            List cleanCorrections = []
+            Set<String> seen = [] as Set<String>
+            for (def correction : payload.corrections) {
+                String core = correction?.core?.toString()?.trim() ?: ''
+                String key = core.toLowerCase(Locale.ROOT)
+                def rawAngle = correction?.rotationAdjustmentDeg
+                double angle
+                try { angle = (rawAngle as Number).doubleValue() }
+                catch (Throwable ignored) { angle = Double.NaN }
+                if (core.isEmpty() || core.length() > 64 ||
+                        !allowedCores.contains(key) || seen.contains(key) ||
+                        !Double.isFinite(angle) || angle < -180d || angle > 180d) {
+                    respond(client, 400, 'Bad Request',
+                        [ok: false, error: 'A correction is invalid'])
+                    return
+                }
+                seen.add(key)
+                cleanCorrections << [core: core,
+                    rotationAdjustmentDeg: Math.round(angle * 10d) / 10d]
+            }
+            Map cleanPayload = [schemaVersion: 1, image: expectedImage,
+                baseRun: expectedRun,
+                createdAt: java.time.OffsetDateTime.now().toString(),
+                corrections: cleanCorrections]
+            targetFile.getParentFile()?.mkdirs()
+            File temporary = new File(targetFile.getParentFile(),
+                ".${targetFile.getName()}.tmp")
+            temporary.setText(new Gson().toJson(cleanPayload) + '\n', 'UTF-8')
+            try {
+                Files.move(temporary.toPath(), targetFile.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (Throwable atomicMoveError) {
+                Files.move(temporary.toPath(), targetFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING)
+            }
+            respond(client, 200, 'OK', [ok: true,
+                savedAs: targetFile.getName(), count: cleanCorrections.size()])
+        } finally {
+            try { client.close() } catch (Throwable ignored) {}
+        }
+    }
+
+    private static String readAsciiLine(InputStream input, int maximumBytes) {
+        ByteArrayOutputStream line = new ByteArrayOutputStream()
+        int previous = -1
+        while (line.size() <= maximumBytes) {
+            int current = input.read()
+            if (current < 0) return line.size() == 0 ? null :
+                new String(line.toByteArray(), StandardCharsets.US_ASCII)
+            if (previous == 13 && current == 10) {
+                byte[] bytes = line.toByteArray()
+                return new String(bytes, 0, Math.max(0, bytes.length - 1),
+                    StandardCharsets.US_ASCII)
+            }
+            line.write(current)
+            previous = current
+        }
+        throw new IOException('HTTP line is too long')
+    }
+
+    private static void respond(Socket client, int status, String reason, Map payload) {
+        byte[] body = payload == null ? new byte[0] :
+            new Gson().toJson(payload).getBytes(StandardCharsets.UTF_8)
+        String headers = "HTTP/1.1 ${status} ${reason}\r\n" +
+            'Content-Type: application/json; charset=utf-8\r\n' +
+            'Access-Control-Allow-Origin: *\r\n' +
+            'Access-Control-Allow-Methods: POST, OPTIONS\r\n' +
+            'Access-Control-Allow-Headers: Content-Type\r\n' +
+            'Access-Control-Allow-Private-Network: true\r\n' +
+            'Cache-Control: no-store\r\n' +
+            'Connection: close\r\n' +
+            "Content-Length: ${body.length}\r\n\r\n"
+        OutputStream output = client.getOutputStream()
+        output.write(headers.getBytes(StandardCharsets.US_ASCII))
+        if (body.length > 0) output.write(body)
+        output.flush()
+    }
+}
 
 // Generated synthetic microscopy placeholder. Embedded to keep the production
 // workflow self-contained while also making empty TMA positions visually clear.
@@ -413,6 +685,11 @@ boolean ALL_IN_ONE_INTEGRATION_TEST = 'true'.equalsIgnoreCase(
     System.getProperty('tma.allInOneAutoTest', 'false'))
 boolean STOP_AFTER_DETECTION = 'true'.equalsIgnoreCase(
     System.getProperty('tma.stopAfterDetection', 'false'))
+if (binding.hasVariable('args') && args != null &&
+        args.collect { it?.toString() }.contains('autosave-self-test')) {
+    CoreAlignCorrectionBridge.runSelfTest()
+    return
+}
 if (ALL_IN_ONE_INTEGRATION_TEST) {
     System.setProperty('tma.approveForTest', 'true')
     System.setProperty('tma.finalApproveForTest', 'true')
@@ -2394,6 +2671,18 @@ def writeProjectIndex = { File runDir = null ->
     int gridAutomaticForPage = Math.max(0, gridPresentForPage - gridCorrectedForPage)
     int gridReviewQueueForPage = asProjectInt(gridReport.reviewQueueCount)
     String orientationReviewKey = (orientationReport.startedAt ?: orientationReport.gridHash ?: 'pending').toString()
+    Set<String> correctionCoreNames = coreRecords.collect {
+        it?.core?.toString()?.trim()?.toLowerCase(Locale.ROOT)
+    }.findAll { it } as Set<String>
+    Map correctionBridge = hasOrientation && !correctionCoreNames.isEmpty() ?
+        CoreAlignCorrectionBridge.start(
+            new File(workflowDir, 'corealign-review-corrections.json'),
+            imageName, orientationReviewKey, correctionCoreNames) :
+        [available: false, endpoint: '']
+    if (!hasOrientation || correctionCoreNames.isEmpty()) CoreAlignCorrectionBridge.stop()
+    String correctionAutoSaveUrl = correctionBridge.endpoint?.toString() ?: ''
+    if (!correctionAutoSaveUrl.isEmpty())
+        println 'Orientation correction auto-save is ready beside START-HERE.html.'
     int dashboardPositionCount = positionCount > 0 ? positionCount :
         (gridWidthForPage > 0 && gridHeightForPage > 0 ? gridWidthForPage * gridHeightForPage : 0)
     String currentStage = hasCompletion ? 'Complete and human approved' :
@@ -2426,7 +2715,7 @@ html[data-theme="dark"]{color-scheme:dark;--bg:oklch(.15 .012 175);--surface:okl
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55}.icon{width:20px;height:20px;flex:0 0 auto}.skip{position:fixed;left:16px;top:-80px;z-index:100;padding:12px 16px;border-radius:8px;background:var(--fg);color:var(--bg);font-weight:700}.skip:focus{top:12px}.topbar{position:sticky;top:0;z-index:40;min-height:var(--header);display:flex;align-items:center;gap:24px;padding:12px clamp(16px,4vw,48px);border-bottom:1px solid var(--border);background:color-mix(in oklch,var(--bg) 92%,transparent);backdrop-filter:blur(18px)}.brand{display:flex;align-items:center;gap:10px;min-width:max-content;font-size:17px;font-weight:750;letter-spacing:-.02em}.brand-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--fg);color:var(--bg)}.brand-mark .icon{width:19px;height:19px}.nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.nav button,.icon-button,.history-button{min-height:44px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:650;cursor:pointer}.nav button{padding:8px 14px;white-space:nowrap}.nav button[aria-current="page"]{background:var(--surface-strong);color:var(--fg)}.header-actions{display:flex;align-items:center;gap:8px;margin-left:auto}.history-button{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-color:var(--border);color:var(--fg)}.icon-button{display:grid;place-items:center;width:44px;padding:0;border-color:var(--border);color:var(--fg)}.moon-icon{display:none}html[data-theme="dark"] .sun-icon{display:none}html[data-theme="dark"] .moon-icon{display:block}.shell{width:min(100%,1280px);margin:auto;padding:clamp(24px,5vw,64px) clamp(16px,4vw,48px) 96px}.panel{display:none;animation:panel-in .22s ease-out}.panel.is-active{display:block}.hero{position:relative;overflow:hidden;display:grid;gap:32px;grid-template-columns:minmax(0,1.5fr) minmax(260px,.75fr);padding:clamp(28px,5vw,56px);border:1px solid var(--border);border-radius:24px;background:linear-gradient(135deg,var(--surface) 0%,var(--bg) 62%);box-shadow:var(--shadow)}.hero:after{content:"";position:absolute;right:-80px;top:-120px;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,var(--accent) 0%,transparent 68%);opacity:.14;pointer-events:none}.eyebrow,.status-badge{display:inline-flex;align-items:center;gap:8px;width:max-content;font-size:12px;font-weight:750;letter-spacing:.07em;text-transform:uppercase}.status-badge{padding:7px 11px;border-radius:999px}.status-badge.success{background:var(--success-bg);color:var(--success)}.status-badge.warning{background:var(--warning-bg);color:var(--warning)}.status-badge.neutral{background:var(--surface-strong);color:var(--muted)}.status-badge .icon{width:16px;height:16px}h1,h2,h3{margin:0;letter-spacing:-.025em;line-height:1.16}h1{margin-top:16px;font-size:clamp(2rem,1.35rem + 3vw,3.55rem);max-width:16ch}h2{font-size:clamp(1.55rem,1.3rem + 1vw,2.15rem)}h3{font-size:1.1rem}.lede{max-width:62ch;margin:16px 0 0;color:var(--muted);font-size:clamp(1rem,.96rem + .25vw,1.12rem)}.hero-side{position:relative;z-index:1;align-self:end;padding:24px;border-radius:16px;background:var(--fg);color:var(--bg)}.hero-side .eyebrow{color:var(--accent)}.hero-side p{margin:10px 0 20px;line-height:1.5}.primary,.secondary,.text-link,.control-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:999px;padding:10px 18px;font:inherit;font-size:14px;font-weight:750;text-decoration:none;cursor:pointer}.primary{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink)}.secondary,.control-button{border:1px solid var(--border);background:var(--bg);color:var(--fg)}.text-link{min-height:auto;padding:0;border:0;background:transparent;color:var(--fg)}.primary .icon,.secondary .icon,.text-link .icon,.control-button .icon{width:18px;height:18px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin:0 0 24px}.section-head p{max-width:65ch;margin:8px 0 0;color:var(--muted)}.section-block{margin-top:48px}.metric-grid,.file-grid,.grid-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:16px}.metric,.file-card,.notice{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg)}.metric{padding:20px}.metric strong{display:block;font-size:clamp(1.65rem,1.4rem + 1vw,2.25rem);line-height:1.1}.metric span{display:block;margin-top:6px;color:var(--muted);font-size:14px}.file-card{display:flex;flex-direction:column;padding:24px}.step-number{display:grid;place-items:center;width:36px;height:36px;margin-bottom:20px;border-radius:10px;background:var(--surface-strong);color:var(--fg);font-weight:800}.file-card p{margin:8px 0 20px;color:var(--muted)}.file-card a{margin-top:auto;align-self:flex-start}.notice{display:flex;gap:14px;padding:18px 20px}.notice .icon{color:var(--accent-deep);margin-top:2px}.notice p{margin:0;color:var(--muted)}.legend{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.legend span{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--muted);font-size:13px;font-weight:700}.legend i{width:10px;height:10px;border-radius:50%}.legend .auto i{background:rgb(0,235,230)}.legend .corrected i{background:rgb(80,240,125)}.legend .missing i{background:rgb(255,70,80)}.qc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}.zoom-controls{display:flex;align-items:center;gap:7px}.zoom-controls .control-button{min-width:44px;padding:8px 12px}.zoom-value{min-width:52px;text-align:center;color:var(--muted);font-size:13px;font-weight:750}.image-viewport{overflow:auto;max-height:72vh;border:1px solid var(--border);border-radius:var(--radius-lg);background:oklch(.12 0 0);cursor:grab;touch-action:pan-x pan-y}.image-viewport.is-panning{cursor:grabbing;user-select:none}.image-viewport img{display:block;width:100%;height:auto;max-width:none}.media-card{overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}.media-card img{display:block;width:100%;height:auto;max-height:720px;object-fit:contain;background:oklch(.12 0 0)}.media-caption{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px}.media-caption p{margin:0;color:var(--muted)}.filter-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.filterbar{display:flex;align-items:center;gap:8px;overflow-x:auto;padding-bottom:4px}.filterbar button,.preview-toggle button{min-height:44px;padding:8px 15px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--muted);font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}.filterbar button[aria-pressed="true"],.preview-toggle button[aria-pressed="true"]{border-color:var(--fg);background:var(--fg);color:var(--bg)}.core-search{min-height:44px;width:min(100%,250px);padding:9px 14px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--fg);font:inherit}.core-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:16px;margin-top:24px}.core-card{overflow:hidden;border:1px solid var(--border);border-top:4px solid var(--success);border-radius:var(--radius-md);background:var(--bg);box-shadow:var(--shadow)}.core-card[data-status="review"],.core-card[data-status="uncertain"]{border-top-color:var(--warning)}.core-card[data-status="missing"],.core-card[data-status="no_tissue"],.core-card[data-status="processing_error"],.core-card[data-status="export_error"]{border-top-color:var(--danger)}.core-card[hidden]{display:none}.core-image{display:block;aspect-ratio:1/1;background:oklch(.12 0 0)}.core-image img{display:block;width:100%;height:100%;object-fit:contain}.core-image img[hidden]{display:none}.core-placeholder{display:grid;place-items:center;width:100%;height:100%;color:oklch(.72 0 0)}.core-placeholder .icon{width:36px;height:36px}.core-body{padding:16px}.core-title{display:flex;align-items:center;justify-content:space-between;gap:8px}.core-title strong{font-size:16px}.core-status{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.preview-toggle{display:flex;gap:6px;margin:12px 0 0}.preview-toggle button{min-height:34px;padding:5px 10px;font-size:12px}.core-meta{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.55}.help-list{display:grid;gap:16px;counter-reset:help}.help-item{position:relative;padding:24px 24px 24px 72px;border-left:2px solid var(--border)}.help-item:before{counter-increment:help;content:counter(help);position:absolute;left:20px;top:22px;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--fg);color:var(--bg);font-weight:800}.help-item p{margin:8px 0 0;max-width:68ch;color:var(--muted)}.pager{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:24px;border-top:1px solid var(--border)}.footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}.path{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}.empty{padding:32px;border:1px dashed var(--border);border-radius:var(--radius-md);color:var(--muted);text-align:center}.empty .icon{width:32px;height:32px;margin-bottom:8px}.nav button:hover,.history-button:hover,.icon-button:hover,.secondary:hover,.control-button:hover,.filterbar button:hover,.preview-toggle button:hover{background:var(--surface-strong);color:var(--fg)}.primary:hover{filter:brightness(.96);transform:translateY(-1px)}button:active,a:active{transform:translateY(1px)}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid color-mix(in oklch,var(--accent-deep) 70%,white);outline-offset:3px}.panel,.core-card,.primary{transition:opacity .2s ease,transform .2s ease,background-color .2s ease,border-color .2s ease}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@keyframes panel-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .core-image>a{display:block;width:100%;height:100%}.core-image>a[hidden]{display:none}
 .image-viewport{height:min(72vh,820px);max-height:none}.image-viewport img{width:auto;margin:0 auto}
-.search-control{position:relative;width:min(100%,380px)}.search-control .core-search{width:100%;min-height:48px;padding:10px 72px 10px 16px;font-size:16px}.search-clear{position:absolute;right:6px;top:50%;min-height:36px;padding:5px 12px;border:0;border-radius:999px;background:var(--surface-strong);color:var(--fg);font:inherit;font-size:13px;font-weight:750;cursor:pointer;transform:translateY(-50%)}.search-clear[hidden]{display:none}.core-image{overflow:hidden;cursor:default}.core-image>a{min-width:100%;min-height:100%}.core-image img{transition:transform .15s ease}.card-actions,.card-badges,.card-action-buttons{display:flex;align-items:center;gap:8px}.card-actions{justify-content:space-between;gap:10px;margin-top:12px}.card-action-buttons{justify-content:flex-end}.edit-button,.confirm-button{min-height:38px;padding:6px 14px}.confirm-button{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}.change-badge,.confirmed-badge{display:none;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}.change-badge{background:color-mix(in oklch,var(--accent) 24%,var(--bg));color:var(--accent-deep)}.confirmed-badge{background:var(--success-bg);color:var(--success)}.core-card[data-has-change="true"]{border-color:var(--accent-deep)}.core-card[data-has-change="true"] .change-badge,.core-card[data-confirmed="true"] .confirmed-badge{display:inline-flex}.core-card[data-confirmed="true"] .confirm-button{border-color:var(--border);background:var(--surface-strong);color:var(--muted)}.edit-panel{display:none;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}.core-card.is-editing .edit-panel{display:grid}.core-card.is-editing .card-action-buttons{display:none}.rotation-editor label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:750}.rotation-editor input{width:100%;accent-color:var(--accent-deep)}.edit-actions{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap}.edit-actions .control-button{min-height:38px;padding:6px 13px}.edit-actions [data-edit-confirm]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}.change-bar{position:sticky;z-index:20;bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin:28px auto 0;padding:14px 16px;width:min(100%,620px);border:1px solid var(--accent-deep);border-radius:16px;background:var(--bg);box-shadow:0 16px 42px rgb(13 34 29/.18)}.change-bar[hidden]{display:none}.change-bar strong{font-size:14px}
+.search-control{position:relative;width:min(100%,380px)}.search-control .core-search{width:100%;min-height:48px;padding:10px 72px 10px 16px;font-size:16px}.search-clear{position:absolute;right:6px;top:50%;min-height:36px;padding:5px 12px;border:0;border-radius:999px;background:var(--surface-strong);color:var(--fg);font:inherit;font-size:13px;font-weight:750;cursor:pointer;transform:translateY(-50%)}.search-clear[hidden]{display:none}.core-image{overflow:hidden;cursor:default}.core-image>a{min-width:100%;min-height:100%}.core-image img{transition:transform .15s ease}.card-actions,.card-badges,.card-action-buttons{display:flex;align-items:center;gap:8px}.card-actions{justify-content:space-between;gap:10px;margin-top:12px}.card-action-buttons{justify-content:flex-end}.edit-button,.confirm-button{min-height:38px;padding:6px 14px}.confirm-button{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}.change-badge,.confirmed-badge{display:none;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}.change-badge{background:color-mix(in oklch,var(--accent) 24%,var(--bg));color:var(--accent-deep)}.confirmed-badge{background:var(--success-bg);color:var(--success)}.core-card[data-has-change="true"]{border-color:var(--accent-deep)}.core-card[data-has-change="true"] .change-badge,.core-card[data-confirmed="true"] .confirmed-badge{display:inline-flex}.core-card[data-confirmed="true"] .confirm-button{border-color:var(--border);background:var(--surface-strong);color:var(--muted)}.edit-panel{display:none;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}.core-card.is-editing .edit-panel{display:grid}.core-card.is-editing .card-action-buttons{display:none}.rotation-editor label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:750}.rotation-editor input{width:100%;accent-color:var(--accent-deep)}.edit-actions{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap}.edit-actions .control-button{min-height:38px;padding:6px 13px}.edit-actions [data-edit-confirm]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}.change-bar{position:sticky;z-index:20;bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin:28px auto 0;padding:14px 16px;width:min(100%,700px);border:1px solid var(--accent-deep);border-radius:16px;background:var(--bg);box-shadow:0 16px 42px rgb(13 34 29/.18)}.change-bar[hidden]{display:none}.change-bar strong{font-size:14px}.autosave-status{color:var(--success);font-size:13px;font-weight:750}.autosave-status[data-state="saving"]{color:var(--muted)}.autosave-status[data-state="error"]{color:var(--danger)}
 @media(max-width:980px){.topbar{align-items:flex-start;flex-wrap:wrap;gap:8px}.nav{order:3;width:100%}.header-actions{margin-left:auto}.history-button span{display:none}.hero{grid-template-columns:1fr}.hero-side{max-width:none}.section-head{align-items:flex-start;flex-direction:column}}
 @media(max-width:600px){:root{--header:116px}.brand-name{display:none}.shell{padding-top:24px}.topbar{padding-inline:12px}.nav button{padding-inline:12px}.hero{padding:24px;border-radius:16px}.metric-grid,.grid-summary{grid-template-columns:repeat(2,1fr)}.metric{padding:16px}.media-caption,.filter-tools{align-items:flex-start;flex-direction:column}.core-search{width:100%}.pager{flex-direction:column}.pager button{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
@@ -2474,10 +2763,10 @@ html[data-theme="dark"]{color-scheme:dark;--bg:oklch(.15 .012 175);--surface:okl
     html.append('<div class="section-block notice">').append(projectIcon('warning')).append('<div><strong>After correcting circles</strong><p>Draw or adjust TMA correction annotations in QuPath, then run the same script again. CoreAlign refreshes this overview and keeps the accepted grid state.</p></div></div>')
     html.append('<div class="pager"><button class="secondary" type="button" data-next="-1">').append(projectIcon('back')).append(' Overview</button><button class="secondary" type="button" data-next="1">Orientation QC ').append(projectIcon('forward')).append('</button></div></section>')
 
-    html.append('<section class="panel" id="orientation" data-panel data-review-key="').append(projectHtmlEscape(orientationReviewKey)).append('" data-image-name="').append(projectHtmlEscape(imageName)).append('"><div class="section-head"><div><div class="eyebrow">Rotation report</div><h2>Orientation QC</h2><p>Confirm a correct core directly. Use Edit only when its angle needs to change.</p></div>')
+    html.append('<section class="panel" id="orientation" data-panel data-review-key="').append(projectHtmlEscape(orientationReviewKey)).append('" data-image-name="').append(projectHtmlEscape(imageName)).append('" data-auto-save-url="').append(projectHtmlEscape(correctionAutoSaveUrl)).append('"><div class="section-head"><div><div class="eyebrow">Rotation report</div><h2>Orientation QC</h2><p>Confirm a correct core directly. Use Edit only when its angle needs to change.</p></div>')
     if (hasContactSheet) html.append('<a class="secondary" href="qc/02-orientation/orientation_contact_sheet.png" target="_blank" rel="noopener">Contact sheet ').append(projectIcon('external')).append('</a>')
     html.append('</div>')
-    html.append('<div class="notice">').append(projectIcon('warning')).append('<div><strong>Confirm or edit</strong><p>If the rotation is correct, click Confirm and run CoreAlign again. No download is needed. If it is wrong, click Edit, adjust the angle, and Confirm. Save the angle changes beside CoreAlign.groovy before running again.</p></div></div>')
+    html.append('<div class="notice">').append(projectIcon('warning')).append('<div><strong>Confirm or edit</strong><p>If the rotation is correct, click Confirm. If it is wrong, click Edit, adjust the angle, and Confirm. Angle changes save automatically beside START-HERE.html while QuPath is open. Then run CoreAlign again.</p></div></div>')
     if (hasOrientation && !coreRecords.isEmpty()) {
         html.append('<div class="filter-tools section-block"><div class="filterbar" role="group" aria-label="Filter core review cards"><button type="button" data-filter="all" aria-pressed="')
             .append(reviewCountForPage > 0 ? 'false' : 'true').append('">All cores</button><button type="button" data-filter="ok" aria-pressed="false">QC pass</button><button type="button" data-filter="missing" aria-pressed="false">Missing</button><button type="button" data-filter="review" aria-pressed="')
@@ -2529,7 +2818,7 @@ html[data-theme="dark"]{color-scheme:dark;--bg:oklch(.15 .012 175);--surface:okl
             }
             html.append('</div></article>')
         }
-        html.append('</div><div class="change-bar" id="changeBar" hidden><strong id="changeCount">0 angle changes</strong><button class="primary" type="button" id="downloadChanges">Save angle changes</button></div>')
+        html.append('</div><div class="change-bar" id="changeBar" hidden><strong id="changeCount">0 angle changes</strong><span class="autosave-status" id="autosaveStatus" data-state="ready">Saved automatically</span><button class="primary" type="button" id="downloadChanges" hidden>Save changes</button></div>')
     } else if (hasContactSheet) {
         html.append('<figure class="media-card"><a href="qc/02-orientation/orientation_contact_sheet.png" target="_blank" rel="noopener"><img src="qc/02-orientation/orientation_contact_sheet.png" alt="TMA orientation contact sheet"></a><figcaption class="media-caption"><p>The contact sheet is available. Run the updated CoreAlign once to add interactive per-core filters here.</p></figcaption></figure>')
     } else {
@@ -2566,16 +2855,20 @@ function applyCoreFilters(){var query=coreSearch?coreSearch.value.trim().toLower
 function updateSearchClear(){if(coreSearchClear){coreSearchClear.hidden=!(coreSearch&&coreSearch.value.length>0);}}
 document.querySelectorAll("[data-filter]").forEach(function(button){button.addEventListener("click",function(){activeCoreFilter=button.dataset.filter;document.querySelectorAll("[data-filter]").forEach(function(other){other.setAttribute("aria-pressed",other===button?"true":"false");});applyCoreFilters();});});if(coreSearch){coreSearch.addEventListener("input",function(){updateSearchClear();applyCoreFilters();});}if(coreSearchClear){coreSearchClear.addEventListener("click",function(){coreSearch.value="";updateSearchClear();applyCoreFilters();coreSearch.focus();});}updateSearchClear();
 document.querySelectorAll("[data-core-view]").forEach(function(button){button.addEventListener("click",function(){var card=button.closest(".core-card"),view=button.dataset.coreView;card.querySelectorAll("[data-core-view]").forEach(function(other){other.setAttribute("aria-pressed",other===button?"true":"false");});card.querySelectorAll("[data-preview]").forEach(function(preview){preview.hidden=preview.dataset.preview!==view;});});});
-var orientationSection=document.getElementById("orientation"),reviewStorageKey="corealign-rotation-edits:"+location.pathname+":"+(orientationSection?orientationSection.dataset.reviewKey:"pending"),reviewState={angles:{},confirmed:{}};try{var savedReview=JSON.parse(localStorage.getItem(reviewStorageKey)||"{}");reviewState.angles=savedReview.angles||{};reviewState.confirmed=savedReview.confirmed||{};}catch(e){reviewState={angles:{},confirmed:{}};}
+var orientationSection=document.getElementById("orientation"),correctionAutoSaveUrl=orientationSection?orientationSection.dataset.autoSaveUrl||"":"",reviewStorageKey="corealign-rotation-edits:"+location.pathname+":"+(orientationSection?orientationSection.dataset.reviewKey:"pending"),reviewState={angles:{},confirmed:{}};try{var savedReview=JSON.parse(localStorage.getItem(reviewStorageKey)||"{}");reviewState.angles=savedReview.angles||{};reviewState.confirmed=savedReview.confirmed||{};}catch(e){reviewState={angles:{},confirmed:{}};}
 function saveReviewState(){try{localStorage.setItem(reviewStorageKey,JSON.stringify(reviewState));}catch(e){}}
 function showRotationPreview(card,value){var applied=Number(card.dataset.appliedAdjustment||0),angle=Math.max(-180,Math.min(180,Math.round(Number(value)||0))),delta=angle-applied,input=card.querySelector("[data-rotation-adjust]"),output=card.querySelector("[data-rotation-value]"),image=card.querySelector('[data-preview="rotated"] img');card.dataset.draftRotation=String(angle);if(input){input.value=String(angle);}if(output){output.textContent=(angle>0?"+":"")+angle+" deg";}if(image){image.style.transform="rotate("+delta+"deg)";}}
-function updateChangeBar(){var count=document.querySelectorAll('.core-card[data-has-change="true"]').length,bar=document.getElementById("changeBar"),label=document.getElementById("changeCount");if(bar){bar.hidden=count===0;}if(label){label.textContent=count+" angle change"+(count===1?"":"s")+". Save beside CoreAlign.groovy.";}}
+var autoSaveTimer=0,autoSaveStatus=document.getElementById("autosaveStatus"),downloadChanges=document.getElementById("downloadChanges");
+function setAutoSaveStatus(message,state,showFallback){if(autoSaveStatus){autoSaveStatus.textContent=message;autoSaveStatus.dataset.state=state||"ready";}if(downloadChanges){downloadChanges.hidden=!showFallback;}}
+function updateChangeBar(){var count=document.querySelectorAll('.core-card[data-has-change="true"]').length,bar=document.getElementById("changeBar"),label=document.getElementById("changeCount");if(bar){bar.hidden=count===0;}if(label){label.textContent=count+" angle change"+(count===1?"":"s");}if(count>0&&autoSaveStatus&&autoSaveStatus.dataset.state==="ready"){setAutoSaveStatus(correctionAutoSaveUrl?"Saved automatically":"Auto-save needs QuPath","ready",!correctionAutoSaveUrl);}}
 function updateCardChange(card){var applied=Number(card.dataset.appliedAdjustment||0),committed=Number(card.dataset.manualRotation||0);card.dataset.hasChange=Math.abs(committed-applied)>=.05?"true":"false";updateChangeBar();}
 function setCardConfirmed(card,confirmed){var button=card.querySelector("[data-card-confirm]");card.dataset.confirmed=confirmed?"true":"false";if(button){button.textContent=confirmed?"Undo":"Confirm";button.setAttribute("aria-pressed",confirmed?"true":"false");button.setAttribute("aria-label",confirmed?"Undo confirmation":"Confirm this core");}}
-document.querySelectorAll(".core-card").forEach(function(card){var key=card.dataset.coreName||"",applied=Number(card.dataset.appliedAdjustment||0),savedAngle=Number(reviewState.angles[key]),committed=Number.isFinite(savedAngle)?savedAngle:applied;card.dataset.manualRotation=String(committed);showRotationPreview(card,committed);updateCardChange(card);setCardConfirmed(card,reviewState.confirmed[key]===true);var cardConfirm=card.querySelector("[data-card-confirm]"),edit=card.querySelector("[data-edit]"),slider=card.querySelector("[data-rotation-adjust]"),reset=card.querySelector("[data-edit-reset]"),cancel=card.querySelector("[data-edit-cancel]"),confirm=card.querySelector("[data-edit-confirm]");if(cardConfirm){cardConfirm.addEventListener("click",function(){var next=card.dataset.confirmed!=="true";reviewState.confirmed[key]=next;setCardConfirmed(card,next);saveReviewState();applyCoreFilters();});}if(edit){edit.addEventListener("click",function(){card.dataset.editStart=card.dataset.manualRotation;showRotationPreview(card,card.dataset.manualRotation);card.classList.add("is-editing");});}if(slider){slider.addEventListener("input",function(){showRotationPreview(card,slider.value);});}if(reset){reset.addEventListener("click",function(){showRotationPreview(card,0);});}if(cancel){cancel.addEventListener("click",function(){showRotationPreview(card,card.dataset.editStart||card.dataset.manualRotation);card.classList.remove("is-editing");});}if(confirm){confirm.addEventListener("click",function(){var angle=Number(card.dataset.draftRotation||0);card.dataset.manualRotation=String(angle);reviewState.angles[key]=angle;reviewState.confirmed[key]=true;setCardConfirmed(card,true);saveReviewState();updateCardChange(card);applyCoreFilters();card.classList.remove("is-editing");});}});updateChangeBar();applyCoreFilters();
+document.querySelectorAll(".core-card").forEach(function(card){var key=card.dataset.coreName||"",applied=Number(card.dataset.appliedAdjustment||0),savedAngle=Number(reviewState.angles[key]),committed=Number.isFinite(savedAngle)?savedAngle:applied;card.dataset.manualRotation=String(committed);showRotationPreview(card,committed);updateCardChange(card);setCardConfirmed(card,reviewState.confirmed[key]===true);var cardConfirm=card.querySelector("[data-card-confirm]"),edit=card.querySelector("[data-edit]"),slider=card.querySelector("[data-rotation-adjust]"),reset=card.querySelector("[data-edit-reset]"),cancel=card.querySelector("[data-edit-cancel]"),confirm=card.querySelector("[data-edit-confirm]");if(cardConfirm){cardConfirm.addEventListener("click",function(){var next=card.dataset.confirmed!=="true";reviewState.confirmed[key]=next;setCardConfirmed(card,next);saveReviewState();applyCoreFilters();});}if(edit){edit.addEventListener("click",function(){card.dataset.editStart=card.dataset.manualRotation;showRotationPreview(card,card.dataset.manualRotation);card.classList.add("is-editing");});}if(slider){slider.addEventListener("input",function(){showRotationPreview(card,slider.value);});}if(reset){reset.addEventListener("click",function(){showRotationPreview(card,0);});}if(cancel){cancel.addEventListener("click",function(){showRotationPreview(card,card.dataset.editStart||card.dataset.manualRotation);card.classList.remove("is-editing");});}if(confirm){confirm.addEventListener("click",function(){var angle=Number(card.dataset.draftRotation||0);card.dataset.manualRotation=String(angle);reviewState.angles[key]=angle;reviewState.confirmed[key]=true;setCardConfirmed(card,true);saveReviewState();updateCardChange(card);applyCoreFilters();card.classList.remove("is-editing");queueAutoSaveCorrections();});}});updateChangeBar();applyCoreFilters();
 function reviewCorrectionsPayload(){var corrections=[];document.querySelectorAll(".core-card").forEach(function(card){var title=card.querySelector(".core-title strong"),angle=Number(card.dataset.manualRotation||0);if(Math.abs(angle)>=.05){corrections.push({core:title?title.textContent:"",rotationAdjustmentDeg:angle});}});return {schemaVersion:1,image:orientationSection?orientationSection.dataset.imageName:"",baseRun:orientationSection?orientationSection.dataset.reviewKey:"",createdAt:new Date().toISOString(),corrections:corrections};}
-async function saveCorrectionFile(){var newline=String.fromCharCode(10),text=JSON.stringify(reviewCorrectionsPayload(),null,2)+newline,blob=new Blob([text],{type:"application/json"});if(window.showSaveFilePicker){try{var handle=await window.showSaveFilePicker({suggestedName:"corealign-review-corrections.json",types:[{description:"CoreAlign review corrections",accept:{"application/json":[".json"]}}]});var writable=await handle.createWritable();await writable.write(blob);await writable.close();return;}catch(error){if(error&&error.name==="AbortError"){return;}}}var url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="corealign-review-corrections.json";link.click();setTimeout(function(){URL.revokeObjectURL(url);},0);}
-var downloadChanges=document.getElementById("downloadChanges");if(downloadChanges){downloadChanges.addEventListener("click",saveCorrectionFile);}
+async function autoSaveCorrections(){if(!correctionAutoSaveUrl){setAutoSaveStatus("Auto-save needs QuPath","error",true);return false;}setAutoSaveStatus("Saving...","saving",false);try{var response=await fetch(correctionAutoSaveUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(reviewCorrectionsPayload()),cache:"no-store"});if(!response.ok){throw new Error("Save failed");}setAutoSaveStatus("Saved beside START-HERE.html","ready",false);return true;}catch(error){setAutoSaveStatus("Could not auto-save","error",true);return false;}}
+function queueAutoSaveCorrections(){if(autoSaveTimer){clearTimeout(autoSaveTimer);}autoSaveTimer=setTimeout(autoSaveCorrections,120);}
+async function saveCorrectionFile(){var newline=String.fromCharCode(10),text=JSON.stringify(reviewCorrectionsPayload(),null,2)+newline,blob=new Blob([text],{type:"application/json"});if(window.showSaveFilePicker){try{var handle=await window.showSaveFilePicker({suggestedName:"corealign-review-corrections.json",types:[{description:"CoreAlign review corrections",accept:{"application/json":[".json"]}}]});var writable=await handle.createWritable();await writable.write(blob);await writable.close();setAutoSaveStatus("Saved with your browser","ready",false);return;}catch(error){if(error&&error.name==="AbortError"){return;}}}var url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="corealign-review-corrections.json";link.click();setTimeout(function(){URL.revokeObjectURL(url);},0);setAutoSaveStatus("Downloaded. Keep it beside START-HERE.html","error",true);}
+if(downloadChanges){downloadChanges.addEventListener("click",saveCorrectionFile);}if(document.querySelector('.core-card[data-has-change="true"]')){queueAutoSaveCorrections();}
 var gridImage=document.getElementById("gridImage"),gridViewport=document.getElementById("gridViewport"),gridZoomValue=document.getElementById("gridZoomValue"),gridZoom=1;function fitGridImage(){if(!gridImage||!gridViewport||!gridImage.naturalWidth||!gridImage.naturalHeight){return;}var fit=Math.min(gridViewport.clientWidth/gridImage.naturalWidth,gridViewport.clientHeight/gridImage.naturalHeight);gridImage.style.width=Math.max(1,Math.floor(gridImage.naturalWidth*fit*gridZoom))+"px";gridImage.style.height="auto";if(gridZoomValue){gridZoomValue.textContent=gridZoom===1?"Fit":Math.round(gridZoom*100)+"%";}}function setGridZoom(value,resetScroll){gridZoom=Math.max(1,Math.min(4,value));fitGridImage();if(resetScroll&&gridViewport){gridViewport.scrollTo(0,0);}}var zoomIn=document.getElementById("gridZoomIn"),zoomOut=document.getElementById("gridZoomOut"),zoomReset=document.getElementById("gridZoomReset");if(zoomIn){zoomIn.addEventListener("click",function(){setGridZoom(gridZoom+.25,false);});}if(zoomOut){zoomOut.addEventListener("click",function(){setGridZoom(gridZoom-.25,false);});}if(zoomReset){zoomReset.addEventListener("click",function(){setGridZoom(1,true);});}if(gridImage){gridImage.addEventListener("load",function(){setGridZoom(1,true);});}window.addEventListener("resize",function(){if(gridZoom===1){fitGridImage();}});if(gridViewport){var panning=false,startX=0,startY=0,startLeft=0,startTop=0;gridViewport.addEventListener("pointerdown",function(event){if(event.button!==0){return;}panning=true;startX=event.clientX;startY=event.clientY;startLeft=gridViewport.scrollLeft;startTop=gridViewport.scrollTop;gridViewport.classList.add("is-panning");gridViewport.setPointerCapture(event.pointerId);});gridViewport.addEventListener("pointermove",function(event){if(!panning){return;}gridViewport.scrollLeft=startLeft-(event.clientX-startX);gridViewport.scrollTop=startTop-(event.clientY-startY);});function stopPan(){panning=false;gridViewport.classList.remove("is-panning");}gridViewport.addEventListener("pointerup",stopPan);gridViewport.addEventListener("pointercancel",stopPan);}
 var themeToggle=document.getElementById("themeToggle");function updateThemeControl(){var current=document.documentElement.dataset.theme==="dark"?"dark":"light";themeToggle.setAttribute("aria-label","Current theme: "+(current==="dark"?"Dark":"Light"));themeToggle.setAttribute("title","Current theme: "+(current==="dark"?"Dark":"Light")+". Click to switch.");}updateThemeControl();themeToggle.addEventListener("click",function(){var current=document.documentElement.dataset.theme;var next=current==="dark"?"light":"dark";document.documentElement.dataset.theme=next;try{localStorage.setItem("corealign-theme",next);}catch(e){}updateThemeControl();});
 })();</script></body></html>''')
