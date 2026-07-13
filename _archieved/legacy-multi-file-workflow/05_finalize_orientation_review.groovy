@@ -99,14 +99,17 @@ def canonical = checkpoints.withIndex().collect { cp, i ->
 String resultHash = MessageDigest.getInstance('SHA-256')
     .digest((gridHash + '\n' + canonical).getBytes('UTF-8'))
     .collect { String.format('%02x', it & 0xff) }.join()
+String manifestProcessingHash = (manifest.processingHash ?: manifest.profileHash ?: '').toString()
 
 boolean approveForTest = 'true'.equalsIgnoreCase(System.getProperty('tma.finalApproveForTest', 'false'))
 if (finalApprovalFile.isFile()) {
     try {
         def existing = json.fromJson(finalApprovalFile.getText('UTF-8'), Map.class)
+        String existingProcessingHash =
+            (existing.processingHash ?: existing.profileHash ?: '').toString()
         if (existing.status == 'APPROVED' && existing.gridHash == gridHash &&
                 existing.orientationResultHash == resultHash &&
-                existing.profileHash == (manifest.profileHash ?: '') &&
+                existingProcessingHash == manifestProcessingHash &&
                 (existing.approvalMode == 'human' ||
                     (existing.approvalMode == 'automated_integration_test' && approveForTest))) {
             System.setProperty('tma.final.status', 'APPROVED')
@@ -180,6 +183,8 @@ def finalApproval = [schemaVersion: 1, status: 'APPROVED',
     approvalMode: approveForTest ? 'automated_integration_test' : 'human', approvedAt: approvedAt,
     imageName: imageName, gridHash: gridHash, orientationResultHash: resultHash,
     profileHash: manifest.profileHash ?: '',
+    processingHash: manifestProcessingHash,
+    outputHash: manifest.outputHash ?: '',
     algorithmVersion: manifest.algorithmVersion, coreCount: manifest.coreCount,
     missingCount: manifest.missing, automatedReviewFlags: manifest.review,
     failedOrMissing: manifest.failedOrMissing,

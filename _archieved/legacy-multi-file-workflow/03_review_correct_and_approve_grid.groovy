@@ -21,11 +21,20 @@
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import qupath.lib.gui.scripting.QPEx
 import qupath.lib.common.ColorTools
 import qupath.lib.objects.PathObjects
 import qupath.lib.objects.hierarchy.DefaultTMAGrid
 import qupath.lib.plugins.parameters.ParameterList
+import qupath.lib.regions.RegionRequest
 
+import javax.imageio.ImageIO
+import java.awt.AlphaComposite
+import java.awt.BasicStroke
+import java.awt.Color
+import java.awt.Font
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -110,6 +119,19 @@ def writeAtomic = { File target, String content ->
     target.getParentFile().mkdirs()
     File tmp = new File(target.getParentFile(), target.getName() + '.tmp-' + UUID.randomUUID())
     tmp.setText(content, 'UTF-8')
+    try {
+        Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE)
+    } catch (Throwable ignored) {
+        Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+def writePngAtomic = { File target, BufferedImage image ->
+    target.getParentFile().mkdirs()
+    File tmp = new File(target.getParentFile(), target.getName() + '.tmp-' +
+        UUID.randomUUID() + '.png')
+    if (!ImageIO.write(image, 'PNG', tmp))
+        throw new IOException("No PNG writer is available for ${target.getName()}")
     try {
         Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING,
             StandardCopyOption.ATOMIC_MOVE)
@@ -512,7 +534,161 @@ queue.each { q ->
 writeAtomic(queueFile, queueText.toString())
 
 String currentHash = sha256(canonicalGrid(grid))
+
+// Always refresh the whole-slide detection QC from the current live grid.
+// Multiple corrections drawn before one Run are therefore represented in one
+// latest overview, without rerunning or replacing the detector result.
+try {
+    File qcDir = new File(resolveBaseDir(), 'tma_grid_qc')
+    qcDir.mkdirs()
+    // Prefer QuPath's rendered RGB thumbnail. It follows the visible channel
+    // display and avoids loading every fluorescence channel into memory.
+    BufferedImage sourceOverview = null
+    try { sourceOverview = QPEx.getCurrentViewer()?.getRGBThumbnail() }
+    catch (Throwable ignored) {}
+    if (sourceOverview == null) {
+        double qcDownsample = Math.max(1.0d,
+            Math.max(server.getWidth(), server.getHeight()) / 2800.0d)
+        def request = RegionRequest.createInstance(server.getPath(), qcDownsample,
+            0, 0, server.getWidth(), server.getHeight())
+        sourceOverview = server.readRegion(request)
+    }
+    int overviewWidth = Math.max(1, sourceOverview.getWidth())
+    int overviewHeight = Math.max(1, sourceOverview.getHeight())
+    BufferedImage overview = new BufferedImage(overviewWidth, overviewHeight,
+        BufferedImage.TYPE_INT_RGB)
+    def qg = overview.createGraphics()
+    qg.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+        RenderingHints.VALUE_ANTIALIAS_ON)
+    qg.setColor(new Color(12, 18, 28))
+    qg.fillRect(0, 0, overviewWidth, overviewHeight)
+    qg.drawImage(sourceOverview, 0, 0, overviewWidth, overviewHeight, null)
+    double sx = overviewWidth / (double) server.getWidth()
+    double sy = overviewHeight / (double) server.getHeight()
+    float lineWidth = (float) Math.max(1.5d, Math.min(4.0d,
+        overviewWidth / 1000.0d))
+
+    qg.setStroke(new BasicStroke(Math.max(1.0f, lineWidth * 0.55f)))
+    qg.setColor(new Color(255, 255, 255, 80))
+    for (int row = 0; row < grid.getGridHeight(); row++) {
+        for (int col = 0; col + 1 < gridCols; col++) {
+            def a = cores[row * gridCols + col].getROI()
+            def b = cores[row * gridCols + col + 1].getROI()
+            qg.drawLine((int) Math.round(a.getCentroidX() * sx),
+                (int) Math.round(a.getCentroidY() * sy),
+                (int) Math.round(b.getCentroidX() * sx),
+                (int) Math.round(b.getCentroidY() * sy))
+        }
+    }
+    for (int col = 0; col < gridCols; col++) {
+        for (int row = 0; row + 1 < grid.getGridHeight(); row++) {
+            def a = cores[row * gridCols + col].getROI()
+            def b = cores[(row + 1) * gridCols + col].getROI()
+            qg.drawLine((int) Math.round(a.getCentroidX() * sx),
+                (int) Math.round(a.getCentroidY() * sy),
+                (int) Math.round(b.getCentroidX() * sx),
+                (int) Math.round(b.getCentroidY() * sy))
+        }
+    }
+
+    qg.setStroke(new BasicStroke(lineWidth))
+    qg.setFont(new Font('SansSerif', Font.BOLD,
+        Math.max(10, Math.min(15, (int) Math.round(overviewWidth / 180.0d)))))
+    int totalHumanCorrected = 0
+    cores.eachWithIndex { core, i ->
+        def roi = core.getROI()
+        String source = ''
+        try { source = core.getMetadataString('Detection source') ?: '' }
+        catch (Throwable ignored) {}
+        boolean humanCorrected = source.startsWith('human_')
+        if (humanCorrected) totalHumanCorrected++
+        Color color = core.isMissing() ? new Color(255, 70, 80) :
+            humanCorrected ? new Color(80, 240, 125) : new Color(0, 235, 230)
+        double displayDiameter = core.isMissing() ? nominalDiameter :
+            Math.max(roi.getBoundsWidth(), roi.getBoundsHeight())
+        double dd = Math.max(14.0d, displayDiameter * (sx + sy) / 2.0d)
+        double cx = roi.getCentroidX() * sx
+        double cy = roi.getCentroidY() * sy
+        int x = (int) Math.round(cx - dd / 2.0d)
+        int y = (int) Math.round(cy - dd / 2.0d)
+        int d = (int) Math.round(dd)
+        qg.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 42))
+        qg.fillOval(x, y, d, d)
+        qg.setColor(color)
+        qg.drawOval(x, y, d, d)
+        qg.drawString(core.getName() ?: "${i + 1}",
+            (int) Math.round(cx + dd / 2.0d + 3.0d),
+            (int) Math.round(cy + 4.0d))
+    }
+
+    int legendWidth = Math.max(1, Math.min(overviewWidth - 24, 520))
+    qg.setColor(new Color(8, 13, 22, 210))
+    qg.fillRoundRect(12, 12, legendWidth, 66, 12, 12)
+    qg.setFont(new Font('SansSerif', Font.BOLD, 14))
+    qg.setColor(Color.WHITE)
+    qg.drawString("Latest grid QC  ${grid.getGridHeight()} x ${gridCols}  " +
+        "${presentCount} present  ${missingCount} missing", 25, 36)
+    qg.setFont(new Font('SansSerif', Font.PLAIN, 12))
+    qg.setColor(new Color(0, 235, 230)); qg.drawString('AUTO DETECTED', 25, 60)
+    qg.setColor(new Color(80, 240, 125)); qg.drawString('HUMAN CORRECTED', 145, 60)
+    qg.setColor(new Color(255, 70, 80)); qg.drawString('MISSING', 300, 60)
+    qg.dispose()
+
+    File latestPng = new File(qcDir, "${imageStem}_grid_qc_latest.png")
+    File canonicalPng = new File(qcDir, "${imageStem}_grid_qc.png")
+    File latestCsv = new File(qcDir, "${imageStem}_grid_coordinates_latest.csv")
+    File latestJson = new File(qcDir, "${imageStem}_grid_qc_latest.json")
+    writePngAtomic(latestPng, overview)
+    writePngAtomic(canonicalPng, overview)
+    def latestRows = []
+    def latestCoordinates = new StringBuilder(
+        'index,row,column,core,center_x_px,center_y_px,diameter_px,missing,detection_source,detection_confidence,current_grid_hash\n')
+    cores.eachWithIndex { core, i ->
+        def roi = core.getROI()
+        String source = ''
+        String confidence = ''
+        try { source = core.getMetadataString('Detection source') ?: '' }
+        catch (Throwable ignored) {}
+        try { confidence = core.getMetadataString('Detection confidence') ?: '' }
+        catch (Throwable ignored) {}
+        def row = [index: i + 1, row: i.intdiv(gridCols) + 1,
+            column: i % gridCols + 1, core: core.getName() ?: '',
+            centerX: roi.getCentroidX(), centerY: roi.getCentroidY(),
+            diameter: Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()),
+            missing: core.isMissing(), detectionSource: source,
+            detectionConfidence: confidence]
+        latestRows << row
+        latestCoordinates.append([row.index, row.row, row.column, csv(row.core),
+            fmt3(row.centerX), fmt3(row.centerY), fmt3(row.diameter), row.missing,
+            csv(row.detectionSource), csv(row.detectionConfidence),
+            csv(currentHash)].join(',')).append('\n')
+    }
+    writeAtomic(latestCsv, latestCoordinates.toString())
+    String generatedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
+        .format(new Date())
+    def latestQc = [schemaVersion: 1, status: 'LATEST_REVIEW_GRID',
+        generatedAt: generatedAt, image: rawImageName,
+        gridWidth: gridCols, gridHeight: grid.getGridHeight(),
+        coreCount: cores.size(), present: presentCount, missing: missingCount,
+        humanCorrectedTotal: totalHumanCorrected,
+        correctionsAppliedThisRun: correctionAudit,
+        reviewQueueCount: queue.size(), hardErrors: hardErrors,
+        warnings: warnings, gridHash: currentHash,
+        overlayPng: latestPng.getAbsolutePath(),
+        coordinatesCsv: latestCsv.getAbsolutePath(), cores: latestRows]
+    writeAtomic(latestJson, json.toJson(latestQc) + '\n')
+    appendEvent([event: 'LATEST_GRID_QC_EXPORTED', gridHash: currentHash,
+        correctionsAppliedThisRun: correctionAudit.size(),
+        humanCorrectedTotal: totalHumanCorrected, overlay: latestPng.getAbsolutePath()])
+    System.setProperty('tma.review.latestQc', latestPng.getAbsolutePath())
+    println "Latest whole-slide grid QC: ${latestPng.getAbsolutePath()}"
+} catch (Throwable latestQcError) {
+    println "WARNING: Could not refresh latest whole-slide grid QC: ${latestQcError.getMessage()}"
+}
+
 String currentProfileHash = System.getProperty('tma.config.profileHash', '')
+String currentDetectionConfigHash = System.getProperty('tma.config.detectionHash',
+    currentProfileHash)
 boolean approveForTest = 'true'.equalsIgnoreCase(System.getProperty('tma.approveForTest', 'false'))
 boolean alreadyApproved = false
 if (approvalFile.isFile() && corrections.isEmpty()) {
@@ -521,9 +697,13 @@ if (approvalFile.isFile() && corrections.isEmpty()) {
         alreadyApproved = oldApproval.status == 'APPROVED' && oldApproval.gridHash == currentHash &&
             oldApproval.imageName == rawImageName &&
             oldApproval.detectionAlgorithmVersion == detectionAlgorithmVersion &&
-            (oldApproval.profileHash == null || oldApproval.profileHash == currentProfileHash) &&
             (oldApproval.approvalMode == 'human' ||
-                (oldApproval.approvalMode == 'automated_integration_test' && approveForTest))
+                (oldApproval.approvalMode == 'automated_integration_test' && approveForTest &&
+                    ((oldApproval.detectionConfigHash != null &&
+                        oldApproval.detectionConfigHash == currentDetectionConfigHash) ||
+                     (oldApproval.detectionConfigHash == null &&
+                        (oldApproval.profileHash == null ||
+                            oldApproval.profileHash == currentProfileHash)))))
     } catch (Throwable ignored) {}
 }
 if (alreadyApproved) {
@@ -555,8 +735,10 @@ if (!correctionAudit.isEmpty()) {
     appendEvent([event: 'POST_CORRECTION_REVIEW_REQUIRED', gridHash: currentHash,
         corrected: correctionAudit*.core, present: presentCount, missing: missingCount,
         reviewQueue: queue.size()])
+    String latestQcPath = System.getProperty('tma.review.latestQc', '')
     Dialogs.showInfoNotification('CoreAlign corrections applied',
-        "Applied ${correctionAudit.size()} correction(s). Inspect the updated circles, labels and connecting lines, then press Run again only when the grid looks correct.")
+        "Applied ${correctionAudit.size()} correction(s) and refreshed the whole-slide QC. Inspect the updated circles, labels and connecting lines, then press Run again only when the grid looks correct." +
+        (latestQcPath.isEmpty() ? '' : "\nLatest QC: ${latestQcPath}"))
     return
 }
 
@@ -622,6 +804,7 @@ def approval = [
     workflowVersion: WORKFLOW_VERSION,
     detectionAlgorithmVersion: detectionAlgorithmVersion,
     profileHash: currentProfileHash,
+    detectionConfigHash: currentDetectionConfigHash,
     status: 'APPROVED',
     approvalMode: approveForTest ? 'automated_integration_test' : 'human',
     approvedAt: approvedAt,

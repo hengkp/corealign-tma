@@ -46,6 +46,8 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /Build config/);
   assert.match(builder, /Choose two things\. CoreAlign handles the rest/);
   assert.match(builder, /Presentation images/);
+  assert.match(builder, /run the same script again/);
+  assert.match(builder, /reuses every accepted grid, rotation, and crop checkpoint/);
   assert.match(builder, /Detection is fully automatic/);
   assert.match(builder, /No array geometry or punch size is required/);
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
@@ -85,6 +87,11 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /STRUCTURAL QC:/);
   assert.match(groovy, /TECHNICAL DETECTION VALIDATION:/);
   assert.match(groovy, /not_configured; human_grid_approval_required/);
+  assert.match(groovy, /Keep computation and delivery identities separate/);
+  assert.match(groovy, /tma\.config\.processingHash/);
+  assert.match(groovy, /tma\.config\.outputHash/);
+  assert.match(groovy, /compatibleLegacyProfileHashes/);
+  assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
   assert.doesNotMatch(groovy, /knownReferenceLayouts|AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.doesNotMatch(groovy, /'TMA_0\.6mm_7_backsub':/);
   assert.equal(config.schemaVersion, 2);
@@ -115,4 +122,27 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedReview, /row labels remain aligned/);
   assert.match(embeddedReview, /POST_CORRECTION_REVIEW_REQUIRED/);
   assert.match(embeddedReview, /Inspect the updated circles, labels and connecting lines/);
+  assert.match(embeddedReview, /Always refresh the whole-slide detection QC/);
+  assert.match(embeddedReview, /_grid_qc_latest\.png/);
+  assert.match(embeddedReview, /correctionsAppliedThisRun/);
+  assert.match(embeddedReview, /LATEST_GRID_QC_EXPORTED/);
+
+  const orientPayload = groovy.match(/def step2 = new EmbeddedWorkflowScript\(name: '02_auto_orient_epidermis\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
+  assert.ok(orientPayload, "Step 2 payload should be embedded");
+  const embeddedOrient = gunzipSync(Buffer.from(orientPayload[1], "base64")).toString("utf8");
+  assert.match(embeddedOrient, /Delivery-only resume/);
+  assert.match(embeddedOrient, /EXPORT-ONLY:/);
+  assert.match(embeddedOrient, /MIGRATION: Reusing compatible earlier run/);
+  assert.match(embeddedOrient, /CURRENT_PROCESSING_HASH/);
+  assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
+
+  for (const [step, name] of [
+    ["4", "04_restore_approved_grid.groovy"],
+    ["5", "05_finalize_orientation_review.groovy"],
+    ["6", "06_export_presentation_package.groovy"],
+  ]) {
+    const match = groovy.match(new RegExp(`def step${step} = new EmbeddedWorkflowScript\\(name: '${name.replaceAll(".", "\\.")}', payload: '''\\n([\\s\\S]*?)\\n'''\\)`));
+    assert.ok(match, `Step ${step} payload should be embedded`);
+    assert.ok(gunzipSync(Buffer.from(match[1], "base64")).toString("utf8").length > 500);
+  }
 });
