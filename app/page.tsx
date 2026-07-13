@@ -13,8 +13,8 @@ const steps = [
 ];
 
 const outputs = [
-  { icon: "ri-slideshow-3-line", label: "For slides and figures", title: "Full resolution PNG", text: "Fast, lossless images ready for PowerPoint, figures, and contact sheets." },
-  { icon: "ri-stack-line", label: "For downstream analysis", title: "QuPath core project", text: "Optional rotated OME-TIFF files, ordered by row and column with QC metadata." },
+  { icon: "ri-slideshow-3-line", label: "results/png", title: "Full resolution PNG", text: "Fast, lossless images ready for PowerPoint, figures, and contact sheets." },
+  { icon: "ri-stack-line", label: "results/ome-tiff and qupath", title: "Research package", text: "Rotated multichannel images and an ordered QuPath core project with QC metadata." },
 ];
 
 export default function Home() {
@@ -104,13 +104,14 @@ export default function Home() {
         <div>
           <a className="button light" href={release}>Download CoreAlign <i className="ri-arrow-right-line" /></a>
           <a className="button outlineLight" href={path("/config-builder/")}>Create config</a>
+          <a className="button outlineLight" href={path("/docs/")}>Read the guide</a>
         </div>
       </section>
 
       <footer>
         <a className="siteBrand" href={path("/")}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
         <p>Research software for TMA image preparation. Review results before clinical use.</p>
-        <div><a href={repo}>GitHub</a><a href={`${repo}/blob/main/README.md`}>Guide</a><a href={release}>Download</a></div>
+        <div><a href={repo}>GitHub</a><a href={path("/docs/")}>Documentation</a><a href={release}>Download</a></div>
       </footer>
     </main>
   );

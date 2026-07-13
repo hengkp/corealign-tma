@@ -85,7 +85,8 @@ if (rawImageName == null || rawImageName.trim().isEmpty()) rawImageName = 'image
 String imageStem = rawImageName.replaceAll(/(?i)\.ome\.tif+$/, '')
     .replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
-File stateDir = new File(new File(resolveBaseDir(), 'tma_pipeline_state'), imageStem)
+File stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(resolveBaseDir(), 'tma_pipeline_state'), imageStem).getAbsolutePath()))
 File approvalFile = new File(stateDir, 'approved_grid.json')
 File coordinatesFile = new File(stateDir, 'approved_grid_coordinates.csv')
 File queueFile = new File(stateDir, 'grid_review_queue.csv')
@@ -539,7 +540,8 @@ String currentHash = sha256(canonicalGrid(grid))
 // Multiple corrections drawn before one Run are therefore represented in one
 // latest overview, without rerunning or replacing the detector result.
 try {
-    File qcDir = new File(resolveBaseDir(), 'tma_grid_qc')
+    File qcDir = new File(System.getProperty('corealign.qc.gridDir',
+        new File(resolveBaseDir(), 'tma_grid_qc').getAbsolutePath()))
     qcDir.mkdirs()
     // Prefer QuPath's rendered RGB thumbnail. It follows the visible channel
     // display and avoids loading every fluorescence channel into memory.

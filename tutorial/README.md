@@ -48,7 +48,7 @@ Structural QC: passed
 No slide-specific technical reference; human grid approval required
 ```
 
-These counts describe this reviewed run, not a universal answer key. If the detected positions do not match the tissue in the QC image, do not approve them. Open `tma_grid_qc/*_grid_qc.png`, correct the grid, and run again.
+These counts describe this reviewed run, not a universal answer key. If the detected positions do not match the tissue in the QC image, do not approve them. Open `qc/01-grid/*_grid_qc.png`, correct the grid, and run again.
 
 ## Human review and resume
 
@@ -70,7 +70,7 @@ If a core needs correction:
 
 `rotated_multichannel_ome` contains UINT16 OME-TIFF files with every original channel. These are much slower and larger. In the validated test, one 2,606 by 2,606 core with 19 channels produced an approximately 99 MB OME-TIFF and required several minutes. Disable multichannel OME-TIFF in the Config Builder when only presentation PNG files are required.
 
-After final approval, Research package mode creates `qupath_analysis_project/project.qpproj`. Open it with `File`, `Project`, `Open project`. Core images are named in row-major order and include core, row, column, QC status, confidence, rotation, grid hash, and approval hash metadata. Presentation mode does not create this project because PNG composites are not suitable for quantitative multichannel analysis.
+After final approval, Research package mode creates `qupath/project.qpproj`. Open it with `File`, `Project`, `Open project`. Core images are named in row-major order and include core, row, column, QC status, confidence, rotation, grid hash, and approval hash metadata. Presentation mode does not create this project because PNG composites are not suitable for quantitative multichannel analysis.
 
 ## Safety gates
 

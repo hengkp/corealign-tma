@@ -5,9 +5,10 @@ import { gunzipSync } from "node:zlib";
 
 const root = new URL("../", import.meta.url);
 
-test("exports the home page and config builder", async () => {
+test("exports the home page, config builder, and documentation", async () => {
   await access(new URL("out/index.html", root));
   await access(new URL("out/config-builder/index.html", root));
+  await access(new URL("out/docs/index.html", root));
 });
 
 test("keeps the public website concise and English only", async () => {
@@ -31,9 +32,10 @@ test("exports generated example images", async () => {
 });
 
 test("includes persistent navigation and a theme control on both pages", async () => {
-  const [home, builder, css] = await Promise.all([
+  const [home, builder, docs, css] = await Promise.all([
     readFile(new URL("out/index.html", root), "utf8"),
     readFile(new URL("out/config-builder/index.html", root), "utf8"),
+    readFile(new URL("out/docs/index.html", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
 
@@ -42,7 +44,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /How it works/);
   assert.match(builder, /Outputs/);
   assert.doesNotMatch(builder, />Tutorial</);
-  assert.match(builder, /Safety/);
+  assert.match(builder, /Documentation/);
   assert.match(builder, /Build config/);
   assert.match(builder, /Choose two things\. CoreAlign handles the rest/);
   assert.match(builder, /Presentation images/);
@@ -59,8 +61,18 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
   assert.doesNotMatch(builder, /On this page/);
+  assert.match(docs, /One project folder\. Clear results at every step/);
+  assert.match(docs, /Documentation table of contents/);
+  assert.match(docs, /qc\/01-grid/);
+  assert.match(docs, /qc\/02-orientation/);
+  assert.match(docs, /results\/png/);
+  assert.match(docs, /results\/ome-tiff/);
+  assert.match(docs, /qupath\/project\.qpproj/);
+  assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
+  assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(css, /\.docsToc\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.autoGeometryCard\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
 });
@@ -98,6 +110,14 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /tma\.analysisProject\.status/);
   assert.match(groovy, /completion_report\.html/);
   assert.match(groovy, /COMPLETE_HUMAN_APPROVED/);
+  assert.match(groovy, /START-HERE\.html/);
+  assert.match(groovy, /PROJECT-README\.txt/);
+  assert.match(groovy, /qc\/01-grid/);
+  assert.match(groovy, /qc\/02-orientation/);
+  assert.match(groovy, /results\/png/);
+  assert.match(groovy, /results\/ome-tiff/);
+  assert.match(groovy, /corealign\.work\.runBaseDir/);
+  assert.match(groovy, /Published \$\{published\} easy-to-find project file/);
   assert.doesNotMatch(groovy, /knownReferenceLayouts|AUTO_GEOMETRY_REFERENCE_OVERRIDE/);
   assert.doesNotMatch(groovy, /'TMA_0\.6mm_7_backsub':/);
   assert.equal(config.schemaVersion, 2);
@@ -145,17 +165,25 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /LATEST_RUN_REPORT\.txt/);
   assert.match(embeddedOrient, /checkpoint_fast_resume/);
   assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
+  assert.match(embeddedOrient, /corealign\.work\.runBaseDir/);
+  assert.match(embeddedOrient, /corealign\.legacy\.runBaseDir/);
   assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
 
-  for (const [step, name] of [
-    ["4", "04_restore_approved_grid.groovy"],
-    ["5", "05_finalize_orientation_review.groovy"],
-    ["6", "06_export_presentation_package.groovy"],
-    ["7", "07_build_qupath_analysis_project.groovy"],
+  for (const [step, name, sourcePath] of [
+    ["2", "02_auto_orient_epidermis.groovy", "_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy"],
+    ["3", "03_review_correct_and_approve_grid.groovy", "_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy"],
+    ["4", "04_restore_approved_grid.groovy", "_archieved/legacy-multi-file-workflow/04_restore_approved_grid.groovy"],
+    ["5", "05_finalize_orientation_review.groovy", "_archieved/legacy-multi-file-workflow/05_finalize_orientation_review.groovy"],
+    ["6", "06_export_presentation_package.groovy", "_archieved/legacy-multi-file-workflow/06_export_presentation_package.groovy"],
+    ["7", "07_build_qupath_analysis_project.groovy", "_archieved/legacy-multi-file-workflow/07_build_qupath_analysis_project.groovy"],
   ]) {
     const match = groovy.match(new RegExp(`def step${step} = new EmbeddedWorkflowScript\\(name: '${name.replaceAll(".", "\\.")}', payload: '''\\n([\\s\\S]*?)\\n'''\\)`));
     assert.ok(match, `Step ${step} payload should be embedded`);
-    assert.ok(gunzipSync(Buffer.from(match[1], "base64")).toString("utf8").length > 500);
+    const [embeddedSource, canonicalSource] = await Promise.all([
+      Promise.resolve(gunzipSync(Buffer.from(match[1], "base64")).toString("utf8")),
+      readFile(new URL(sourcePath, root), "utf8"),
+    ]);
+    assert.equal(embeddedSource, canonicalSource, `Step ${step} should match its canonical source`);
   }
 
   const projectPayload = groovy.match(/def step7 = new EmbeddedWorkflowScript\(name: '07_build_qupath_analysis_project\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
@@ -164,4 +192,5 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedProject, /RESEARCH_OUTPUT_REQUIRED/);
   assert.match(embeddedProject, /CoreAlign row/);
   assert.match(embeddedProject, /project\.qpproj/);
+  assert.match(embeddedProject, /corealign\.qupath\.projectDir/);
 });

@@ -1,6 +1,6 @@
 {
   "name": "corealign-tma-docs",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "English documentation and visual config builder for CoreAlign TMA",
   "repository": "https://github.com/hengkp/corealign-tma",
@@ -12,6 +12,7 @@
     "build": "next build",
     "build:pages": "next build",
     "start": "next dev",
+    "workflow:embed": "node scripts/embed-workflow.mjs",
     "test": "npm run build:pages && node --test tests/site-static.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern _archieved"
   },

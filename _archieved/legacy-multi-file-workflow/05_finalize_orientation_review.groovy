@@ -40,7 +40,8 @@ String imageName = server.getMetadata().getName() ?: 'image'
 String imageStem = imageName.replaceAll(/(?i)\.ome\.tif+$/, '')
     .replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
-File stateDir = new File(new File(base, 'tma_pipeline_state'), imageStem)
+File stateDir = new File(System.getProperty('corealign.work.stateDir',
+    new File(new File(base, 'tma_pipeline_state'), imageStem).getAbsolutePath()))
 File gridApprovalFile = new File(stateDir, 'approved_grid.json')
 File finalApprovalFile = new File(stateDir, 'final_orientation_approval.json')
 File eventsFile = new File(stateDir, 'pipeline_events.jsonl')
@@ -51,7 +52,8 @@ if (!gridApprovalFile.isFile()) {
 }
 def gridApproval = json.fromJson(gridApprovalFile.getText('UTF-8'), Map.class)
 String gridHash = gridApproval.gridHash?.toString() ?: ''
-File exportBase = new File(base, 'tma_auto_orient_export')
+File exportBase = new File(System.getProperty('corealign.work.runBaseDir',
+    new File(base, 'tma_auto_orient_export').getAbsolutePath()))
 File latestPointer = new File(exportBase, 'LATEST_FINAL_RUN.txt')
 File runDir = latestPointer.isFile() ? new File(latestPointer.getText('UTF-8').trim()) :
     new File(exportBase, "${imageStem}_grid_${gridHash.substring(0, Math.min(12, gridHash.length()))}")
