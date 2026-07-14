@@ -792,24 +792,27 @@ if (approveForTest) {
     missingConfirmed = true
     note = 'Automated integration test approval'
 } else {
-    def params = new ParameterList()
-        .addTitleParameter('Validation summary')
-        .addEmptyParameter("${grid.getGridHeight()} x ${grid.getGridWidth()} grid; ${presentCount} present; ${missingCount} missing; ${queue.size()} queued for review")
-        .addBooleanParameter('missingConfirmed',
-            'I inspected and confirm all positions marked missing', missingCount == 0,
-            'Required when any grid position is marked missing.')
-        .addBooleanParameter('approve',
-            'APPROVE this exact grid for epidermis orientation', false,
-            'Approval is bound to a SHA-256 hash; moving any core invalidates it.')
-        .addStringParameter('note', 'Optional audit note', '')
-    if (!qupath.lib.gui.dialogs.Dialogs.showParameterDialog('TMA grid — human approval gate', params)) {
-        System.setProperty('tma.review.status', 'CANCELLED')
-        appendEvent([event: 'APPROVAL_CANCELLED', gridHash: currentHash])
-        return
+    if (missingCount > 0) {
+        String missingMessage = "The grid marks ${missingCount} position(s) as missing.\n\n" +
+            'Missing means CoreAlign will not rotate, crop, or export a core at that position.\n' +
+            'Check every red missing position in QuPath or Grid QC first.\n\n' +
+            'Click OK only if all missing positions are correct. Click Cancel to return to the slide.'
+        missingConfirmed = Dialogs.showConfirmDialog(
+            'CoreAlign | Confirm missing positions', missingMessage)
+        if (!missingConfirmed) {
+            System.setProperty('tma.review.status', 'CANCELLED')
+            appendEvent([event: 'APPROVAL_CANCELLED', gridHash: currentHash,
+                reason: 'missing_positions_not_confirmed'])
+            return
+        }
     }
-    approved = params.getBooleanParameterValue('approve')
-    missingConfirmed = params.getBooleanParameterValue('missingConfirmed')
-    note = params.getStringParameterValue('note') ?: ''
+    String approveMessage = "Grid: ${grid.getGridHeight()} rows x ${grid.getGridWidth()} columns\n" +
+        "Present: ${presentCount}\nMissing: ${missingCount}\nNeeds focused review: ${queue.size()}\n\n" +
+        'Approving locks these exact circles as the starting point for rotation.\n' +
+        'CoreAlign will rotate each present core first, then crop it, and save progress after every core.\n\n' +
+        'Click OK if the circles are correct. Click Cancel to keep editing in QuPath.'
+    approved = Dialogs.showConfirmDialog('CoreAlign | Approve grid and continue', approveMessage)
+    note = 'Approved in the simplified CoreAlign dialog'
 }
 
 if (!approved || (missingCount > 0 && !missingConfirmed)) {

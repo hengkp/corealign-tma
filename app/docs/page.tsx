@@ -52,7 +52,8 @@ export default function Documentation() {
               <article><span>2</span><div><h3>Run</h3><p>Open the slide in QuPath. Open the script in Script Editor and press Run.</p></div></article>
               <article><span>3</span><div><h3>Review</h3><p>Open REPORT.html. Check the requested QC, correct if needed, then run the same script again.</p></div></article>
             </div>
-            <div className="docsCallout"><i className="ri-information-line" /><div><b>A pause is usually intentional</b><span>CoreAlign stops at review gates. Accepted work is saved and does not need to run again.</span></div></div>
+            <div className="docsCallout"><i className="ri-information-line" /><div><b>Read the Run summary</b><span>Every run starts by telling you what CoreAlign will do, what it will reuse, and which files it will create. Click OK to start or Cancel to change nothing.</span></div></div>
+            <p className="docsSmall">Review gates now ask one clear question at a time. If positions are marked missing, CoreAlign explains what missing means before asking for confirmation.</p>
           </section>
 
           <section className="docsSection" id="review">

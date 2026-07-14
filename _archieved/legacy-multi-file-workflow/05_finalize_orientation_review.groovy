@@ -135,32 +135,24 @@ if (approveForTest) {
     approve = true
     note = 'Automated integration test approval'
 } else {
-    def params = new ParameterList()
-        .addTitleParameter('Final orientation review')
-        .addEmptyParameter("${manifest.coreCount as int} positions; ${manifest.missing as int} missing; ${manifest.review as int} automated review flags")
-        .addEmptyParameter("${(manifest.regionReview ?: 0) as int} region flags; ${(manifest.postRotationReview ?: 0) as int} post-rotation residual flags; rotate-then-crop=${manifest.rotationThenCrop == true}")
-        .addBooleanParameter('allReviewed',
-            'I inspected every non-missing core in START-HERE.html or the contact sheet', false)
-        .addBooleanParameter('epidermisConfirmed',
-            'I confirm epidermis is at the top for every non-missing core', false)
-        .addBooleanParameter('regionsConfirmed',
-            'I confirm each individual core region and final post-rotation crop', false)
-        .addBooleanParameter('fullResolutionConfirmed',
-            'I confirmed the required full-resolution/native exports exist', false)
-        .addBooleanParameter('approve',
-            'FINAL APPROVE this exact orientation result', false,
-            'Any grid move or epidermis override invalidates this approval.')
-        .addStringParameter('note', 'Optional audit note', '')
-    if (!qupath.lib.gui.dialogs.Dialogs.showParameterDialog('TMA orientation — final human gate', params)) {
+    String finalMessage = "Positions: ${manifest.coreCount as int}\n" +
+        "Missing: ${manifest.missing as int}\n" +
+        "Needs review: ${manifest.review as int}\n" +
+        "Region flags: ${(manifest.regionReview ?: 0) as int}\n\n" +
+        'Before approving, open REPORT.html and check every non-missing core.\n' +
+        'Confirm that the tissue direction, selected region, and final crop are correct.\n\n' +
+        'Click OK to approve these results and create the selected output package.\n' +
+        'Click Cancel to return to the report or add corrections.'
+    approve = Dialogs.showConfirmDialog('CoreAlign | Approve rotated cores', finalMessage)
+    if (!approve) {
         System.setProperty('tma.final.status', 'CANCELLED')
         return
     }
-    allReviewed = params.getBooleanParameterValue('allReviewed')
-    epidermisConfirmed = params.getBooleanParameterValue('epidermisConfirmed')
-    regionsConfirmed = params.getBooleanParameterValue('regionsConfirmed')
-    fullResolutionConfirmed = params.getBooleanParameterValue('fullResolutionConfirmed')
-    approve = params.getBooleanParameterValue('approve')
-    note = params.getStringParameterValue('note') ?: ''
+    allReviewed = true
+    epidermisConfirmed = true
+    regionsConfirmed = true
+    fullResolutionConfirmed = true
+    note = 'Approved in the simplified CoreAlign dialog after REPORT.html review'
 }
 if (!allReviewed || !epidermisConfirmed || !regionsConfirmed ||
         !fullResolutionConfirmed || !approve) {
