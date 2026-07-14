@@ -1,4 +1,5 @@
 import SiteHeader from "./site-header";
+import CoreAlignMotion from "./corealign-motion";
 
 const repo = "https://github.com/hengkp/corealign-tma";
 const release = `${repo}/releases/latest`;
@@ -31,8 +32,8 @@ export default function Home() {
       <section className="homeHero" id="content">
         <div className="heroCopy">
           <p className="kicker"><i className="ri-microscope-line" /> TMA preparation for QuPath</p>
-          <h1>Aligned TMA cores without the repetitive work.</h1>
-          <p className="lead">CoreAlign detects the array, rotates each core before cropping, and saves presentation or research-ready files. You review only what needs attention.</p>
+          <h1>Aligned TMA cores. Less repetitive work.</h1>
+          <p className="lead">Detect, rotate, and crop every core in QuPath. Review only the flagged results.</p>
           <div className="heroActions">
             <a className="button" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
             <a className="button secondary" href={`${basePath}/config-builder/`}><i className="ri-magic-line" /> Create a config</a>
@@ -40,23 +41,12 @@ export default function Home() {
           <div className="heroNote"><i className="ri-shield-check-line" /><span><b>Human checked.</b> Work is saved after each core, so you can correct and continue.</span></div>
         </div>
 
-        <div className="productPreview" aria-label="Example CoreAlign project dashboard">
-          <div className="previewBar">
-            <span><i className="ri-focus-3-line" /> REPORT.html</span>
-            <span className="previewReady"><i className="ri-checkbox-blank-circle-fill" /> Review ready</span>
-          </div>
-          <div className="previewContent">
-            <div className="previewTitle"><span>Current slide</span><h2>Skin TMA</h2><p>Automatic orientation complete</p></div>
-            <div className="previewMetrics">
-              <div><strong>126</strong><span>Core positions</span></div>
-              <div><strong>121</strong><span>QC pass</span></div>
-              <div className="needsReview"><strong>5</strong><span>Review</span></div>
-            </div>
-            <div className="coreStrip" aria-hidden="true">
-              {Array.from({ length: 18 }).map((_, index) => <span className={index === 7 || index === 14 ? "flag" : ""} key={index} />)}
-            </div>
-            <div className="previewAction"><span><i className="ri-eye-line" /> Review flagged cores</span><i className="ri-arrow-right-line" /></div>
-          </div>
+        <div className="heroArtwork" aria-label="Illustration of TMA core detection, rotation, and crop">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="heroArtLight" src={`${basePath}/images/corealign-hero-v2-light.webp`} width="1693" height="929" alt="Synthetic TMA cores moving through detection, rotation, and crop" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="heroArtDark" src={`${basePath}/images/corealign-hero-v2-dark.webp`} width="1692" height="929" alt="Synthetic TMA cores moving through detection, rotation, and crop in dark mode" />
+          <div className="motionBadge"><CoreAlignMotion /><span><b>Detect</b><b>Rotate</b><b>Crop</b></span></div>
         </div>
       </section>
 

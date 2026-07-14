@@ -13,10 +13,10 @@ test("exports the home page, config builder, and documentation", async () => {
 
 test("keeps the public website concise and English only", async () => {
   const html = await readFile(new URL("out/index.html", root), "utf8");
-  assert.match(html, /Aligned TMA cores without the repetitive work/);
+  assert.match(html, /Aligned TMA cores\. Less repetitive work/);
   assert.match(html, /One script\. Three clear steps/);
   assert.match(html, /REPORT\.html/);
-  assert.match(html, /rotates each core before cropping/);
+  assert.match(html, /Detect, rotate, and crop every core in QuPath/);
   assert.doesNotMatch(html, /<video|\.mp4|Watch or download|Video tutorial/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
@@ -28,6 +28,9 @@ test("exports generated example images", async () => {
   await access(new URL("out/images/corealign-hero-light.webp", root));
   await access(new URL("out/images/corealign-hero-dark.webp", root));
   await access(new URL("out/images/corealign-workflow-v1.webp", root));
+  await access(new URL("out/images/corealign-hero-v2-light.webp", root));
+  await access(new URL("out/images/corealign-hero-v2-dark.webp", root));
+  await access(new URL("out/animations/corealign-flow.json", root));
 });
 
 test("includes persistent navigation and a theme control on both pages", async () => {
@@ -100,11 +103,13 @@ test("keeps the website runtime lightweight", async () => {
 });
 
 test("ships one guarded production workflow", async () => {
-  const [groovy, configText, detectorSource, orientationSource, placeholderJpeg] = await Promise.all([
+  const [groovy, configText, detectorSource, orientationSource, gridReviewSource, finalReviewSource, placeholderJpeg] = await Promise.all([
     readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
     readFile(new URL("workflow/corealign.config.json", root), "utf8"),
     readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
     readFile(new URL("_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy", root), "utf8"),
+    readFile(new URL("_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy", root), "utf8"),
+    readFile(new URL("_archieved/legacy-multi-file-workflow/05_finalize_orientation_review.groovy", root), "utf8"),
     readFile(new URL("workflow/assets/no-core-placeholder.jpg", root)),
   ]);
   const config = JSON.parse(configText);
@@ -124,6 +129,14 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
   assert.match(groovy, /CoreAlign run finished: review required/);
   assert.match(groovy, /This is a planned review pause, not an error/);
+  assert.match(groovy, /CoreAlign \| Run summary/);
+  assert.match(groovy, /What CoreAlign will do/);
+  assert.match(groovy, /Click OK to start this run\. Click Cancel to change nothing/);
+  assert.match(gridReviewSource, /CoreAlign \| Confirm missing positions/);
+  assert.match(gridReviewSource, /CoreAlign \| Approve grid and continue/);
+  assert.match(finalReviewSource, /CoreAlign \| Approve rotated cores/);
+  assert.doesNotMatch(gridReviewSource, /I inspected and confirm all positions marked missing/);
+  assert.doesNotMatch(gridReviewSource, /APPROVE this exact grid for epidermis orientation/);
   assert.match(groovy, /tma\.analysisProject\.status/);
   assert.doesNotMatch(groovy, /new File\(completionDir, 'completion_report\.html'\)/);
   assert.match(groovy, /COMPLETE_HUMAN_APPROVED/);
@@ -131,6 +144,9 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
   assert.doesNotMatch(groovy, /Three clear steps/);
   assert.match(groovy, /CoreAlign quality-control report/);
+  assert.match(groovy, /--accent:#4262ff/);
+  assert.match(groovy, /--bg:#070b21/);
+  assert.match(groovy, /linear-gradient\(125deg,var\(--surface\) 0%,var\(--cyan-bg\) 58%,var\(--yellow-bg\) 100%\)/);
   assert.match(groovy, /gridZoomIn/);
   assert.match(groovy, /gridViewport/);
   assert.match(groovy, /fitGridImage/);
