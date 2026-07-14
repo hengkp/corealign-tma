@@ -171,9 +171,10 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
   assert.doesNotMatch(groovy, /Three clear steps/);
   assert.match(groovy, /CoreAlign quality-control report/);
-  assert.match(groovy, /--accent:#4262ff/);
-  assert.match(groovy, /--bg:#070b21/);
-  assert.match(groovy, /linear-gradient\(125deg,var\(--surface\) 0%,var\(--cyan-bg\) 58%,var\(--yellow-bg\) 100%\)/);
+  assert.match(groovy, /--accent:#2383e2/);
+  assert.match(groovy, /--bg:#191919/);
+  assert.match(groovy, /Bright editorial report/);
+  assert.match(groovy, /body\{background:var\(--bg\);background-image:none\}/);
   assert.match(groovy, /gridZoomIn/);
   assert.match(groovy, /gridViewport/);
   assert.match(groovy, /fitGridImage/);
