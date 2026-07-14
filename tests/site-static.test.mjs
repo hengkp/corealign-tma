@@ -75,6 +75,7 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /results\/png/);
   assert.match(docs, /results\/ome-tiff/);
   assert.match(docs, /One display range is shared by every core/);
+  assert.match(docs, /Presentation PNG runs process up to two cores at once/);
   assert.match(docs, /Do not measure intensity from PNG files/);
   assert.match(docs, /qupath\/project\.qpproj/);
   assert.match(docs, /work\/<\/code> folder stores the accepted grid, rotation, crop, and per-core checkpoints/);
@@ -153,6 +154,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /compatibleLegacyProfileHashes/);
   assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
   assert.match(groovy, /CoreAlign run finished: review required/);
+  assert.doesNotMatch(groovy, /new Date\(\)\.format\(/);
   assert.match(groovy, /This is a planned review pause, not an error/);
   assert.match(groovy, /CoreAlign \| Run summary/);
   assert.match(groovy, /What CoreAlign will do/);
@@ -264,6 +266,7 @@ test("ships one guarded production workflow", async () => {
   assert.equal(profile.grid.cropPaddingFactor, 1.9);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
   assert.equal(profile.detection.autoRetryMergedChannels, true);
+  assert.equal(profile.orientation.parallelWorkers, 2);
   assert.deepEqual(profile.presentation.channelTokens, []);
   assert.equal(profile.presentation.gradeMode, "shared_slide_range");
   assert.equal(profile.presentation.highPercentile, 0.998);
@@ -339,14 +342,23 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /shared slide-level ranges/);
   assert.match(embeddedOrient, /display_ranges\.json/);
   assert.match(embeddedOrient, /Use the OME-TIFF files for quantitative analysis/);
-  assert.match(embeddedOrient, /ROIs\.createEllipseROI\(cx - radius, cy - radius/);
+  assert.match(embeddedOrient, /Orientation workers:/);
+  assert.match(embeddedOrient, /Executors\.newFixedThreadPool\(PARALLEL_WORKERS\)/);
+  assert.match(embeddedOrient, /Keep all QuPath hierarchy mutations on the script thread/);
+  assert.doesNotMatch(embeddedOrient, /base\.getAbsolutePath\(\)/);
+  assert.match(embeddedOrient, /ROIs\.createEllipseROI\(\(r\.centerX as double\) - diameter \/ 2\.0d/);
   assert.match(embeddedOrient, /ann\.getMetadata\(\)/);
-  assert.match(embeddedOrient, /ann\.setName\("TMA orientation \$\{coreName\}"\)/);
+  assert.match(embeddedOrient, /ann\.setName\("TMA orientation \$\{r\.core\}"\)/);
   assert.match(embeddedOrient, /cropOverride\.obj\.setName\("\$\{CROP_OVERRIDE_CLASS_NAME\} \$\{coreName\}"\)/);
   assert.match(embeddedOrient, /override\.obj\.setName\("\$\{OVERRIDE_CLASS_NAME\} \$\{coreName\}"\)/);
   assert.doesNotMatch(embeddedOrient, /ROIs\.createLineROI/);
   assert.doesNotMatch(embeddedOrient, /ann\.setName\("\$\{coreName\} epidermis"\)/);
   assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
+
+  const reviewSource = await readFile(new URL("_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy", root), "utf8");
+  const restoreSource = await readFile(new URL("_archieved/legacy-multi-file-workflow/04_restore_approved_grid.groovy", root), "utf8");
+  assert.match(reviewSource, /cropPaddingFactor: desiredCropPaddingFactor/);
+  assert.match(restoreSource, /CoreAlign crop padding factor/);
 
   for (const [step, name, sourcePath] of [
     ["2", "02_auto_orient_epidermis.groovy", "_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy"],
