@@ -53,6 +53,8 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 
 // -------------------------------------------------------------------------
 // Operator-free defaults for this 0.6 mm skin CyCIF TMA.
@@ -90,6 +92,13 @@ boolean SAVE_FULL_RESOLUTION_PNG = cfgBool('tma.orientation.saveFullResolutionPn
 boolean SAVE_NATIVE_OME_TIFF = cfgBool('tma.orientation.saveNativeOmeTiff', false)
 boolean SAVE_ROTATED_MULTICHANNEL_OME_TIFF =
     cfgBool('tma.orientation.saveRotatedMultichannelOmeTiff', false)
+int REQUESTED_PARALLEL_WORKERS = cfgInt('tma.orientation.parallelWorkers', 2)
+int AUTO_PARALLEL_WORKERS = Math.max(1, Math.min(2,
+    Math.max(1, Runtime.getRuntime().availableProcessors().intdiv(2))))
+int PARALLEL_WORKERS = REQUESTED_PARALLEL_WORKERS <= 0 ? AUTO_PARALLEL_WORKERS :
+    Math.max(1, Math.min(4, REQUESTED_PARALLEL_WORKERS))
+if (SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF)
+    PARALLEL_WORKERS = 1
 def PRESENTATION_CHANNEL_TOKENS = cfgTokens('tma.presentation.channelTokens', '')
 double DISPLAY_LOW_PERCENTILE = cfgDouble('tma.presentation.lowPercentile', 0.50d)
 double DISPLAY_HIGH_PERCENTILE = cfgDouble('tma.presentation.highPercentile', 0.998d)
@@ -1590,16 +1599,11 @@ def findCropOverride = { String coreName, double cx, double cy, double radius ->
 // Process cores.
 // -------------------------------------------------------------------------
 
-def records = []
-def newOrientationQc = []
-int okCount = 0
-int reviewCount = 0
-int failCount = 0
-int overrideCount = 0
-int missingCount = 0
-int resumedCount = 0
-int processedThisRunCount = 0
-int exportOnlyThisRunCount = 0
+def records = Collections.synchronizedList([])
+def partialCsvLock = new Object()
+println "Orientation workers: ${PARALLEL_WORKERS}" +
+    ((SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF) ?
+        ' (research OME-TIFF safety mode)' : ' (bounded parallel processing)')
 
 def recordsCsvText = { rows ->
     def sb = new StringBuilder()
@@ -1638,7 +1642,9 @@ def recordsCsvText = { rows ->
 def coreEntries = cores.withIndex().collect { core, index -> [core: core, index: index] }
 if (PARTIAL_CORE_TEST)
     coreEntries = coreEntries.findAll { (it.core.getName() ?: '') == TEST_CORE_FILTER }
-coreEntries.each { entry ->
+def completedCoreCount = new java.util.concurrent.atomic.AtomicInteger(0)
+def workerErrors = Collections.synchronizedList([])
+def processCore = { entry ->
     def core = entry.core
     int i = entry.index as int
     String coreName = core.getName() ?: String.format(Locale.US, 'C%03d', i + 1)
@@ -1776,6 +1782,7 @@ coreEntries.each { entry ->
     boolean checkpointNeedsWrite = false
     boolean deliveryComplete = true
     boolean displayOutputChanged = false
+    boolean exportOnlyThisRun = false
     String processingError = ''
 
     if (checkpointFile.isFile()) {
@@ -1823,7 +1830,6 @@ coreEntries.each { entry ->
                 rotatedMultichannelOmeRel =
                     cpRecord.rotatedMultichannelOme?.toString() ?: ''
                 resumed = true
-                resumedCount++
                 displayOutputChanged = cp.outputHash != CURRENT_OUTPUT_HASH
                 checkpointNeedsWrite = cp.processingHash == null ||
                     displayOutputChanged ||
@@ -1836,7 +1842,6 @@ coreEntries.each { entry ->
     }
 
     if (!resumed) {
-        processedThisRunCount++
         try {
             if (!missing) {
                 if (override != null) {
@@ -2046,7 +2051,7 @@ coreEntries.each { entry ->
             (!rotatedMultichannelOmeFile.isFile() ||
                 rotatedMultichannelOmeFile.length() == 0)
         if (needDisplayPng || needFullRes || needNative || needRotatedMultichannel) {
-            exportOnlyThisRunCount++
+            exportOnlyThisRun = true
             checkpointNeedsWrite = true
             deliveryComplete = true
             try {
@@ -2132,57 +2137,6 @@ coreEntries.each { entry ->
         }
     }
 
-    if (missing) missingCount++
-    if (result.status == 'manual_override') overrideCount++
-    if (result.status == 'ok' || result.status == 'manual_override') okCount++
-    else if (result.status == 'review') reviewCount++
-    else failCount++
-
-    int color = (result.status == 'ok') ? COLOR_OK :
-        (result.status == 'manual_override') ? COLOR_OVERRIDE :
-        (result.status == 'review') ? COLOR_REVIEW : COLOR_FAIL
-    try { core.setColor(color) } catch (Throwable ignored) {}
-
-    if (!missing && !['no_tissue', 'processing_error'].contains(result.status)) {
-        try {
-            // Use the refined crop footprint as an ellipse. The previous
-            // direction line made the annotation list look like the core ROI
-            // itself was linear, although TMA grid cores are circular.
-            def roi = ROIs.createEllipseROI(cx - radius, cy - radius,
-                diameter, diameter, ImagePlane.getDefaultPlane())
-            def ann = PathObjects.createAnnotationObject(roi, orientationQcClass)
-            ann.setName("TMA orientation ${coreName}")
-            ann.setColor(color)
-            def metadata = ann.getMetadata()
-            metadata.put('CoreAlign core', coreName)
-            metadata.put('CoreAlign ROI role', 'refined_rotate_then_crop_footprint')
-            metadata.put('CoreAlign orientation status', result.status.toString())
-            metadata.put('CoreAlign orientation method',
-                (result.method ?: 'unknown').toString())
-            metadata.put('CoreAlign epidermis angle deg',
-                format1(angleToDegrees(result.angle as double)))
-            metadata.put('CoreAlign rotate to top deg',
-                format1(angleToDegrees(rotateRad)))
-            metadata.put('CoreAlign confidence',
-                format3(result.confidence as double))
-            newOrientationQc << ann
-        } catch (Throwable qcObjectError) {
-            println "WARNING: Could not create ellipse QC object for ${coreName}: ${qcObjectError.getMessage()}"
-        }
-    }
-
-    try {
-        def ml = core.getMeasurementList()
-        try { ml.put('Epidermis angle deg', angleToDegrees(result.angle as double)) }
-        catch (Throwable ignored2) { ml.putMeasurement('Epidermis angle deg', angleToDegrees(result.angle as double)) }
-        try { ml.put('Rotate to top deg', angleToDegrees(rotateRad)) }
-        catch (Throwable ignored2) { ml.putMeasurement('Rotate to top deg', angleToDegrees(rotateRad)) }
-        try { ml.put('Orientation confidence', result.confidence as double) }
-        catch (Throwable ignored2) { ml.putMeasurement('Orientation confidence', result.confidence as double) }
-        try { ml.put('Tissue fraction', result.tissueFraction as double) }
-        catch (Throwable ignored2) { ml.putMeasurement('Tissue fraction', result.tissueFraction as double) }
-    } catch (Throwable ignored) {}
-
     def record = [
         image: server.getMetadata().getName(),
         index: i + 1,
@@ -2212,6 +2166,8 @@ coreEntries.each { entry ->
         nativeOme: nativeOmeRel,
         rotatedMultichannelOme: rotatedMultichannelOmeRel,
         resumed: resumed,
+        processedThisRun: !resumed && !missing,
+        exportOnlyThisRun: exportOnlyThisRun,
         deliveryStatus: deliveryComplete ? 'complete' : 'export_error',
         processingError: processingError
     ]
@@ -2243,11 +2199,104 @@ coreEntries.each { entry ->
             println "WARNING: Could not save checkpoint for ${coreName}: ${checkpointWriteError.getMessage()}"
         }
     }
-    try {
-        writeAtomic(partialCsvFile, recordsCsvText(records))
-    } catch (Throwable partialError) {
-        println "WARNING: Could not update partial CSV after ${coreName}: ${partialError.getMessage()}"
+    int completed = completedCoreCount.incrementAndGet()
+    int checkpointInterval = Math.max(1, PARALLEL_WORKERS * 4)
+    if (completed == coreEntries.size() || completed % checkpointInterval == 0) {
+        synchronized (partialCsvLock) {
+            try {
+                def snapshot
+                synchronized (records) { snapshot = new ArrayList(records) }
+                snapshot.sort { a, b -> (a.index as int) <=> (b.index as int) }
+                writeAtomic(partialCsvFile, recordsCsvText(snapshot))
+            } catch (Throwable partialError) {
+                println "WARNING: Could not update partial CSV after ${coreName}: ${partialError.getMessage()}"
+            }
+        }
+        println "Orientation progress: ${completed}/${coreEntries.size()} positions complete"
     }
+}
+
+if (PARALLEL_WORKERS > 1 && coreEntries.size() > 1) {
+    def executor = Executors.newFixedThreadPool(PARALLEL_WORKERS)
+    try {
+        def futures = coreEntries.collect { entry ->
+            executor.submit({
+                try { processCore(entry) }
+                catch (Throwable workerError) {
+                    workerErrors << "${entry.core.getName() ?: entry.index}: ${workerError.getMessage()}".toString()
+                }
+                return null
+            } as Callable<Object>)
+        }
+        futures.each { it.get() }
+    } finally {
+        executor.shutdown()
+    }
+} else {
+    coreEntries.each { entry ->
+        try { processCore(entry) }
+        catch (Throwable workerError) {
+            workerErrors << "${entry.core.getName() ?: entry.index}: ${workerError.getMessage()}".toString()
+        }
+    }
+}
+if (!workerErrors.isEmpty())
+    throw new RuntimeException('Orientation worker failure: ' + workerErrors.join('; '))
+synchronized (records) {
+    records.sort { a, b -> (a.index as int) <=> (b.index as int) }
+}
+
+int okCount = records.count { it.status in ['ok', 'manual_override'] }
+int reviewCount = records.count { it.status == 'review' }
+int failCount = records.size() - okCount - reviewCount
+int overrideCount = records.count { it.status == 'manual_override' }
+int missingCount = records.count { it.status == 'missing' }
+int resumedCount = records.count { it.resumed == true }
+int processedThisRunCount = records.count { it.processedThisRun == true }
+int exportOnlyThisRunCount = records.count { it.exportOnlyThisRun == true }
+
+// Keep all QuPath hierarchy mutations on the script thread. Pixel reads,
+// rotation and file export may run in parallel, but PathObjects stay ordered.
+def newOrientationQc = []
+records.each { r ->
+    def core = cores[(r.index as int) - 1]
+    int color = (r.status == 'ok') ? COLOR_OK :
+        (r.status == 'manual_override') ? COLOR_OVERRIDE :
+        (r.status == 'review') ? COLOR_REVIEW : COLOR_FAIL
+    try { core.setColor(color) } catch (Throwable ignored) {}
+    if (r.status != 'missing' && !['no_tissue', 'processing_error'].contains(r.status)) {
+        try {
+            double diameter = r.diameter as double
+            def roi = ROIs.createEllipseROI((r.centerX as double) - diameter / 2.0d,
+                (r.centerY as double) - diameter / 2.0d, diameter, diameter,
+                ImagePlane.getDefaultPlane())
+            def ann = PathObjects.createAnnotationObject(roi, orientationQcClass)
+            ann.setName("TMA orientation ${r.core}")
+            ann.setColor(color)
+            def metadata = ann.getMetadata()
+            metadata.put('CoreAlign core', r.core.toString())
+            metadata.put('CoreAlign ROI role', 'refined_rotate_then_crop_footprint')
+            metadata.put('CoreAlign orientation status', r.status.toString())
+            metadata.put('CoreAlign orientation method', (r.method ?: 'unknown').toString())
+            metadata.put('CoreAlign epidermis angle deg', format1(r.epidermisAngleDeg as double))
+            metadata.put('CoreAlign rotate to top deg', format1(r.rotateToTopDeg as double))
+            metadata.put('CoreAlign confidence', format3(r.confidence as double))
+            newOrientationQc << ann
+        } catch (Throwable qcObjectError) {
+            println "WARNING: Could not create ellipse QC object for ${r.core}: ${qcObjectError.getMessage()}"
+        }
+    }
+    try {
+        def ml = core.getMeasurementList()
+        try { ml.put('Epidermis angle deg', r.epidermisAngleDeg as double) }
+        catch (Throwable ignored2) { ml.putMeasurement('Epidermis angle deg', r.epidermisAngleDeg as double) }
+        try { ml.put('Rotate to top deg', r.rotateToTopDeg as double) }
+        catch (Throwable ignored2) { ml.putMeasurement('Rotate to top deg', r.rotateToTopDeg as double) }
+        try { ml.put('Orientation confidence', r.confidence as double) }
+        catch (Throwable ignored2) { ml.putMeasurement('Orientation confidence', r.confidence as double) }
+        try { ml.put('Tissue fraction', r.tissueFraction as double) }
+        catch (Throwable ignored2) { ml.putMeasurement('Tissue fraction', r.tissueFraction as double) }
+    } catch (Throwable ignored) {}
 }
 
 if (!newOrientationQc.isEmpty()) hierarchy.addObjects(newOrientationQc)

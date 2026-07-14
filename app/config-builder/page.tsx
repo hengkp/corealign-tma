@@ -59,6 +59,7 @@ function makeConfig(form: FormState) {
           algorithmVersion: skin ? "skin-epidermis-orient-3.7-rotated-multichannel" : "generic-peripheral-orient-3.7-rotated-multichannel",
           analysisDownsample: 4,
           exportDownsample: 1,
+          parallelWorkers: 2,
           cropScale: 1.05,
           rotationSupportScale: 1.45,
           regionRefinementEnabled: true,

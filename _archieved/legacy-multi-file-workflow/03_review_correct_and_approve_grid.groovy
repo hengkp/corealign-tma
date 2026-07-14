@@ -908,7 +908,8 @@ cores.eachWithIndex { core, i ->
         centerX: roi.getCentroidX(), centerY: roi.getCentroidY(),
         diameter: Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()),
         missing: core.isMissing(), detectionSource: source, detectionConfidence: confidence,
-        correctionSignature: correctionSignature]
+        correctionSignature: correctionSignature,
+        cropPaddingFactor: desiredCropPaddingFactor]
 }
 def approval = [
     schemaVersion: 1,
@@ -928,6 +929,7 @@ def approval = [
     presentCount: presentCount,
     missingCount: missingCount,
     reviewQueueCount: queue.size(),
+    cropPaddingFactor: desiredCropPaddingFactor,
     gridHash: currentHash,
     note: note,
     warnings: warnings,

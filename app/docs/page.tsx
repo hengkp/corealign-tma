@@ -53,6 +53,7 @@ export default function Documentation() {
               <article><span>3</span><div><h3>Follow REPORT.html</h3><p>Open the report when CoreAlign pauses or finishes. Review only the requested items, then run the same script again to continue.</p></div></article>
             </div>
             <div className="docsCallout"><i className="ri-information-line" /><div><b>Read the Run summary</b><span>It identifies a first run, correction, resume, or output upgrade. It also lists the files that will be created and the accepted work that will be reused. Click OK to continue or Cancel to leave everything unchanged.</span></div></div>
+            <div className="docsCallout purple"><i className="ri-speed-up-line" /><div><b>Safe parallel processing</b><span>Presentation PNG runs process up to two cores at once. QuPath annotations are updated in order after image work finishes. Research OME-TIFF export uses one worker to protect memory.</span></div></div>
           </section>
 
           <section className="docsSection sectionMint" id="review">

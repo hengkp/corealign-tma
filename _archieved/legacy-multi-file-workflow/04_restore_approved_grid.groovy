@@ -72,6 +72,10 @@ approval.cores.each { r ->
         core.putMetadataValue('Detection algorithm version', approval.detectionAlgorithmVersion.toString())
     if (r.correctionSignature != null && !r.correctionSignature.toString().isEmpty())
         core.putMetadataValue('Correction annotation signature', r.correctionSignature.toString())
+    def cropPaddingFactor = r.cropPaddingFactor ?: approval.cropPaddingFactor ?:
+        System.getProperty('tma.grid.cropPaddingFactor', '1.90')
+    core.putMetadataValue('CoreAlign crop padding factor',
+        String.format(Locale.US, '%.3f', Double.parseDouble(cropPaddingFactor.toString())))
     core.putMetadataValue('Restored from approved hash', approval.gridHash.toString())
     coreList << core
 }
