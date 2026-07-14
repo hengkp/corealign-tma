@@ -48,6 +48,12 @@
       },
       "presentation": {
         "enabled": false,
+        "channelTokens": [],
+        "gradeMode": "shared_slide_range",
+        "lowPercentile": 0.5,
+        "highPercentile": 0.998,
+        "gamma": 0.85,
+        "maxChannels": 6,
         "conditions": [],
         "treatmentColumns": [],
         "comparisons": []

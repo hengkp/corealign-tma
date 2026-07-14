@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-type TocItem = readonly [string, string];
+type TocItem = Readonly<{
+  id: string;
+  label: string;
+  tone: string;
+}>;
 
 export default function DocsToc({ toc, release }: { toc: readonly TocItem[]; release: string }) {
-  const [active, setActive] = useState(toc[0]?.[0] ?? "overview");
+  const [active, setActive] = useState(toc[0]?.id ?? "overview");
 
   useEffect(() => {
     const sections = toc
-      .map(([id]) => document.getElementById(id))
+      .map(({ id }) => document.getElementById(id))
       .filter((section): section is HTMLElement => Boolean(section));
     const updateActive = () => {
       const readingLine = 130;
@@ -38,19 +42,21 @@ export default function DocsToc({ toc, release }: { toc: readonly TocItem[]; rel
     <aside className="docsToc" aria-label="Documentation table of contents">
       <p>CoreAlign guide</p>
       <nav>
-        {toc.map(([id, label]) => (
+        {toc.map(({ id, label, tone }) => (
           <a
             href={`#${id}`}
             key={id}
-            className={active === id ? "active" : undefined}
+            className={`${tone}${active === id ? " active" : ""}`}
             aria-current={active === id ? "location" : undefined}
             onClick={() => setActive(id)}
+            title={label}
           >
-            {label}
+            <span>{label}</span>
           </a>
         ))}
       </nav>
       <a className="tocDownload" href={release}><i className="ri-download-2-line" /> Download</a>
+      <a className="tocTop" href="#docs-top"><i className="ri-arrow-up-line" /><span>Back to top</span></a>
     </aside>
   );
 }

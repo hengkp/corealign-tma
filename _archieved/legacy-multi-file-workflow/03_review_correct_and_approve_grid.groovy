@@ -57,6 +57,126 @@ if (imageData == null) {
 }
 def server = imageData.getServer()
 def hierarchy = imageData.getHierarchy()
+def channelNames = server.getMetadata().getChannels().collect { it.getName() }
+
+// Render raw fluorescence channels with one robust slide-level calibration.
+// This is independent of the live viewer settings, so an overexposed viewer
+// cannot turn the saved Grid QC image into a white array.
+def renderSlideQcRgb = { BufferedImage raw, List names ->
+    def raster = raw.getRaster()
+    int w = raster.getWidth(), h = raster.getHeight(), n = w * h
+    int bands = Math.min(raster.getNumBands(), names.size())
+    if (bands < 1) return raw
+    def stats = []
+    float[] values = new float[n]
+    int sampleStep = Math.max(1, n.intdiv(220000))
+    for (int band = 0; band < bands; band++) {
+        raster.getSamples(0, 0, w, h, band, values)
+        float[] sample = new float[(int) Math.ceil(n / (double) sampleStep)]
+        int count = 0
+        for (int i = 0; i < n; i += sampleStep) {
+            float value = values[i]
+            if (value > 0.0f) sample[count++] = value
+        }
+        if (count == 0) continue
+        java.util.Arrays.sort(sample, 0, count)
+        double low = sample[Math.max(0, Math.min(count - 1,
+            (int) Math.round((count - 1) * 0.50d)))]
+        double middle = sample[Math.max(0, Math.min(count - 1,
+            (int) Math.round((count - 1) * 0.95d)))]
+        double high = sample[Math.max(0, Math.min(count - 1,
+            (int) Math.round((count - 1) * 0.998d)))]
+        stats << [index: band, name: names[band]?.toString() ?: "Channel ${band + 1}",
+            low: low, high: Math.max(low + 1.0d, high),
+            span: Math.max(1.0d, Math.max(middle - low, (high - low) * 0.15d))]
+    }
+    if (stats.isEmpty()) return raw
+    def requested = System.getProperty('tma.presentation.channelTokens', '')
+        .split(',').collect { it.trim().toLowerCase() }.findAll { !it.isEmpty() }
+    def chosen = []
+    requested.each { token ->
+        def match = stats.find { it.name.toString().equalsIgnoreCase(token) } ?:
+            stats.find { it.name.toString().toLowerCase().contains(token) }
+        if (match != null && !chosen.any { it.index == match.index }) chosen << match
+    }
+    if (chosen.isEmpty()) {
+        def nuclear = stats.find {
+            String name = it.name.toString().toLowerCase()
+            ['dapi', 'hoechst', 'nuclear', 'draq', 'topro'].any { name.contains(it) }
+        }
+        if (nuclear != null) chosen << nuclear
+        def structural = stats.find {
+            String name = it.name.toString().toLowerCase()
+            ['cpd', 'panck', 'pan-ck', 'cytokeratin', 'keratin', 'epcam']
+                .any { name.contains(it) }
+        }
+        if (structural != null && !chosen.any { it.index == structural.index })
+            chosen << structural
+        stats.findAll {
+            String name = it.name.toString().toLowerCase()
+            !name.startsWith('af') &&
+                !['dapi', 'hoechst', 'nuclear', 'draq', 'topro'].any { name.contains(it) } &&
+                !chosen.any { selected -> selected.index == it.index }
+        }.sort { a, b -> (b.span as double) <=> (a.span as double) }
+            .each { candidate -> if (chosen.size() < 3) chosen << candidate }
+    }
+    if (chosen.isEmpty()) chosen << stats[0]
+    chosen = chosen.take(6)
+    def nonNuclearPalette = [[255, 65, 176], [49, 224, 142],
+        [255, 205, 64], [45, 210, 238], [255, 88, 88]]
+    int paletteIndex = 0
+    chosen.each { stat ->
+        String name = stat.name.toString().toLowerCase()
+        boolean nuclear = ['dapi', 'hoechst', 'nuclear', 'draq', 'topro']
+            .any { name.contains(it) }
+        stat.rgb = nuclear ? [55, 126, 255] :
+            nonNuclearPalette[Math.min(paletteIndex++, nonNuclearPalette.size() - 1)]
+    }
+    int[] hue = new int[n]
+    float[] total = new float[n]
+    chosen.each { stat ->
+        raster.getSamples(0, 0, w, h, stat.index as int, values)
+        double low = stat.low as double
+        double range = Math.max(1e-9d, (stat.high as double) - low)
+        def rgb = stat.rgb as List
+        for (int i = 0; i < n; i++) {
+            double signal = Math.max(0.0d, Math.min(1.0d,
+                (values[i] - low) / range))
+            if (signal <= 0.02d) continue
+            signal = (signal - 0.02d) / 0.98d
+            signal = Math.pow(signal, 0.85d)
+            double previous = total[i], combined = previous + signal
+            int old = hue[i]
+            int r = (int) Math.round((((old >> 16) & 0xff) * previous +
+                (rgb[0] as int) * signal) / combined)
+            int g = (int) Math.round((((old >> 8) & 0xff) * previous +
+                (rgb[1] as int) * signal) / combined)
+            int b = (int) Math.round(((old & 0xff) * previous +
+                (rgb[2] as int) * signal) / combined)
+            hue[i] = (r << 16) | (g << 8) | b
+            total[i] = (float) combined
+        }
+    }
+    int[] pixels = new int[n]
+    for (int i = 0; i < n; i++) {
+        if (total[i] <= 0.0f) continue
+        int mixed = hue[i]
+        int r0 = (mixed >> 16) & 0xff, g0 = (mixed >> 8) & 0xff, b0 = mixed & 0xff
+        int peak = Math.max(1, Math.max(r0, Math.max(g0, b0)))
+        double brightness = Math.min(0.94d, 1.0d - Math.exp(-1.45d * total[i]))
+        int r = Math.min(242, (int) Math.round(255.0d * brightness *
+            Math.pow(r0 / (double) peak, 0.90d)))
+        int g = Math.min(242, (int) Math.round(255.0d * brightness *
+            Math.pow(g0 / (double) peak, 0.90d)))
+        int b = Math.min(242, (int) Math.round(255.0d * brightness *
+            Math.pow(b0 / (double) peak, 0.90d)))
+        pixels[i] = (r << 16) | (g << 8) | b
+    }
+    def out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+    out.setRGB(0, 0, w, h, pixels, 0, w)
+    println "Grid QC channels: ${chosen.collect { it.name }.join(', ')}"
+    return out
+}
 def grid = hierarchy.getTMAGrid()
 if (grid == null || grid.getTMACoreList().isEmpty()) {
     Dialogs.showErrorMessage('TMA grid review',
@@ -543,68 +663,14 @@ try {
     File qcDir = new File(System.getProperty('corealign.qc.gridDir',
         new File(resolveBaseDir(), 'tma_grid_qc').getAbsolutePath()))
     qcDir.mkdirs()
-    // Prefer QuPath's rendered RGB thumbnail. It follows the visible channel
-    // display and avoids loading every fluorescence channel into memory.
-    BufferedImage sourceOverview = null
-    try { sourceOverview = QPEx.getCurrentViewer()?.getRGBThumbnail() }
-    catch (Throwable ignored) {}
-    if (sourceOverview == null) {
-        double qcDownsample = Math.max(1.0d,
-            Math.max(server.getWidth(), server.getHeight()) / 2800.0d)
-        def request = RegionRequest.createInstance(server.getPath(), qcDownsample,
-            0, 0, server.getWidth(), server.getHeight())
-        sourceOverview = server.readRegion(request)
-    }
-    // Fluorescence thumbnails can be very dark when QuPath has conservative
-    // display ranges. Brighten non-black signal adaptively so tissue remains
-    // visible beneath the QC outlines without washing out the background.
-    int sourceWidth = Math.max(1, sourceOverview.getWidth())
-    int sourceHeight = Math.max(1, sourceOverview.getHeight())
-    int[] sourcePixels = sourceOverview.getRGB(0, 0, sourceWidth, sourceHeight,
-        null, 0, sourceWidth)
-    int[] signalHistogram = new int[256]
-    int signalCount = 0
-    int sampleStep = Math.max(1, sourcePixels.length.intdiv(350000))
-    for (int i = 0; i < sourcePixels.length; i += sampleStep) {
-        int pixel = sourcePixels[i]
-        int peak = Math.max((pixel >> 16) & 0xff,
-            Math.max((pixel >> 8) & 0xff, pixel & 0xff))
-        if (peak >= 3) {
-            signalHistogram[peak]++
-            signalCount++
-        }
-    }
-    int signalP995 = 64
-    if (signalCount > 0) {
-        int targetCount = Math.max(1, (int) Math.ceil(signalCount * 0.990d))
-        int cumulative = 0
-        for (int value = 0; value < 256; value++) {
-            cumulative += signalHistogram[value]
-            if (cumulative >= targetCount) {
-                signalP995 = Math.max(1, value)
-                break
-            }
-        }
-    }
-    double displayGain = Math.max(1.0d, Math.min(8.0d, 245.0d / signalP995))
-    double displayGamma = 0.58d
-    for (int i = 0; i < sourcePixels.length; i++) {
-        int pixel = sourcePixels[i]
-        int r = (pixel >> 16) & 0xff
-        int g = (pixel >> 8) & 0xff
-        int b = pixel & 0xff
-        r = (int) Math.round(255.0d * Math.pow(
-            Math.min(1.0d, r * displayGain / 255.0d), displayGamma))
-        g = (int) Math.round(255.0d * Math.pow(
-            Math.min(1.0d, g * displayGain / 255.0d), displayGamma))
-        b = (int) Math.round(255.0d * Math.pow(
-            Math.min(1.0d, b * displayGain / 255.0d), displayGamma))
-        sourcePixels[i] = (r << 16) | (g << 8) | b
-    }
-    BufferedImage brightOverview = new BufferedImage(sourceWidth, sourceHeight,
-        BufferedImage.TYPE_INT_RGB)
-    brightOverview.setRGB(0, 0, sourceWidth, sourceHeight, sourcePixels, 0,
-        sourceWidth)
+    double qcDownsample = Math.max(1.0d,
+        Math.max(server.getWidth(), server.getHeight()) / 2048.0d)
+    def request = RegionRequest.createInstance(server.getPath(), qcDownsample,
+        0, 0, server.getWidth(), server.getHeight())
+    BufferedImage sourceOverview = server.readRegion(request)
+    BufferedImage brightOverview = renderSlideQcRgb(sourceOverview, channelNames)
+    int sourceWidth = Math.max(1, brightOverview.getWidth())
+    int sourceHeight = Math.max(1, brightOverview.getHeight())
     sourceOverview = brightOverview
     int overviewWidth = Math.max(1, sourceOverview.getWidth())
     int overviewHeight = Math.max(1, sourceOverview.getHeight())
