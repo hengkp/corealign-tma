@@ -90,6 +90,13 @@ boolean SAVE_FULL_RESOLUTION_PNG = cfgBool('tma.orientation.saveFullResolutionPn
 boolean SAVE_NATIVE_OME_TIFF = cfgBool('tma.orientation.saveNativeOmeTiff', false)
 boolean SAVE_ROTATED_MULTICHANNEL_OME_TIFF =
     cfgBool('tma.orientation.saveRotatedMultichannelOmeTiff', false)
+def PRESENTATION_CHANNEL_TOKENS = cfgTokens('tma.presentation.channelTokens', '')
+double DISPLAY_LOW_PERCENTILE = cfgDouble('tma.presentation.lowPercentile', 0.50d)
+double DISPLAY_HIGH_PERCENTILE = cfgDouble('tma.presentation.highPercentile', 0.998d)
+double DISPLAY_GAMMA = cfgDouble('tma.presentation.gamma', 0.85d)
+int DISPLAY_MAX_CHANNELS = cfgInt('tma.presentation.maxChannels', 6)
+String DISPLAY_RENDERER_VERSION = cfgString('tma.presentation.rendererVersion',
+    'slide-color-2.0')
 double POST_ROTATION_TOLERANCE_DEG = cfgDouble('tma.orientation.postRotationToleranceDeg', 12.0d)
 int POST_ROTATION_MAX_ITERATIONS = cfgInt('tma.orientation.postRotationMaxIterations', 2)
 String TEST_CORE_FILTER = System.getProperty('tma.orientation.testCoreFilter', '').trim()
@@ -508,6 +515,160 @@ def makeRgb = { BufferedImage img ->
             out.setRGB(x, y, (r << 16) | (g << 8) | b)
         }
     }
+    return out
+}
+
+// Presentation and QC rendering deliberately uses one calibration for the
+// entire slide. Per-core normalization makes background noise look different
+// in every card and prevents meaningful visual comparison between cores.
+// Orientation scoring keeps using makeRgb above; research OME-TIFF values are
+// written from the source raster and are never display-graded.
+def displayPalette = [
+    [name: 'blue', rgb: [55, 126, 255]],
+    [name: 'magenta', rgb: [255, 65, 176]],
+    [name: 'green', rgb: [49, 224, 142]],
+    [name: 'yellow', rgb: [255, 205, 64]],
+    [name: 'cyan', rgb: [45, 210, 238]],
+    [name: 'red', rgb: [255, 88, 88]]
+]
+def displayStats = []
+try {
+    double overviewDownsample = Math.max(1.0d,
+        Math.max(imgW, imgH) / 1500.0d)
+    def overviewRequest = RegionRequest.createInstance(server.getPath(),
+        overviewDownsample, 0, 0, imgW, imgH)
+    def overview = server.readRegion(overviewRequest)
+    def overviewRaster = overview.getRaster()
+    int overviewW = overviewRaster.getWidth()
+    int overviewH = overviewRaster.getHeight()
+    int overviewN = overviewW * overviewH
+    int overviewBands = Math.min(overviewRaster.getNumBands(), channelNames.size())
+    float[] overviewBuffer = new float[overviewN]
+    for (int band = 0; band < overviewBands; band++) {
+        overviewRaster.getSamples(0, 0, overviewW, overviewH, band, overviewBuffer)
+        double low = percentilePositive(overviewBuffer,
+            Math.max(0.0d, Math.min(0.95d, DISPLAY_LOW_PERCENTILE)))
+        double high = percentilePositive(overviewBuffer,
+            Math.max(DISPLAY_LOW_PERCENTILE + 0.01d,
+                Math.min(0.9999d, DISPLAY_HIGH_PERCENTILE)))
+        double span = Math.max(1.0d, high - low)
+        displayStats << [index: band, name: channelNames[band], low: low,
+            high: Math.max(low + 1.0d, high), span: span]
+    }
+} catch (Throwable calibrationError) {
+    println "WARNING: Slide display calibration fell back to image type ranges: ${calibrationError.getMessage()}"
+    int availableBands = Math.min(channelNames.size(),
+        Math.max(1, server.getMetadata().getChannels().size()))
+    double fallbackHigh = 65535.0d
+    try {
+        int bits = server.getPixelType()?.getBitsPerPixel() ?: 16
+        fallbackHigh = bits <= 8 ? 255.0d : Math.pow(2.0d, Math.min(24, bits)) - 1.0d
+    } catch (Throwable ignored) {}
+    for (int band = 0; band < availableBands; band++)
+        displayStats << [index: band, name: channelNames[band], low: 0.0d,
+            high: fallbackHigh, span: fallbackHigh]
+}
+
+def selectedDisplayStats = []
+if (!PRESENTATION_CHANNEL_TOKENS.isEmpty()) {
+    PRESENTATION_CHANNEL_TOKENS.each { token ->
+        def exact = displayStats.find {
+            (it.name ?: '').toString().trim().equalsIgnoreCase(token)
+        }
+        def matched = exact ?: displayStats.find {
+            (it.name ?: '').toString().toLowerCase().contains(token)
+        }
+        if (matched != null && !selectedDisplayStats.any { it.index == matched.index })
+            selectedDisplayStats << matched
+    }
+    if (selectedDisplayStats.isEmpty())
+        println "WARNING: Requested presentation markers ${PRESENTATION_CHANNEL_TOKENS} were not found. Automatic channels will be used."
+}
+if (selectedDisplayStats.isEmpty()) {
+    def nuclear = displayStats.find { channelNameLooksNuclear(it.name?.toString()) }
+    if (nuclear != null) selectedDisplayStats << nuclear
+    def nonAf = displayStats.findAll {
+        String name = (it.name ?: '').toString().toLowerCase()
+        !name.startsWith('af') && !channelNameLooksNuclear(name) &&
+            !selectedDisplayStats.any { chosen -> chosen.index == it.index }
+    }
+    def epidermal = nonAf.findAll { channelNameLooksEpidermal(it.name?.toString()) }
+    epidermal.take(1).each { selectedDisplayStats << it }
+    nonAf.sort { a, b -> (b.span as double) <=> (a.span as double) }.each { candidate ->
+        if (selectedDisplayStats.size() < 3 &&
+                !selectedDisplayStats.any { it.index == candidate.index })
+            selectedDisplayStats << candidate
+    }
+}
+if (selectedDisplayStats.isEmpty() && !displayStats.isEmpty())
+    selectedDisplayStats << displayStats[0]
+selectedDisplayStats = selectedDisplayStats.take(
+    Math.max(1, Math.min(displayPalette.size(), DISPLAY_MAX_CHANNELS)))
+int displayNonNuclearPaletteIndex = 1
+selectedDisplayStats.each { stat ->
+    def palette = channelNameLooksNuclear(stat.name?.toString()) ? displayPalette[0] :
+        displayPalette[Math.min(displayNonNuclearPaletteIndex++, displayPalette.size() - 1)]
+    stat.colorName = palette.name
+    stat.rgb = palette.rgb
+}
+println 'Presentation PNG rendering: shared slide-level ranges'
+selectedDisplayStats.each { stat ->
+    println "  ${stat.name} -> ${stat.colorName}; range ${format3(stat.low as double)} to ${format3(stat.high as double)}"
+}
+
+def makeDisplayRgb = { BufferedImage img ->
+    int w = img.getWidth()
+    int h = img.getHeight()
+    int n = w * h
+    def raster = img.getRaster()
+    int bands = raster.getNumBands()
+    int[] hue = new int[n]
+    float[] total = new float[n]
+    float[] samples = new float[n]
+    selectedDisplayStats.findAll { (it.index as int) < bands }.each { stat ->
+        int band = stat.index as int
+        def rgb = stat.rgb as List
+        double low = stat.low as double
+        double range = Math.max(1e-9d, (stat.high as double) - low)
+        raster.getSamples(0, 0, w, h, band, samples)
+        for (int i = 0; i < n; i++) {
+            double normalized = clamp01((samples[i] - low) / range)
+            if (normalized <= 0.02d) continue
+            normalized = (normalized - 0.02d) / 0.98d
+            double signal = Math.pow(normalized, DISPLAY_GAMMA)
+            double previous = total[i]
+            double combined = previous + signal
+            int old = hue[i]
+            int oldR = (old >> 16) & 0xff
+            int oldG = (old >> 8) & 0xff
+            int oldB = old & 0xff
+            int mixedR = (int) Math.round((oldR * previous + (rgb[0] as int) * signal) / combined)
+            int mixedG = (int) Math.round((oldG * previous + (rgb[1] as int) * signal) / combined)
+            int mixedB = (int) Math.round((oldB * previous + (rgb[2] as int) * signal) / combined)
+            hue[i] = (mixedR << 16) | (mixedG << 8) | mixedB
+            total[i] = (float) combined
+        }
+    }
+    def out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+    int[] pixels = new int[n]
+    for (int i = 0; i < n; i++) {
+        if (total[i] <= 0.0f) continue
+        int mixed = hue[i]
+        int mixedR = (mixed >> 16) & 0xff
+        int mixedG = (mixed >> 8) & 0xff
+        int mixedB = mixed & 0xff
+        int peak = Math.max(1, Math.max(mixedR, Math.max(mixedG, mixedB)))
+        double brightness = Math.min(0.94d,
+            1.0d - Math.exp(-1.45d * total[i]))
+        int r = Math.max(0, Math.min(242, (int) Math.round(
+            255.0d * brightness * Math.pow(mixedR / (double) peak, 0.90d))))
+        int g = Math.max(0, Math.min(242, (int) Math.round(
+            255.0d * brightness * Math.pow(mixedG / (double) peak, 0.90d))))
+        int b = Math.max(0, Math.min(242, (int) Math.round(
+            255.0d * brightness * Math.pow(mixedB / (double) peak, 0.90d))))
+        pixels[i] = (r << 16) | (g << 8) | b
+    }
+    out.setRGB(0, 0, w, h, pixels, 0, w)
     return out
 }
 
@@ -1614,6 +1775,7 @@ coreEntries.each { entry ->
     boolean resumed = false
     boolean checkpointNeedsWrite = false
     boolean deliveryComplete = true
+    boolean displayOutputChanged = false
     String processingError = ''
 
     if (checkpointFile.isFile()) {
@@ -1662,8 +1824,9 @@ coreEntries.each { entry ->
                     cpRecord.rotatedMultichannelOme?.toString() ?: ''
                 resumed = true
                 resumedCount++
+                displayOutputChanged = cp.outputHash != CURRENT_OUTPUT_HASH
                 checkpointNeedsWrite = cp.processingHash == null ||
-                    cp.outputHash != CURRENT_OUTPUT_HASH ||
+                    displayOutputChanged ||
                     cp.profileHash != CURRENT_PROFILE_HASH
                 deliveryComplete = cp.deliveryComplete != false
             }
@@ -1767,6 +1930,16 @@ coreEntries.each { entry ->
                     result.confidence = 1.0d
                 }
 
+                // Re-render only after the accepted transform is known. These
+                // images use one slide-wide range; the scoring image above is
+                // intentionally separate and never written to disk.
+                def displaySupport = makeDisplayRgb(exportRegion.image)
+                unrotatedCrop = cropAround(displaySupport, exportCx, exportCy,
+                    finalSidePx)
+                def displayRotatedSupport = rotateImageAround(displaySupport,
+                    rotateRad, exportCx, exportCy)
+                rotatedCrop = cropAround(displayRotatedSupport, exportCx, exportCy,
+                    finalSidePx)
                 def originalPreview = scaleForPreview(unrotatedCrop, PREVIEW_MAX_PIXELS)
                 def rotatedPreview = scaleForPreview(rotatedCrop, PREVIEW_MAX_PIXELS)
                 boolean wroteOriginal = ImageIO.write(originalPreview, 'PNG', originalFile)
@@ -1864,14 +2037,15 @@ coreEntries.each { entry ->
         if (deliveryComplete != requestedOutputsExist) checkpointNeedsWrite = true
         deliveryComplete = requestedOutputsExist
 
+        boolean needDisplayPng = displayOutputChanged
         boolean needFullRes = SAVE_FULL_RESOLUTION_PNG &&
-            (!originalFullResFile.isFile() || !fullResFile.isFile())
+            (displayOutputChanged || !originalFullResFile.isFile() || !fullResFile.isFile())
         boolean needNative = SAVE_NATIVE_OME_TIFF &&
             (!nativeOmeFile.isFile() || nativeOmeFile.length() == 0)
         boolean needRotatedMultichannel = SAVE_ROTATED_MULTICHANNEL_OME_TIFF &&
             (!rotatedMultichannelOmeFile.isFile() ||
                 rotatedMultichannelOmeFile.length() == 0)
-        if (needFullRes || needNative || needRotatedMultichannel) {
+        if (needDisplayPng || needFullRes || needNative || needRotatedMultichannel) {
             exportOnlyThisRunCount++
             checkpointNeedsWrite = true
             deliveryComplete = true
@@ -1881,29 +2055,43 @@ coreEntries.each { entry ->
                 double exportCy = 0.0d
                 int finalSidePx = Math.max(1,
                     (int) Math.round(diameter / EXPORT_DOWNSAMPLE))
-                if (needFullRes || needRotatedMultichannel) {
+                if (needDisplayPng || needFullRes || needRotatedMultichannel) {
                     double supportSide = diameter * Math.max(
                         Math.sqrt(2.0d) + 0.01d, ROTATION_SUPPORT_SCALE)
                     exportRegion = readSquare(cx, cy, supportSide, EXPORT_DOWNSAMPLE)
                     exportCx = (cx - exportRegion.originX) / EXPORT_DOWNSAMPLE
                     exportCy = (cy - exportRegion.originY) / EXPORT_DOWNSAMPLE
                 }
-                if (needFullRes) {
-                    def rgbSupport = makeRgb(exportRegion.image)
-                    def unrotatedCrop = cropAround(rgbSupport, exportCx, exportCy,
+                if (needDisplayPng || needFullRes) {
+                    def displaySupport = makeDisplayRgb(exportRegion.image)
+                    def unrotatedCrop = cropAround(displaySupport, exportCx, exportCy,
                         finalSidePx)
-                    def rotatedSupport = rotateImageAround(rgbSupport, rotateRad,
+                    def rotatedSupport = rotateImageAround(displaySupport, rotateRad,
                         exportCx, exportCy)
                     def rotatedCrop = cropAround(rotatedSupport, exportCx, exportCy,
                         finalSidePx)
-                    boolean wroteOriginalFull = ImageIO.write(unrotatedCrop, 'PNG',
-                        originalFullResFile)
-                    boolean wroteRotatedFull = ImageIO.write(rotatedCrop, 'PNG',
-                        fullResFile)
-                    if (!wroteOriginalFull || !wroteRotatedFull)
-                        throw new IOException('Could not write full-resolution PNG')
-                    originalFullResRel = 'unrotated_fullres/' + outName
-                    rotatedFullResRel = 'rotated_fullres/' + outName
+                    if (needDisplayPng) {
+                        boolean wroteOriginal = ImageIO.write(
+                            scaleForPreview(unrotatedCrop, PREVIEW_MAX_PIXELS),
+                            'PNG', originalFile)
+                        boolean wroteRotated = ImageIO.write(
+                            scaleForPreview(rotatedCrop, PREVIEW_MAX_PIXELS),
+                            'PNG', outFile)
+                        if (!wroteOriginal || !wroteRotated)
+                            throw new IOException('Could not refresh QC preview PNG')
+                        originalRel = 'unrotated_previews/' + outName
+                        previewRel = 'rotated_previews/' + outName
+                    }
+                    if (needFullRes) {
+                        boolean wroteOriginalFull = ImageIO.write(unrotatedCrop, 'PNG',
+                            originalFullResFile)
+                        boolean wroteRotatedFull = ImageIO.write(rotatedCrop, 'PNG',
+                            fullResFile)
+                        if (!wroteOriginalFull || !wroteRotatedFull)
+                            throw new IOException('Could not write full-resolution PNG')
+                        originalFullResRel = 'unrotated_fullres/' + outName
+                        rotatedFullResRel = 'rotated_fullres/' + outName
+                    }
                 }
                 if (needNative) {
                     int nativeSide = Math.max(1, (int) Math.round(diameter))
@@ -2089,6 +2277,23 @@ long runCompletedAtMs = System.currentTimeMillis()
 long elapsedSeconds = Math.max(0L, Math.round((runCompletedAtMs - runStartedAtMs) / 1000.0d))
 String runCompletedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
     .format(new Date(runCompletedAtMs))
+def displayRangeRecords = selectedDisplayStats.collect { stat ->
+    [channelIndex: (stat.index as int) + 1, channel: stat.name,
+        color: stat.colorName, rgb: stat.rgb,
+        low: stat.low, high: stat.high]
+}
+def displayRangesFile = new File(outDir, 'display_ranges.json')
+writeAtomic(displayRangesFile, json.toJson([
+    schemaVersion: 1,
+    rendererVersion: DISPLAY_RENDERER_VERSION,
+    scope: 'slide',
+    mode: 'shared_slide_range',
+    lowPercentile: DISPLAY_LOW_PERCENTILE,
+    highPercentile: DISPLAY_HIGH_PERCENTILE,
+    gamma: DISPLAY_GAMMA,
+    channels: displayRangeRecords,
+    note: 'The same ranges are applied to every PNG from this slide. PNG files are for visual review and presentation, not quantitative measurement.'
+]) + '\n')
 def formatDuration = { long totalSeconds ->
     long hours = totalSeconds.intdiv(3600)
     long minutes = (totalSeconds % 3600L).intdiv(60)
@@ -2116,6 +2321,12 @@ def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' 
     fullResolutionPng: SAVE_FULL_RESOLUTION_PNG,
     nativeOmeTiff: SAVE_NATIVE_OME_TIFF]
 runManifest.rotatedMultichannelOmeTiff = SAVE_ROTATED_MULTICHANNEL_OME_TIFF
+runManifest.presentationRendering = [mode: 'shared_slide_range',
+    rendererVersion: DISPLAY_RENDERER_VERSION,
+    lowPercentile: DISPLAY_LOW_PERCENTILE,
+    highPercentile: DISPLAY_HIGH_PERCENTILE,
+    gamma: DISPLAY_GAMMA, channels: displayRangeRecords,
+    quantitative: false]
 writeAtomic(runManifestFile, json.toJson(runManifest) + '\n')
 
 // -------------------------------------------------------------------------
@@ -2182,7 +2393,7 @@ if (!wroteSheet)
 
 // -------------------------------------------------------------------------
 // Machine-readable run report. The one user-facing HTML file is always the
-// project-root START-HERE.html, rebuilt by the one-file runner after publish.
+// project-root REPORT.html, rebuilt by the one-file runner after publish.
 // -------------------------------------------------------------------------
 
 def reviewReasons = { r ->
@@ -2197,8 +2408,8 @@ def reviewReasons = { r ->
 }
 String reportStatus = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'ORIENTATION_REVIEW_REQUIRED'
 def runReportJsonFile = new File(outDir, 'run_report.json')
-def startHereFile = new File(System.getProperty('corealign.project.root', base.getAbsolutePath()),
-    'START-HERE.html')
+def reportFile = new File(System.getProperty('corealign.project.root',
+    projectDir.getAbsolutePath()), 'REPORT.html')
 def runReport = [
     schemaVersion: 1,
     status: reportStatus,
@@ -2223,11 +2434,17 @@ def runReport = [
     qc: [regionReview: regionReviewCount,
         postRotationResidualReview: postRotationReviewCount,
         postRotationToleranceDeg: POST_ROTATION_TOLERANCE_DEG],
+    presentationRendering: [mode: 'shared_slide_range',
+        rendererVersion: DISPLAY_RENDERER_VERSION,
+        channels: displayRangeRecords,
+        rangesFile: displayRangesFile.getAbsolutePath(),
+        note: 'One slide-wide display range is used for every core PNG. Use the OME-TIFF files for quantitative analysis.'],
     outputs: [runDirectory: outDir.getAbsolutePath(),
-        startHereHtml: startHereFile.getAbsolutePath(),
+        reportHtml: reportFile.getAbsolutePath(),
         contactSheet: sheetFile.getAbsolutePath(),
         resultsCsv: csvFile.getAbsolutePath(),
         reviewQueueCsv: reviewQueueFile.getAbsolutePath(),
+        displayRanges: displayRangesFile.getAbsolutePath(),
         rotatedPreviewDirectory: previewDir.getAbsolutePath(),
         rotatedFullResolutionPngDirectory:
             SAVE_FULL_RESOLUTION_PNG ? fullResDir.getAbsolutePath() : null,
@@ -2258,13 +2475,13 @@ def runReport = [
     },
     nextSteps: PARTIAL_CORE_TEST ?
         ['Inspect the selected test-core outputs.'] :
-        ['Open START-HERE.html.',
+        ['Open REPORT.html.',
          'Check the listed review cores and correct only those that need changes in QuPath.',
          'Run CoreAlign.groovy again. Accepted checkpoints will be reused.']
 ]
 writeAtomic(runReportJsonFile, json.toJson(runReport) + '\n')
-writeAtomic(new File(exportBaseDir, 'LATEST_START_HERE.txt'),
-    startHereFile.getAbsolutePath() + '\n')
+writeAtomic(new File(exportBaseDir, 'LATEST_REPORT.txt'),
+    reportFile.getAbsolutePath() + '\n')
 try { new File(exportBaseDir, 'LATEST_RUN_REPORT.txt').delete() } catch (Throwable ignored) {}
 
 def summaryFile = new File(outDir, 'workflow_summary.txt')
@@ -2290,7 +2507,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     }
     pw.println('')
     pw.println('Review order:')
-    pw.println('1. Open the project-root START-HERE.html.')
+    pw.println('1. Open the project-root REPORT.html.')
     pw.println('2. Check red and yellow cores first.')
     pw.println("3. If a direction is wrong, draw a small annotation on the true epidermis side, set class or name to '${OVERRIDE_CLASS_NAME}', and re-run this script.")
     pw.println("4. If the crop region is wrong, draw an annotation named '${CROP_OVERRIDE_CLASS_NAME} <core name>' around the desired core crop and re-run.")
@@ -2299,7 +2516,7 @@ summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println("CSV: ${csvFile.getName()}")
     pw.println("Contact sheet: ${sheetFile.getName()}")
     pw.println("Review queue CSV: ${reviewQueueFile.getName()}")
-    pw.println('Interactive dashboard: START-HERE.html')
+    pw.println('Interactive dashboard: REPORT.html')
     pw.println("Unrotated previews: ${originalDir.getName()}/")
     pw.println("Rotated previews: ${previewDir.getName()}/")
     if (SAVE_FULL_RESOLUTION_PNG) {
@@ -2320,19 +2537,19 @@ println "Resumed from checkpoint: ${resumedCount}; processed this run: ${process
 println "CSV: ${csvFile.getAbsolutePath()}"
 println "Contact sheet: ${sheetFile.getAbsolutePath()}"
 println "Review queue: ${reviewQueueFile.getAbsolutePath()}"
-println "Interactive dashboard: ${startHereFile.getAbsolutePath()}"
+println "Interactive dashboard: ${reportFile.getAbsolutePath()}"
 println "Summary: ${summaryFile.getAbsolutePath()}"
 
 runManifest.status = PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE'
 runManifest.completedAt = runCompletedAt
-runManifest.projectDashboard = startHereFile.getAbsolutePath()
+runManifest.projectDashboard = reportFile.getAbsolutePath()
 writeAtomic(runManifestFile, json.toJson(runManifest) + '\n')
 if (!PARTIAL_CORE_TEST)
     writeAtomic(new File(exportBaseDir, 'LATEST_FINAL_RUN.txt'), outDir.getAbsolutePath() + '\n')
 System.setProperty('tma.orientation.status', PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE')
 System.setProperty('tma.orientation.processedThisRun', processedThisRunCount.toString())
 System.setProperty('tma.orientation.exportOnlyThisRun', exportOnlyThisRunCount.toString())
-System.setProperty('tma.orientation.reportPath', startHereFile.getAbsolutePath())
+System.setProperty('tma.orientation.reportPath', reportFile.getAbsolutePath())
 System.setProperty('tma.orientation.reportJsonPath', runReportJsonFile.getAbsolutePath())
 System.setProperty('tma.orientation.runDir', outDir.getAbsolutePath())
 System.setProperty('tma.orientation.totalCount', records.size().toString())
@@ -2343,7 +2560,7 @@ System.setProperty('tma.orientation.elapsed', formatDuration(elapsedSeconds))
 
 if (needsReview > 0) {
     Dialogs.showWarningNotification('Auto-orient TMA done',
-        "Exported ${records.size()} cores. Open START-HERE.html and review ${needsReview} flagged cores.")
+        "Exported ${records.size()} cores. Open REPORT.html and review ${needsReview} flagged cores.")
 } else {
     Dialogs.showInfoNotification('Auto-orient TMA done',
         "Exported ${records.size()} cores. All exported cores passed confidence checks.")

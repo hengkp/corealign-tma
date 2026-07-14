@@ -11,6 +11,7 @@ type FormState = {
   output: OutputMode;
   nuclear: string;
   surface: string;
+  markers: string;
 };
 
 const initial: FormState = {
@@ -18,6 +19,7 @@ const initial: FormState = {
   output: "presentation",
   nuclear: "dapi, hoechst, nuclear",
   surface: "keratin, cytokeratin, panck, epcam",
+  markers: "",
 };
 
 function tokens(value: string) {
@@ -74,7 +76,18 @@ function makeConfig(form: FormState) {
           requireHumanOrientationApproval: true,
           blockPresentationWhenAnySelectedCoreNeedsReview: true,
         },
-        presentation: { enabled: false, conditions: [], treatmentColumns: [], comparisons: [] },
+        presentation: {
+          enabled: false,
+          channelTokens: tokens(form.markers),
+          gradeMode: "shared_slide_range",
+          lowPercentile: 0.5,
+          highPercentile: 0.998,
+          gamma: 0.85,
+          maxChannels: 6,
+          conditions: [],
+          treatmentColumns: [],
+          comparisons: [],
+        },
       },
     },
   };
@@ -146,10 +159,11 @@ export default function ConfigBuilder() {
           <div className="automaticStrip"><i className="ri-radar-line" /><div><b>Geometry is automatic</b><span>No row count, column count, or core diameter is required.</span></div><i className="ri-checkbox-circle-fill" /></div>
 
           <details className="optionalSettings">
-            <summary><span><i className="ri-settings-3-line" /> Optional channel words</span><small>Most users can skip this</small></summary>
+            <summary><span><i className="ri-settings-3-line" /> Optional marker channels</span><small>Most users can skip this</small></summary>
             <div className="optionalBody">
               <label><span>Nuclear channel words</span><input value={form.nuclear} onChange={(event) => set("nuclear", event.target.value)} /></label>
               <label><span>Surface marker words</span><input value={form.surface} onChange={(event) => set("surface", event.target.value)} /></label>
+              <label><span>Presentation PNG markers</span><input value={form.markers} placeholder="DAPI, PanCK, Ki67" onChange={(event) => set("markers", event.target.value)} /><small>Leave blank for automatic colors. The same grading is used for every core on this slide.</small></label>
             </div>
           </details>
         </div>

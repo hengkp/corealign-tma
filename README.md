@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.9.0
+## Current workflow: v1.9.1
 
-Version 1.9.0 adds a bright blue scientific interface across the website and `REPORT.html`, original synthetic light and dark hero artwork, and a lightweight Lottie rotate-then-crop cue. Every Groovy run begins with a plain-language summary of what will happen, what will be reused, and which output will be created. The old checkbox-heavy approval windows are replaced with one clear confirmation at a time. A config file remains optional.
+Version 1.9.1 renders Grid QC and oriented PNG files directly from raw channels with automatic background suppression and shared slide-level display ranges. The default view selects one nuclear channel plus useful non-nuclear markers instead of stacking repeated DAPI channels. Users can also enter presentation markers such as `DAPI, PanCK, Ki67` in the Config Builder. OME-TIFF exports keep the original multichannel values unchanged.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -31,6 +31,8 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 - Refreshes one `REPORT.html` dashboard and writes machine-readable JSON and CSV audit data
 - Shows a modal result summary when processing pauses or completes
 - Exports full resolution RGB PNG and rotated UINT16 multichannel OME TIFF
+- Uses the same display ranges for every PNG core from one slide
+- Records the selected channels and ranges in `results/tables/display_ranges.json`
 - Builds an analysis-ready QuPath project with row, column, QC, and transform metadata
 - Supports skin and other TMA tissues without array geometry input
 
@@ -64,7 +66,7 @@ Use [the production prompt](tutorial/VIDEO_SCRIPT.md) for the next screen record
 |---|---|
 | Tissue | Use epidermis-up rotation for skin or peripheral-edge rotation for other tissue |
 | Output | Create presentation PNG only or PNG plus multichannel OME-TIFF |
-| Channel words | Optional help for unusual channel names |
+| Marker channels | Optional channel names for presentation PNG files |
 
 Rows, columns, punch size, and layout are automatic. Use the Config Builder only when tissue type, output format, or unusual channel names need to change.
 

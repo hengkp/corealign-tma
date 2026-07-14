@@ -1,5 +1,4 @@
 import SiteHeader from "./site-header";
-import CoreAlignMotion from "./corealign-motion";
 
 const repo = "https://github.com/hengkp/corealign-tma";
 const release = `${repo}/releases/latest`;
@@ -46,11 +45,10 @@ export default function Home() {
           <img className="heroArtLight" src={`${basePath}/images/corealign-hero-v2-light.webp`} width="1693" height="929" alt="Synthetic TMA cores moving through detection, rotation, and crop" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="heroArtDark" src={`${basePath}/images/corealign-hero-v2-dark.webp`} width="1692" height="929" alt="Synthetic TMA cores moving through detection, rotation, and crop in dark mode" />
-          <div className="motionBadge"><CoreAlignMotion /><span><b>Detect</b><b>Rotate</b><b>Crop</b></span></div>
         </div>
       </section>
 
-      <section className="homeSection" id="workflow">
+      <section className="homeSection workflowSection" id="workflow">
         <div className="sectionHeading">
           <p className="eyebrow">How it works</p>
           <h2>One script. Three clear steps.</h2>
@@ -76,7 +74,7 @@ export default function Home() {
         <div className="outputCards">
           <article>
             <i className="ri-slideshow-3-line" />
-            <div><h3>Presentation images</h3><p>Full resolution PNG files for slides, figures, and visual comparison.</p><code>results/png/</code></div>
+            <div><h3>Presentation images</h3><p>Full resolution PNG files with shared slide-level color grading.</p><code>results/png/</code></div>
           </article>
           <article>
             <i className="ri-stack-line" />

@@ -30,7 +30,16 @@ test("exports generated example images", async () => {
   await access(new URL("out/images/corealign-workflow-v1.webp", root));
   await access(new URL("out/images/corealign-hero-v2-light.webp", root));
   await access(new URL("out/images/corealign-hero-v2-dark.webp", root));
-  await access(new URL("out/animations/corealign-flow.json", root));
+});
+
+test("shows the complete hero artwork without an animation overlay", async () => {
+  const [html, css] = await Promise.all([
+    readFile(new URL("out/index.html", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+  assert.doesNotMatch(html, /corealign-flow|motionBadge|lottie/i);
+  assert.match(css, /\.heroArtwork > img \{[^}]*object-fit: contain;/s);
+  assert.match(css, /\.heroArtwork \{[^}]*aspect-ratio: 1693 \/ 929;/s);
 });
 
 test("includes persistent navigation and a theme control on both pages", async () => {
@@ -53,18 +62,22 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(builder, /%22autoDetectGeometry%22%3A%20true/);
   assert.match(builder, /%22autoEstimateCoreDiameter%22%3A%20true/);
   assert.match(builder, /%22cropPaddingFactor%22%3A%201.9/);
-  assert.match(builder, /Optional channel words/);
+  assert.match(builder, /Optional marker channels/);
+  assert.match(builder, /Presentation PNG markers/);
+  assert.match(builder, /shared_slide_range/);
   assert.doesNotMatch(builder, /Fallback rows|Fallback columns|Core-size seed|Profile name/);
   assert.match(builder, /download="corealign\.config\.json"/);
   assert.match(builder, /data:application\/json/);
-  assert.match(docs, /Start with one file\. Follow one clear dashboard/);
+  assert.match(docs, /Prepare TMA cores in one repeatable workflow/);
   assert.match(docs, /only workflow HTML file/);
   assert.match(docs, /01-grid/);
   assert.match(docs, /02-orientation/);
   assert.match(docs, /results\/png/);
   assert.match(docs, /results\/ome-tiff/);
+  assert.match(docs, /One display range is shared by every core/);
+  assert.match(docs, /Do not measure intensity from PNG files/);
   assert.match(docs, /qupath\/project\.qpproj/);
-  assert.match(docs, /work\/<\/code> folder stores approved state and per-core checkpoints/);
+  assert.match(docs, /work\/<\/code> folder stores the accepted grid, rotation, crop, and per-core checkpoints/);
   assert.match(docs, /TMA orientation 4-C/);
   assert.match(docs, /TMA correction 4-C/);
   assert.match(docs, /Review a rotation/);
@@ -73,20 +86,29 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(docs, /A confirmed edit moves to Changes/);
   assert.match(docs, /Undo restores the original angle and removes the change/);
   assert.match(docs, /Confirm all QC pass accepts every green card at once/);
-  assert.match(docs, /Click Open QuPath when review is complete/);
+  assert.match(docs, /Click Open QuPath after review/);
   assert.match(docs, /complete array opens in Fit view/);
   assert.match(docs, /corealign-review-corrections\.json/);
   assert.match(docs, /Only changed cores are recalculated/);
   assert.match(docs, /Presentation or Research/);
-  assert.match(docs, /updates <code>corealign\.config\.json<\/code> automatically/);
+  assert.match(docs, /The config updates automatically/);
   assert.match(docs, /Accepted transforms are reused/);
   assert.match(docs, /aria-current="location"/);
+  assert.match(docs, /Back to top/);
+  assert.match(docs, /sectionCoral/);
+  assert.match(docs, /sectionMint/);
+  assert.match(docs, /sectionPurple/);
+  assert.match(docs, /sectionCyan/);
+  assert.match(docs, /sectionYellow/);
   assert.doesNotMatch(docs, /[ก-๙—–×·…°]/);
   assert.match(css, /\.siteHeader\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.siteHeader nav\s*\{\s*width:\s*100%;\s*order:\s*3;\s*display:\s*flex/);
   assert.doesNotMatch(css, /\.siteHeader nav\s*\{\s*display:\s*none/);
   assert.match(css, /\.builderAside\s*\{[\s\S]*?position:\s*sticky/);
   assert.match(css, /\.docsToc\s*\{[\s\S]*?position:\s*sticky/);
+  assert.match(css, /\.docsToc\s*\{[\s\S]*?grid-column:\s*2/);
+  assert.match(css, /\.tocTop\s*\{/);
+  assert.match(css, /\.docsToc nav::before\s*\{/);
   assert.match(css, /\.docsToc nav a\.active/);
   assert.match(css, /\.automaticStrip\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
@@ -125,6 +147,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /Keep computation and delivery identities separate/);
   assert.match(groovy, /tma\.config\.processingHash/);
   assert.match(groovy, /tma\.config\.outputHash/);
+  assert.match(groovy, /tma\.presentation\.channelTokens/);
+  assert.match(groovy, /presentationRendering: presentationConfig/);
+  assert.match(groovy, /presentationRendererVersion: 'slide-color-2\.0'/);
   assert.match(groovy, /compatibleLegacyProfileHashes/);
   assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
   assert.match(groovy, /CoreAlign run finished: review required/);
@@ -239,6 +264,9 @@ test("ships one guarded production workflow", async () => {
   assert.equal(profile.grid.cropPaddingFactor, 1.9);
   assert.equal(profile.detection.requireEveryRowAndColumn, true);
   assert.equal(profile.detection.autoRetryMergedChannels, true);
+  assert.deepEqual(profile.presentation.channelTokens, []);
+  assert.equal(profile.presentation.gradeMode, "shared_slide_range");
+  assert.equal(profile.presentation.highPercentile, 0.998);
 
   const placeholderPayload = groovy.match(/String NO_CORE_PLACEHOLDER_JPEG_BASE64 = '''\n([\s\S]*?)\n'''/);
   assert.ok(placeholderPayload, "No-core placeholder should be embedded");
@@ -257,6 +285,8 @@ test("ships one guarded production workflow", async () => {
   assert.equal(embeddedDetector, detectorSource);
   assert.match(embeddedDetector, /Automatic geometry accepted/);
   assert.match(embeddedDetector, /Automatic core-size estimate/);
+  assert.match(embeddedDetector, /renderSlideQcRgb/);
+  assert.match(embeddedDetector, /Grid QC channels/);
 
   const orientationPayload = groovy.match(/def step2 = new EmbeddedWorkflowScript\(name: '02_auto_orient_epidermis\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(orientationPayload, "Step 2 payload should be embedded");
@@ -280,8 +310,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedReview, /_grid_qc_latest\.png/);
   assert.match(embeddedReview, /correctionsAppliedThisRun/);
   assert.match(embeddedReview, /LATEST_GRID_QC_EXPORTED/);
-  assert.match(embeddedReview, /signalP995/);
-  assert.match(embeddedReview, /displayGamma = 0\.58d/);
+  assert.match(embeddedReview, /renderSlideQcRgb/);
+  assert.match(embeddedReview, /robust slide-level calibration/);
+  assert.doesNotMatch(embeddedReview, /getRGBThumbnail/);
   assert.match(embeddedReview, /new Color\(color\.getRed\(\), color\.getGreen\(\), color\.getBlue\(\), 14\)/);
   assert.doesNotMatch(embeddedReview, /Latest grid QC/);
   assert.doesNotMatch(embeddedReview, /AUTO DETECTED/);
@@ -295,7 +326,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /CURRENT_PROCESSING_HASH/);
   assert.doesNotMatch(embeddedOrient, /setText\([^\n]*run_report\.html/);
   assert.match(embeddedOrient, /ORIENTATION_REVIEW_REQUIRED/);
-  assert.match(embeddedOrient, /LATEST_START_HERE\.txt/);
+  assert.match(embeddedOrient, /LATEST_REPORT\.txt/);
+  assert.doesNotMatch(embeddedOrient, /START-HERE\.html/);
   assert.match(embeddedOrient, /checkpoint_fast_resume/);
   assert.match(embeddedOrient, /Fast checkpoint resume must happen before region refinement/);
   assert.match(embeddedOrient, /corealign\.work\.runBaseDir/);
@@ -303,6 +335,10 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedOrient, /Web review corrections loaded/);
   assert.match(embeddedOrient, /web_manual_rotation/);
   assert.match(embeddedOrient, /webRotationAdjustmentDeg/);
+  assert.match(embeddedOrient, /makeDisplayRgb/);
+  assert.match(embeddedOrient, /shared slide-level ranges/);
+  assert.match(embeddedOrient, /display_ranges\.json/);
+  assert.match(embeddedOrient, /Use the OME-TIFF files for quantitative analysis/);
   assert.match(embeddedOrient, /ROIs\.createEllipseROI\(cx - radius, cy - radius/);
   assert.match(embeddedOrient, /ann\.getMetadata\(\)/);
   assert.match(embeddedOrient, /ann\.setName\("TMA orientation \$\{coreName\}"\)/);
