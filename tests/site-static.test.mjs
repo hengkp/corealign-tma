@@ -171,8 +171,11 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(groovy, /Layout follows the Mintlify DESIGN\.md system and Power Design web principles/);
   assert.doesNotMatch(groovy, /Three clear steps/);
   assert.match(groovy, /CoreAlign quality-control report/);
-  assert.match(groovy, /--accent:#2383e2/);
-  assert.match(groovy, /--bg:#191919/);
+  assert.match(groovy, /--accent:#4285f4/);
+  assert.match(groovy, /--success:#188038/);
+  assert.match(groovy, /--danger:#d93025/);
+  assert.match(groovy, /--yellow:#fbbc04/);
+  assert.match(groovy, /--bg:#202124/);
   assert.match(groovy, /Bright editorial report/);
   assert.match(groovy, /body\{background:var\(--bg\);background-image:none\}/);
   assert.match(groovy, /gridZoomIn/);
@@ -195,7 +198,9 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /Synthetic empty placeholder for missing TMA core/);
   assert.match(groovy, /data-card-confirm/);
   assert.match(groovy, /data-confirmed/);
-  assert.match(groovy, /confirmed-badge/);
+  assert.doesNotMatch(groovy, /<span class="confirmed-badge"/);
+  assert.doesNotMatch(groovy, /<span class="change-badge"/);
+  assert.match(groovy, /data-edit>Edit<\/button><button[^>]+data-card-confirm>Confirm/);
   assert.match(groovy, /reviewState\.confirmed/);
   assert.match(groovy, /confirmed\?"Undo":"Confirm"/);
   assert.match(groovy, /Undo confirmation/);
@@ -203,6 +208,11 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-edit-reset/);
   assert.match(groovy, /data-edit-cancel/);
   assert.match(groovy, /data-edit-confirm/);
+  assert.match(groovy, /data-edit-confirm>Update<\/button>/);
+  assert.match(groovy, /confidence-high/);
+  assert.match(groovy, /confidence-medium/);
+  assert.match(groovy, /confidence-low/);
+  assert.match(groovy, /deg\.<\/span><span>Residual/);
   assert.match(groovy, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(groovy, /width:min\(100%,180px\)/);
   assert.match(groovy, /data-rotation-adjust/);
@@ -255,7 +265,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /rotationAdjustmentDeg/);
   assert.match(groovy, /String\.fromCharCode\(10\)/);
   assert.match(groovy, /Current theme:/);
-  assert.match(groovy, /Correct\? Click Confirm\. Wrong\? Click Edit, set the angle, then Confirm/);
+  assert.match(groovy, /Correct\? Click Confirm\. Wrong\? Click Edit, set the angle, then Update/);
   assert.match(groovy, /card\.dataset\.manualRotation=String\(applied\)/);
   assert.match(groovy, /delete reviewState\.angles\[key\]/);
   assert.match(groovy, /if\(Math\.abs\(angle\)>=\.05\)/);
