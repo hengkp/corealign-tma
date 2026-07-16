@@ -203,6 +203,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-edit-reset/);
   assert.match(groovy, /data-edit-cancel/);
   assert.match(groovy, /data-edit-confirm/);
+  assert.match(groovy, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(groovy, /width:min\(100%,180px\)/);
   assert.match(groovy, /data-rotation-adjust/);
   assert.match(groovy, /downloadChanges/);
   assert.match(groovy, /confirmAllPass/);
@@ -233,6 +235,10 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /queueAutoSaveCorrections/);
   assert.match(groovy, /fetch\(correctionAutoSaveUrl/);
   assert.match(groovy, /Saved\. Go to QuPath and run CoreAlign again/);
+  assert.match(groovy, /showAutoSaveErrorBriefly/);
+  assert.match(groovy, /},9000\)/);
+  assert.doesNotMatch(groovy, /projectHtmlEscape\(record\.regionStatus/);
+  assert.doesNotMatch(groovy, /record\.reasons\.join/);
   assert.match(groovy, /Access-Control-Allow-Private-Network: true/);
   assert.match(groovy, /StandardCopyOption\.ATOMIC_MOVE/);
   assert.match(groovy, /COREALIGN_AUTOSAVE_SELF_TEST_PASSED/);
@@ -302,7 +308,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedDetector, /Automatic geometry accepted/);
   assert.match(embeddedDetector, /Automatic core-size estimate/);
   assert.match(embeddedDetector, /renderSlideQcRgb/);
-  assert.match(embeddedDetector, /Grid QC channels/);
+  assert.match(embeddedDetector, /Grid QC white-on-black nuclear channels/);
+  assert.match(embeddedDetector, /pixels\[i\] = \(white << 16\) \| \(white << 8\) \| white/);
 
   const orientationPayload = groovy.match(/def step2 = new EmbeddedWorkflowScript\(name: '02_auto_orient_epidermis\.groovy', payload: '''\n([\s\S]*?)\n'''\)/);
   assert.ok(orientationPayload, "Step 2 payload should be embedded");
@@ -327,7 +334,8 @@ test("ships one guarded production workflow", async () => {
   assert.match(embeddedReview, /correctionsAppliedThisRun/);
   assert.match(embeddedReview, /LATEST_GRID_QC_EXPORTED/);
   assert.match(embeddedReview, /renderSlideQcRgb/);
-  assert.match(embeddedReview, /robust slide-level calibration/);
+  assert.match(embeddedReview, /Grid QC white-on-black nuclear channels/);
+  assert.match(embeddedReview, /pixels\[i\] = \(white << 16\) \| \(white << 8\) \| white/);
   assert.doesNotMatch(embeddedReview, /getRGBThumbnail/);
   assert.match(embeddedReview, /new Color\(color\.getRed\(\), color\.getGreen\(\), color\.getBlue\(\), 14\)/);
   assert.doesNotMatch(embeddedReview, /Latest grid QC/);

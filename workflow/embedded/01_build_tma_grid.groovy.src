@@ -73,8 +73,8 @@ def cal = server.getPixelCalibration()
 def channelObjs = server.getMetadata().getChannels()
 def channelNames = channelObjs.collect { it.getName() }
 
-// Build a fluorescence overview directly from raw channels. This avoids
-// inheriting saturated viewer settings and applies one robust range per slide.
+// Build a white-on-black nuclear overview directly from raw channels.
+// Colored grid annotations are drawn afterwards and remain easy to distinguish.
 def renderSlideQcRgb = { BufferedImage raw, List names ->
     def raster = raw.getRaster()
     int w = raster.getWidth(), h = raster.getHeight(), n = w * h
@@ -104,91 +104,36 @@ def renderSlideQcRgb = { BufferedImage raw, List names ->
             span: Math.max(1.0d, Math.max(middle - low, (high - low) * 0.15d))]
     }
     if (stats.isEmpty()) return raw
-    String requestedText = System.getProperty('tma.presentation.channelTokens', '')
-    def requested = requestedText.split(',').collect { it.trim().toLowerCase() }
-        .findAll { !it.isEmpty() }
-    def chosen = []
-    requested.each { token ->
-        def match = stats.find { it.name.toString().equalsIgnoreCase(token) } ?:
-            stats.find { it.name.toString().toLowerCase().contains(token) }
-        if (match != null && !chosen.any { it.index == match.index }) chosen << match
-    }
-    if (chosen.isEmpty()) {
-        def nuclear = stats.find {
-            String name = it.name.toString().toLowerCase()
-            ['dapi', 'hoechst', 'nuclear', 'draq', 'topro'].any { name.contains(it) }
-        }
-        if (nuclear != null) chosen << nuclear
-        def structural = stats.find {
-            String name = it.name.toString().toLowerCase()
-            ['cpd', 'panck', 'pan-ck', 'cytokeratin', 'keratin', 'epcam']
-                .any { name.contains(it) }
-        }
-        if (structural != null && !chosen.any { it.index == structural.index })
-            chosen << structural
-        stats.findAll {
-            String name = it.name.toString().toLowerCase()
-            !name.startsWith('af') &&
-                !['dapi', 'hoechst', 'nuclear', 'draq', 'topro'].any { name.contains(it) } &&
-                !chosen.any { selected -> selected.index == it.index }
-        }.sort { a, b -> (b.span as double) <=> (a.span as double) }
-            .each { candidate -> if (chosen.size() < 3) chosen << candidate }
-    }
-    if (chosen.isEmpty()) chosen << stats[0]
-    chosen = chosen.take(6)
-    def nonNuclearPalette = [[255, 65, 176], [49, 224, 142],
-        [255, 205, 64], [45, 210, 238], [255, 88, 88]]
-    int paletteIndex = 0
-    chosen.each { stat ->
+    def nuclearTokens = ['dapi', 'hoechst', 'nuclear', 'draq', 'topro']
+    def chosen = stats.findAll { stat ->
         String name = stat.name.toString().toLowerCase()
-        boolean nuclear = ['dapi', 'hoechst', 'nuclear', 'draq', 'topro']
-            .any { name.contains(it) }
-        stat.rgb = nuclear ? [55, 126, 255] :
-            nonNuclearPalette[Math.min(paletteIndex++, nonNuclearPalette.size() - 1)]
+        nuclearTokens.any { token -> name.contains(token) }
     }
-    int[] hue = new int[n]
-    float[] total = new float[n]
+    if (chosen.isEmpty())
+        chosen << stats.max { a, b -> (a.span as double) <=> (b.span as double) }
+    chosen = chosen.take(8)
+    float[] strongest = new float[n]
     chosen.each { stat ->
         raster.getSamples(0, 0, w, h, stat.index as int, values)
         double low = stat.low as double
         double range = Math.max(1e-9d, (stat.high as double) - low)
-        def rgb = stat.rgb as List
         for (int i = 0; i < n; i++) {
             double signal = Math.max(0.0d, Math.min(1.0d,
                 (values[i] - low) / range))
-            if (signal <= 0.02d) continue
-            signal = (signal - 0.02d) / 0.98d
-            signal = Math.pow(signal, 0.85d)
-            double previous = total[i], combined = previous + signal
-            int old = hue[i]
-            int r = (int) Math.round((((old >> 16) & 0xff) * previous +
-                (rgb[0] as int) * signal) / combined)
-            int g = (int) Math.round((((old >> 8) & 0xff) * previous +
-                (rgb[1] as int) * signal) / combined)
-            int b = (int) Math.round(((old & 0xff) * previous +
-                (rgb[2] as int) * signal) / combined)
-            hue[i] = (r << 16) | (g << 8) | b
-            total[i] = (float) combined
+            if (signal <= 0.015d) continue
+            signal = Math.pow((signal - 0.015d) / 0.985d, 0.62d)
+            if (signal > strongest[i]) strongest[i] = (float) signal
         }
     }
     int[] pixels = new int[n]
     for (int i = 0; i < n; i++) {
-        if (total[i] <= 0.0f) continue
-        int mixed = hue[i]
-        int r0 = (mixed >> 16) & 0xff, g0 = (mixed >> 8) & 0xff, b0 = mixed & 0xff
-        int peak = Math.max(1, Math.max(r0, Math.max(g0, b0)))
-        double brightness = Math.min(0.94d, 1.0d - Math.exp(-1.45d * total[i]))
-        int r = Math.min(242, (int) Math.round(255.0d * brightness *
-            Math.pow(r0 / (double) peak, 0.90d)))
-        int g = Math.min(242, (int) Math.round(255.0d * brightness *
-            Math.pow(g0 / (double) peak, 0.90d)))
-        int b = Math.min(242, (int) Math.round(255.0d * brightness *
-            Math.pow(b0 / (double) peak, 0.90d)))
-        pixels[i] = (r << 16) | (g << 8) | b
+        int white = Math.min(255, Math.max(0,
+            (int) Math.round(255.0d * strongest[i])))
+        pixels[i] = (white << 16) | (white << 8) | white
     }
     def out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
     out.setRGB(0, 0, w, h, pixels, 0, w)
-    println "Grid QC channels: ${chosen.collect { it.name }.join(', ')}"
+    println "Grid QC white-on-black nuclear channels: ${chosen.collect { it.name }.join(', ')}"
     return out
 }
 
