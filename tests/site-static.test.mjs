@@ -113,6 +113,9 @@ test("includes persistent navigation and a theme control on both pages", async (
   assert.match(css, /\.docsToc nav a\.active/);
   assert.match(css, /\.automaticStrip\s*\{[\s\S]*?display:\s*grid/);
   assert.match(css, /:root\[data-theme="dark"\]/);
+  assert.match(css, /--green:\s*#1473e6/);
+  assert.match(css, /--purple:\s*#b45cff/);
+  assert.match(css, /--yellow:\s*#ffd000/);
   assert.match(css, /--bg:\s*#ffffff/);
   assert.match(css, /\.themeMoon\s*\{\s*display:\s*none/);
   assert.match(css, /:root\[data-theme="dark"\] \.themeMoon\s*\{\s*display:\s*block/);
@@ -179,7 +182,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /--warning:#fbbc04/);
   assert.match(groovy, /--warning-bg:#fff8d8/);
   assert.match(groovy, /--yellow:#fbbc04/);
-  assert.match(groovy, /--bg:#202124/);
+  assert.match(groovy, /--bg:#171717/);
   assert.match(groovy, /Bright editorial report/);
   assert.match(groovy, /body\{background:var\(--bg\);background-image:none\}/);
   assert.match(groovy, /gridZoomIn/);
@@ -270,6 +273,10 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /rotationAdjustmentDeg/);
   assert.match(groovy, /String\.fromCharCode\(10\)/);
   assert.match(groovy, /Current theme:/);
+  assert.match(groovy, /--accent:#4c8dff/);
+  assert.match(groovy, /--warning:#ffd400/);
+  assert.match(groovy, /--success:#32d66b/);
+  assert.match(groovy, /\.change-actions button\[hidden\]\{display:none\}/);
   assert.match(groovy, /Correct\? Click Confirm\. Wrong\? Click Edit, adjust the angle, then Update/);
   assert.ok(groovy.indexOf('id="changeBar"') < groovy.indexOf('class="filter-tools section-block"'));
   assert.match(groovy, /card\.dataset\.manualRotation=String\(applied\)/);
