@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.9.8
+## Current workflow: v1.9.9
 
-Version 1.9.8 uses a brighter pale-yellow Needs review state and yellow Undo button. QC pass green and Missing red are lighter, clearer, and consistent across status pills, card borders, and confidence text in light and dark modes.
+Version 1.9.9 moves the save and rerun panel to the top of Orientation QC. QuPath and AppHub save angle changes before any folder prompt. Chrome and Edge offer one-time project folder access only when needed, while Safari and Firefox provide a clear correction-file fallback.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -51,7 +51,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Open `REPORT.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Update. Chrome or Edge asks for the project folder once, saves the correction there, and remembers the folder. AppHub saves to the drive through its report preview. Open QuPath only when you are ready to run the same script again.
+8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Update. Angle changes save automatically while QuPath is open or through AppHub. If QuPath is closed, Chrome and Edge can connect to the project folder once. Safari and Firefox offer one correction file to place beside REPORT.html.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
