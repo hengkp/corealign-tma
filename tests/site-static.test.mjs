@@ -172,8 +172,12 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(groovy, /Three clear steps/);
   assert.match(groovy, /CoreAlign quality-control report/);
   assert.match(groovy, /--accent:#4285f4/);
-  assert.match(groovy, /--success:#188038/);
-  assert.match(groovy, /--danger:#d93025/);
+  assert.match(groovy, /--success:#5bcb75/);
+  assert.match(groovy, /--success-text:#137333/);
+  assert.match(groovy, /--danger:#ff6b62/);
+  assert.match(groovy, /--danger-text:#c5221f/);
+  assert.match(groovy, /--warning:#fbbc04/);
+  assert.match(groovy, /--warning-bg:#fff8d8/);
   assert.match(groovy, /--yellow:#fbbc04/);
   assert.match(groovy, /--bg:#202124/);
   assert.match(groovy, /Bright editorial report/);
@@ -209,6 +213,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-edit-cancel/);
   assert.match(groovy, /data-edit-confirm/);
   assert.match(groovy, /data-edit-confirm>Update<\/button>/);
+  assert.match(groovy, /data-confirmed="true"\] \.confirm-button\{border-color:var\(--warning\);background:var\(--warning-bg\)/);
   assert.match(groovy, /confidence-high/);
   assert.match(groovy, /confidence-medium/);
   assert.match(groovy, /confidence-low/);
