@@ -217,6 +217,14 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /saveOutputMode/);
   assert.match(groovy, /data-output-mode-choice="presentation"/);
   assert.match(groovy, /data-output-mode-choice="research"/);
+  assert.match(groovy, /Switch to Research\?/);
+  assert.match(groovy, /Save Research/);
+  assert.match(groovy, /Return to QuPath and run CoreAlign\.groovy again to create multichannel OME-TIFF files/);
+  assert.match(groovy, /Rotation saved/);
+  assert.match(groovy, /Only changed cores will be recalculated/);
+  assert.match(groovy, /def projectPathString/);
+  assert.match(groovy, /value\.strings instanceof List/);
+  assert.match(groovy, /corealign\.reportOnly/);
   assert.match(groovy, /Research saved\. Run CoreAlign again to create OME-TIFF files/);
   assert.match(groovy, /orientation\.saveRotatedMultichannelOmeTiff = mode == 'research'/);
   assert.match(groovy, /bringQuPathToFront/);
@@ -271,6 +279,10 @@ test("ships one guarded production workflow", async () => {
   assert.deepEqual(profile.presentation.channelTokens, []);
   assert.equal(profile.presentation.gradeMode, "shared_slide_range");
   assert.equal(profile.presentation.highPercentile, 0.998);
+  assert.match(orientationSource, /nuclear-white-black-1\.0/);
+  assert.match(orientationSource, /def makeQcReviewRgb/);
+  assert.match(orientationSource, /qcPreviewRendererVersion/);
+  assert.match(orientationSource, /'qc\/02-orientation\/' \+ r\.preview\.toString\(\)/);
 
   const placeholderPayload = groovy.match(/String NO_CORE_PLACEHOLDER_JPEG_BASE64 = '''\n([\s\S]*?)\n'''/);
   assert.ok(placeholderPayload, "No-core placeholder should be embedded");

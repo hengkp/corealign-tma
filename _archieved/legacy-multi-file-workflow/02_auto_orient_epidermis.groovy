@@ -106,6 +106,8 @@ double DISPLAY_GAMMA = cfgDouble('tma.presentation.gamma', 0.85d)
 int DISPLAY_MAX_CHANNELS = cfgInt('tma.presentation.maxChannels', 6)
 String DISPLAY_RENDERER_VERSION = cfgString('tma.presentation.rendererVersion',
     'slide-color-2.0')
+String QC_PREVIEW_RENDERER_VERSION = cfgString(
+    'tma.orientation.qcPreviewRendererVersion', 'nuclear-white-black-1.0')
 double POST_ROTATION_TOLERANCE_DEG = cfgDouble('tma.orientation.postRotationToleranceDeg', 12.0d)
 int POST_ROTATION_MAX_ITERATIONS = cfgInt('tma.orientation.postRotationMaxIterations', 2)
 String TEST_CORE_FILTER = System.getProperty('tma.orientation.testCoreFilter', '').trim()
@@ -677,6 +679,49 @@ def makeDisplayRgb = { BufferedImage img ->
             255.0d * brightness * Math.pow(mixedB / (double) peak, 0.90d))))
         pixels[i] = (r << 16) | (g << 8) | b
     }
+    out.setRGB(0, 0, w, h, pixels, 0, w)
+    return out
+}
+
+// Orientation review uses only the slide-calibrated nuclear channels. The
+// strongest nuclear signal across cycles is rendered white on pure black so
+// epidermal nuclear density remains easy to compare without marker colors.
+def qcNuclearStats = displayStats.findAll {
+    dapiIdx.contains(it.index as int)
+}
+if (qcNuclearStats.isEmpty() && !displayStats.isEmpty())
+    qcNuclearStats << displayStats[0]
+println "Orientation QC rendering: ${QC_PREVIEW_RENDERER_VERSION}; channels " +
+    qcNuclearStats.collect { it.name }.join(', ')
+
+def makeQcReviewRgb = { BufferedImage img ->
+    int w = img.getWidth()
+    int h = img.getHeight()
+    int n = w * h
+    def raster = img.getRaster()
+    int bands = raster.getNumBands()
+    float[] strongest = new float[n]
+    float[] samples = new float[n]
+    qcNuclearStats.findAll { (it.index as int) < bands }.each { stat ->
+        int band = stat.index as int
+        double low = stat.low as double
+        double range = Math.max(1e-9d, (stat.high as double) - low)
+        raster.getSamples(0, 0, w, h, band, samples)
+        for (int i = 0; i < n; i++) {
+            float normalized = (float) clamp01((samples[i] - low) / range)
+            if (normalized > strongest[i]) strongest[i] = normalized
+        }
+    }
+    int[] pixels = new int[n]
+    for (int i = 0; i < n; i++) {
+        double signal = strongest[i] as double
+        if (signal <= 0.015d) continue
+        signal = clamp01((signal - 0.015d) / 0.985d)
+        int value = Math.max(0, Math.min(255, (int) Math.round(
+            255.0d * Math.pow(signal, 0.62d))))
+        pixels[i] = (value << 16) | (value << 8) | value
+    }
+    def out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
     out.setRGB(0, 0, w, h, pixels, 0, w)
     return out
 }
@@ -1781,7 +1826,8 @@ def processCore = { entry ->
     boolean resumed = false
     boolean checkpointNeedsWrite = false
     boolean deliveryComplete = true
-    boolean displayOutputChanged = false
+    boolean presentationOutputChanged = false
+    boolean qcPreviewChanged = false
     boolean exportOnlyThisRun = false
     String processingError = ''
 
@@ -1830,9 +1876,11 @@ def processCore = { entry ->
                 rotatedMultichannelOmeRel =
                     cpRecord.rotatedMultichannelOme?.toString() ?: ''
                 resumed = true
-                displayOutputChanged = cp.outputHash != CURRENT_OUTPUT_HASH
+                presentationOutputChanged = cp.outputHash != CURRENT_OUTPUT_HASH
+                qcPreviewChanged = cp.qcPreviewRendererVersion?.toString() !=
+                    QC_PREVIEW_RENDERER_VERSION
                 checkpointNeedsWrite = cp.processingHash == null ||
-                    displayOutputChanged ||
+                    presentationOutputChanged || qcPreviewChanged ||
                     cp.profileHash != CURRENT_PROFILE_HASH
                 deliveryComplete = cp.deliveryComplete != false
             }
@@ -1938,15 +1986,17 @@ def processCore = { entry ->
                 // Re-render only after the accepted transform is known. These
                 // images use one slide-wide range; the scoring image above is
                 // intentionally separate and never written to disk.
-                def displaySupport = makeDisplayRgb(exportRegion.image)
-                unrotatedCrop = cropAround(displaySupport, exportCx, exportCy,
+                def qcSupport = makeQcReviewRgb(exportRegion.image)
+                def qcUnrotatedCrop = cropAround(qcSupport, exportCx, exportCy,
                     finalSidePx)
-                def displayRotatedSupport = rotateImageAround(displaySupport,
-                    rotateRad, exportCx, exportCy)
-                rotatedCrop = cropAround(displayRotatedSupport, exportCx, exportCy,
+                def qcRotatedSupport = rotateImageAround(qcSupport, rotateRad,
+                    exportCx, exportCy)
+                def qcRotatedCrop = cropAround(qcRotatedSupport, exportCx, exportCy,
                     finalSidePx)
-                def originalPreview = scaleForPreview(unrotatedCrop, PREVIEW_MAX_PIXELS)
-                def rotatedPreview = scaleForPreview(rotatedCrop, PREVIEW_MAX_PIXELS)
+                def originalPreview = scaleForPreview(qcUnrotatedCrop,
+                    PREVIEW_MAX_PIXELS)
+                def rotatedPreview = scaleForPreview(qcRotatedCrop,
+                    PREVIEW_MAX_PIXELS)
                 boolean wroteOriginal = ImageIO.write(originalPreview, 'PNG', originalFile)
                 boolean wroteRotated = ImageIO.write(rotatedPreview, 'PNG', outFile)
                 if (!wroteOriginal)
@@ -1958,6 +2008,13 @@ def processCore = { entry ->
                 boolean wroteFullOriginal = true
                 boolean wroteFullRotated = true
                 if (SAVE_FULL_RESOLUTION_PNG) {
+                    def displaySupport = makeDisplayRgb(exportRegion.image)
+                    unrotatedCrop = cropAround(displaySupport, exportCx, exportCy,
+                        finalSidePx)
+                    def displayRotatedSupport = rotateImageAround(displaySupport,
+                        rotateRad, exportCx, exportCy)
+                    rotatedCrop = cropAround(displayRotatedSupport, exportCx,
+                        exportCy, finalSidePx)
                     wroteFullOriginal = ImageIO.write(unrotatedCrop, 'PNG', originalFullResFile)
                     wroteFullRotated = ImageIO.write(rotatedCrop, 'PNG', fullResFile)
                     if (wroteFullOriginal) originalFullResRel = 'unrotated_fullres/' + outName
@@ -2042,9 +2099,10 @@ def processCore = { entry ->
         if (deliveryComplete != requestedOutputsExist) checkpointNeedsWrite = true
         deliveryComplete = requestedOutputsExist
 
-        boolean needDisplayPng = displayOutputChanged
+        boolean needDisplayPng = presentationOutputChanged || qcPreviewChanged
         boolean needFullRes = SAVE_FULL_RESOLUTION_PNG &&
-            (displayOutputChanged || !originalFullResFile.isFile() || !fullResFile.isFile())
+            (presentationOutputChanged || !originalFullResFile.isFile() ||
+                !fullResFile.isFile())
         boolean needNative = SAVE_NATIVE_OME_TIFF &&
             (!nativeOmeFile.isFile() || nativeOmeFile.length() == 0)
         boolean needRotatedMultichannel = SAVE_ROTATED_MULTICHANNEL_OME_TIFF &&
@@ -2067,36 +2125,41 @@ def processCore = { entry ->
                     exportCx = (cx - exportRegion.originX) / EXPORT_DOWNSAMPLE
                     exportCy = (cy - exportRegion.originY) / EXPORT_DOWNSAMPLE
                 }
-                if (needDisplayPng || needFullRes) {
-                    def displaySupport = makeDisplayRgb(exportRegion.image)
-                    def unrotatedCrop = cropAround(displaySupport, exportCx, exportCy,
-                        finalSidePx)
-                    def rotatedSupport = rotateImageAround(displaySupport, rotateRad,
-                        exportCx, exportCy)
-                    def rotatedCrop = cropAround(rotatedSupport, exportCx, exportCy,
-                        finalSidePx)
-                    if (needDisplayPng) {
-                        boolean wroteOriginal = ImageIO.write(
-                            scaleForPreview(unrotatedCrop, PREVIEW_MAX_PIXELS),
-                            'PNG', originalFile)
-                        boolean wroteRotated = ImageIO.write(
-                            scaleForPreview(rotatedCrop, PREVIEW_MAX_PIXELS),
-                            'PNG', outFile)
+                if (needDisplayPng) {
+                    def qcSupport = makeQcReviewRgb(exportRegion.image)
+                    def qcUnrotatedCrop = cropAround(qcSupport, exportCx,
+                        exportCy, finalSidePx)
+                    def qcRotatedSupport = rotateImageAround(qcSupport,
+                        rotateRad, exportCx, exportCy)
+                    def qcRotatedCrop = cropAround(qcRotatedSupport, exportCx,
+                        exportCy, finalSidePx)
+                    boolean wroteOriginal = ImageIO.write(
+                        scaleForPreview(qcUnrotatedCrop, PREVIEW_MAX_PIXELS),
+                        'PNG', originalFile)
+                    boolean wroteRotated = ImageIO.write(
+                        scaleForPreview(qcRotatedCrop, PREVIEW_MAX_PIXELS),
+                        'PNG', outFile)
                         if (!wroteOriginal || !wroteRotated)
                             throw new IOException('Could not refresh QC preview PNG')
-                        originalRel = 'unrotated_previews/' + outName
-                        previewRel = 'rotated_previews/' + outName
-                    }
-                    if (needFullRes) {
-                        boolean wroteOriginalFull = ImageIO.write(unrotatedCrop, 'PNG',
-                            originalFullResFile)
-                        boolean wroteRotatedFull = ImageIO.write(rotatedCrop, 'PNG',
-                            fullResFile)
-                        if (!wroteOriginalFull || !wroteRotatedFull)
-                            throw new IOException('Could not write full-resolution PNG')
-                        originalFullResRel = 'unrotated_fullres/' + outName
-                        rotatedFullResRel = 'rotated_fullres/' + outName
-                    }
+                    originalRel = 'unrotated_previews/' + outName
+                    previewRel = 'rotated_previews/' + outName
+                }
+                if (needFullRes) {
+                    def displaySupport = makeDisplayRgb(exportRegion.image)
+                    def unrotatedCrop = cropAround(displaySupport, exportCx,
+                        exportCy, finalSidePx)
+                    def rotatedSupport = rotateImageAround(displaySupport,
+                        rotateRad, exportCx, exportCy)
+                    def rotatedCrop = cropAround(rotatedSupport, exportCx,
+                        exportCy, finalSidePx)
+                    boolean wroteOriginalFull = ImageIO.write(unrotatedCrop, 'PNG',
+                        originalFullResFile)
+                    boolean wroteRotatedFull = ImageIO.write(rotatedCrop, 'PNG',
+                        fullResFile)
+                    if (!wroteOriginalFull || !wroteRotatedFull)
+                        throw new IOException('Could not write full-resolution PNG')
+                    originalFullResRel = 'unrotated_fullres/' + outName
+                    rotatedFullResRel = 'rotated_fullres/' + outName
                 }
                 if (needNative) {
                     int nativeSide = Math.max(1, (int) Math.round(diameter))
@@ -2183,6 +2246,7 @@ def processCore = { entry ->
             profileHash: CURRENT_PROFILE_HASH,
             processingHash: CURRENT_PROCESSING_HASH,
             outputHash: CURRENT_OUTPUT_HASH,
+            qcPreviewRendererVersion: QC_PREVIEW_RENDERER_VERSION,
             coreSignature: coreSignature,
             savedAt: new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date()),
             rotateRad: rotateRad,
@@ -2485,6 +2549,8 @@ def runReport = [
         postRotationToleranceDeg: POST_ROTATION_TOLERANCE_DEG],
     presentationRendering: [mode: 'shared_slide_range',
         rendererVersion: DISPLAY_RENDERER_VERSION,
+        qcPreviewRendererVersion: QC_PREVIEW_RENDERER_VERSION,
+        qcPreviewMode: 'nuclear-white-on-black',
         channels: displayRangeRecords,
         rangesFile: displayRangesFile.getAbsolutePath(),
         note: 'One slide-wide display range is used for every core PNG. Use the OME-TIFF files for quantitative analysis.'],
@@ -2519,8 +2585,10 @@ def runReport = [
             webRotationAdjustmentDeg: r.webRotationAdjustmentDeg,
             postRotationResidualDeg: r.postRotationResidualDeg,
             reasons: reviewReasons(r),
-            rotatedPreview: r.preview ? "qc/02-orientation/${r.preview}" : null,
-            unrotatedPreview: r.original ? "qc/02-orientation/${r.original}" : null]
+            rotatedPreview: r.preview ?
+                ('qc/02-orientation/' + r.preview.toString()) : null,
+            unrotatedPreview: r.original ?
+                ('qc/02-orientation/' + r.original.toString()) : null]
     },
     nextSteps: PARTIAL_CORE_TEST ?
         ['Inspect the selected test-core outputs.'] :
