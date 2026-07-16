@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.9.5
+## Current workflow: v1.9.6
 
-Version 1.9.5 makes Grid QC nuclear signal white on black while preserving colored annotations. Orientation cards now use compact metadata, a centered Before and Rotated toggle, and one-row edit controls. Auto-save errors appear briefly instead of remaining as a permanent panel. Presentation PNG files and original multichannel OME-TIFF values remain separate from QC rendering.
+Version 1.9.6 lets `REPORT.html` save orientation corrections and output choices without keeping QuPath open. A local browser asks for the project folder once and remembers it. AppHub uses a scoped drive bridge. QuPath is needed only when the user is ready to rerun CoreAlign and update the original-quality images.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
@@ -51,7 +51,7 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 5. Open `CoreAlign.groovy` and press `Run`.
 6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
 7. Open `REPORT.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Confirm. Click Open QuPath, then run the same script again.
+8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Confirm. Chrome or Edge asks for the project folder once, saves the correction there, and remembers the folder. AppHub saves to the drive through its report preview. Open QuPath only when you are ready to run the same script again.
 9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
 
 ## Validated tutorial
@@ -73,7 +73,7 @@ Rows, columns, punch size, and layout are automatic. Use the Config Builder only
 ### Upgrade PNG results to a research package later
 
 1. Keep the original slide folder and its `work` folder. For a project created before v1.6, also keep any legacy `tma_pipeline_state` and `tma_auto_orient_export` folders until CoreAlign has resumed it successfully.
-2. Keep QuPath open. Open `REPORT.html`, select Results, and choose `Research`.
+2. Open `REPORT.html`, select Results, and choose `Research`. Choose the project folder if the browser asks. QuPath does not need to stay open while you review or save.
 3. Return to the same original slide in QuPath and run the same `CoreAlign.groovy` file.
 
 CoreAlign uses separate processing and output identities. If only the output choice changed, it reuses the approved grid, refined core region, accepted rotation angle, and final crop. It reads the source slide and creates only the missing rotated multichannel OME-TIFF files. It does not redetect or reorient the cores. If an export stops, run the same script again and it resumes the missing files.
