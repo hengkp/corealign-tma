@@ -82,7 +82,7 @@ export default function Documentation() {
               <li>Name it with the required action and position, for example <code>TMA correction 4-C</code>.</li>
               <li>Run <code>CoreAlign.groovy</code> again. CoreAlign refreshes the complete QC report and reprocesses only the changed core.</li>
             </ol>
-            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>Click Confirm if the angle is correct. If it is wrong, click Edit, move the angle slider, then click Confirm. A Saved message confirms that the correction is in the project folder. Open QuPath and run the script when you are ready to update the image.</span></div></div>
+            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>Click Confirm if the angle is correct. If it is wrong, click Edit, move the angle slider, then click Update. A Saved message confirms that the correction is in the project folder. Open QuPath and run the script when you are ready to update the image.</span></div></div>
           </section>
 
           <section className="docsSection sectionCyan" id="results">
