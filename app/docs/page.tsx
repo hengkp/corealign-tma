@@ -64,7 +64,7 @@ export default function Documentation() {
               <div><i className="ri-refresh-line" /><span><b>Orientation QC</b> Compare Before and Rotated. Missing positions use a synthetic black no-core image. Filters are All cores, QC pass, Missing, Needs review, and Changes.</span></div>
               <div><i className="ri-folder-open-line" /><span><b>Results</b> Open presentation PNG files, research OME-TIFF files, metadata tables, or the ordered QuPath project.</span></div>
             </div>
-            <p className="docsSmall">Click Confirm when a rotation is correct. A confirmed edit moves to Changes. Undo restores the original angle and removes the change. Confirm all QC pass accepts every green card at once. Edited angles save beside <code>REPORT.html</code> while QuPath is open. Click Open QuPath after review, then run CoreAlign again. Only changed cores are recalculated.</p>
+            <p className="docsSmall">Click Confirm when a rotation is correct. A confirmed edit moves to Changes. Undo restores the original angle and removes the change. Confirm all QC pass accepts every green card at once. For a local report, Chrome or Edge asks for the project folder once and remembers it. AppHub saves through its report preview. QuPath can stay closed until you are ready to run CoreAlign again.</p>
           </section>
 
           <section className="docsSection sectionPurple" id="correct">
@@ -82,7 +82,7 @@ export default function Documentation() {
               <li>Name it with the required action and position, for example <code>TMA correction 4-C</code>.</li>
               <li>Run <code>CoreAlign.groovy</code> again. CoreAlign refreshes the complete QC report and reprocesses only the changed core.</li>
             </ol>
-            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>Click Confirm if the angle is correct. If it is wrong, click Edit, move the angle slider, then click Confirm. A Saved message confirms the change. Click Open QuPath and run the script again.</span></div></div>
+            <div className="docsCallout purple"><i className="ri-refresh-line" /><div><b>Review a rotation</b><span>Click Confirm if the angle is correct. If it is wrong, click Edit, move the angle slider, then click Confirm. A Saved message confirms that the correction is in the project folder. Open QuPath and run the script when you are ready to update the image.</span></div></div>
           </section>
 
           <section className="docsSection sectionCyan" id="results">
@@ -96,7 +96,7 @@ export default function Documentation() {
             </div>
             <div className="docsCallout"><i className="ri-palette-line" /><div><b>Choose markers for a slide</b><span>Leave Presentation PNG markers blank for automatic color selection. To show specific markers, open the Config Builder and enter channel names such as DAPI, PanCK, Ki67. CoreAlign applies the same colors and display ranges to every core from that slide.</span></div></div>
             <div className="docsCallout purple"><i className="ri-bar-chart-box-line" /><div><b>Compare intensity correctly</b><span>PNG grading supports visual comparison between cores from the same slide. Do not measure intensity from PNG files or compare auto-graded PNG files across slides. Use the original multichannel OME-TIFF data, consistent acquisition settings, controls, and a validated normalization method for quantitative analysis.</span></div></div>
-            <div className="docsCallout purple"><i className="ri-toggle-line" /><div><b>Presentation or Research</b><span>Open Results in <code>REPORT.html</code> and select Research. The config updates automatically while QuPath is open. Run CoreAlign again to create multichannel OME-TIFF files using the accepted transforms. Accepted transforms are reused.</span></div></div>
+            <div className="docsCallout purple"><i className="ri-toggle-line" /><div><b>Presentation or Research</b><span>Open Results in <code>REPORT.html</code> and select Research. Choose the project folder once and the browser updates the config directly. QuPath does not need to stay open. Run CoreAlign again to create multichannel OME-TIFF files using the accepted transforms.</span></div></div>
           </section>
 
           <section className="docsSection sectionYellow" id="resume">
