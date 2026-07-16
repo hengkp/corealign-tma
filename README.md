@@ -4,9 +4,9 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.9.4
+## Current workflow: v1.9.5
 
-Version 1.9.4 restores Orientation QC previews saved by older Groovy runtimes and renders new review images from nuclear channels as white signal on a black background. Changing the output package or confirming a rotation now opens a clear confirmation dialog and tells the user to run `CoreAlign.groovy` again in QuPath. Presentation PNG files and original multichannel OME-TIFF values remain separate from the QC rendering.
+Version 1.9.5 makes Grid QC nuclear signal white on black while preserving colored annotations. Orientation cards now use compact metadata, a centered Before and Rotated toggle, and one-row edit controls. Auto-save errors appear briefly instead of remaining as a permanent panel. Presentation PNG files and original multichannel OME-TIFF values remain separate from QC rendering.
 
 [Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
