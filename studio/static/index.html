@@ -63,6 +63,21 @@ pre.log{max-height:280px;overflow:auto;margin:0;padding:14px 16px;border:1px sol
 background:var(--bg);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
 .err{margin:0 0 16px;padding:12px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-bg);color:var(--bad);font-size:14px}
 .err[hidden],[hidden]{display:none!important}
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.resCard{display:flex;flex-direction:column;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.resCard h3{margin:0;font-size:15px}
+.resCard .n{margin:6px 0 2px;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.resCard .sub,.resCard .note{color:var(--muted);font-size:13px}
+.resCard .note{margin:6px 0 14px;line-height:1.5}
+.resCard .ghost{margin-top:auto;align-self:flex-start}
+.exportBar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 18px;margin:0 0 14px;
+border:1px solid var(--ok);border-radius:12px;background:var(--ok-bg)}
+.exportBar b{font-size:15px}
+.exportBar .sub{color:var(--muted);font-size:13px;margin-left:auto}
+details.files{margin-top:10px}
+details.files summary{cursor:pointer;font-size:13px;color:var(--muted)}
+details.files ul{margin:8px 0 0;padding-left:18px;max-height:180px;overflow:auto;font-size:13px}
+details.files a{color:var(--fg)}
 @media(max-width:720px){.gate{grid-template-columns:1fr}.gate .primary{width:100%}}
 </style>
 </head>
@@ -133,8 +148,20 @@ background:var(--bg);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;w
       <div class="body"><iframe id="report" title="CoreAlign report"></iframe></div>
     </section>
 
+    <section class="step" id="resultsStep" hidden>
+      <div class="stephead"><span class="num">4</span> Results and export</div>
+      <div class="body">
+        <div class="exportBar">
+          <b>Take everything with you</b>
+          <button class="primary" id="exportAll">Export all as one zip</button>
+          <span class="sub" id="exportTotal"></span>
+        </div>
+        <div class="res" id="results"></div>
+      </div>
+    </section>
+
     <section class="step">
-      <div class="stephead"><span class="num">4</span> Progress log</div>
+      <div class="stephead"><span class="num">5</span> Progress log</div>
       <div class="body"><pre class="log" id="log"></pre>
         <p class="hint"><button class="ghost" id="stop">Stop this run</button></p>
       </div>
@@ -304,6 +331,8 @@ async function poll() {
       $("gate").hidden = true; lastGate = "";
     }
 
+    renderResults(status.results || []);
+
     if (status.hasReport) {
       $("reportStep").hidden = false;
       var frame = $("report");
@@ -326,6 +355,68 @@ async function poll() {
     timer = setTimeout(poll, 4000);
   }
 }
+
+// ---- results and export ----------------------------------------------------
+var lastResultsKey = "";
+
+function renderResults(groups) {
+  var key = groups.map(function (g) { return g.key + ":" + g.count + ":" + g.size; }).join("|");
+  if (key === lastResultsKey) return;
+  lastResultsKey = key;
+
+  var step = $("resultsStep");
+  if (!groups.length) { step.hidden = true; return; }
+  step.hidden = false;
+
+  var totalFiles = groups.reduce(function (sum, g) { return sum + g.count; }, 0);
+  $("exportTotal").textContent = totalFiles + " file" + (totalFiles === 1 ? "" : "s") +
+    " across " + groups.length + " folder" + (groups.length === 1 ? "" : "s");
+
+  var host = $("results"); host.innerHTML = "";
+  groups.forEach(function (group) {
+    var card = document.createElement("article");
+    card.className = "resCard";
+
+    var title = document.createElement("h3"); title.textContent = group.title;
+    var count = document.createElement("p"); count.className = "n"; count.textContent = group.count;
+    var sub = document.createElement("p"); sub.className = "sub";
+    sub.textContent = (group.count === 1 ? "file" : "files") + " · " + group.size;
+    var note = document.createElement("p"); note.className = "note"; note.textContent = group.note;
+
+    var download = document.createElement("button");
+    download.type = "button"; download.className = "ghost";
+    download.textContent = "Download zip";
+    download.setAttribute("aria-label", "Download " + group.title + " as a zip");
+    download.addEventListener("click", function () {
+      window.location.href = "/api/download-zip?group=" + encodeURIComponent(group.key);
+    });
+
+    card.append(title, count, sub, note, download);
+
+    if (group.files.length) {
+      var files = document.createElement("details"); files.className = "files";
+      var summary = document.createElement("summary");
+      summary.textContent = group.truncated
+        ? "List the first 400 files" : "List the files";
+      var list = document.createElement("ul");
+      group.files.forEach(function (file) {
+        var item = document.createElement("li");
+        var link = document.createElement("a");
+        link.href = "/api/download?path=" + encodeURIComponent(file.path);
+        link.textContent = file.name;
+        item.append(link, document.createTextNode(" · " + file.size));
+        list.appendChild(item);
+      });
+      files.append(summary, list);
+      card.appendChild(files);
+    }
+    host.appendChild(card);
+  });
+}
+
+$("exportAll").addEventListener("click", function () {
+  window.location.href = "/api/download-zip?group=all";
+});
 
 // ---- boot ------------------------------------------------------------------
 (async function () {

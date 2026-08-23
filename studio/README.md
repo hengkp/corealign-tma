@@ -59,6 +59,17 @@ CoreAlign writes its results **beside the slide it opened**. Studio checks that 
 writable before it will start, and says so plainly rather than failing halfway. A slide on a
 read-only share has to be copied into the person's locker first.
 
+## Results and export
+
+When a run produces files, Studio lists them by folder with a count and a size, and offers each
+folder as a zip plus one zip of everything. Files live on the cluster and the person is on a
+laptop, so this is the last mile.
+
+The zip is streamed with chunked encoding rather than built in a temp file: a research run's PNG
+folder can be larger than anything this job should be writing twice. It is stored, not deflated,
+because PNG and OME-TIFF are already compressed and deflating them would spend CPU on a shared
+node to save almost nothing.
+
 ## Endpoints
 
 | Route | What it does |
@@ -70,3 +81,6 @@ read-only share has to be copied into the person's locker first.
 | `POST /api/bridge/<action>` | forwards one control to CoreAlign's bridge |
 | `GET /project/REPORT.html` | the report, loopback URLs rewritten |
 | `GET /project/<path>` | QC images and tables, confined to the project folder |
+| `GET /api/results` | what the run has produced, folder by folder |
+| `GET /api/download?path=` | one file, confined to the project folder |
+| `GET /api/download-zip?group=` | one result folder, or `all`, streamed |

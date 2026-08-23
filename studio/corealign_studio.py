@@ -35,6 +35,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -346,6 +347,57 @@ class Run:
                 return endpoint
         return None
 
+    # -- results ------------------------------------------------------------
+    RESULT_GROUPS = (
+        ("png", "results/png", "Aligned images", "One full-resolution PNG per core."),
+        ("ome-tiff", "results/ome-tiff", "Research OME-TIFF", "Multichannel, original bit depth."),
+        ("tables", "results/tables", "Tables and audit", "CSV and JSON: angles, QC, display ranges."),
+        ("grid-qc", "qc/01-grid", "Grid QC", "The whole-slide detection image and coordinates."),
+        ("core-qc", "qc/02-orientation", "Per-core QC", "Previews and the contact sheet."),
+        ("qupath", "qupath", "QuPath project", "Ordered core project, research runs only."),
+    )
+
+    def results(self) -> list[dict]:
+        """What this run has actually produced, folder by folder."""
+        if not self.project:
+            return []
+        groups = []
+        for key, relative, title, note in self.RESULT_GROUPS:
+            folder = self.project / relative
+            if not folder.is_dir():
+                continue
+            files, total = [], 0
+            for item in sorted(folder.rglob("*")):
+                if not item.is_file():
+                    continue
+                try:
+                    size = item.stat().st_size
+                except OSError:
+                    continue
+                total += size
+                files.append({
+                    "name": str(item.relative_to(folder)),
+                    "path": str(item.relative_to(self.project)),
+                    "size": human_size(size),
+                })
+            if not files:
+                continue
+            groups.append({
+                "key": key, "folder": relative, "title": title, "note": note,
+                "count": len(files), "size": human_size(total),
+                "files": files[:400], "truncated": len(files) > 400,
+            })
+        return groups
+
+    def group_folder(self, key: str) -> Path | None:
+        if not self.project:
+            return None
+        for candidate, relative, _title, _note in self.RESULT_GROUPS:
+            if candidate == key:
+                folder = self.project / relative
+                return folder if folder.is_dir() else None
+        return None
+
     def snapshot(self) -> dict:
         self.poll()
         gate = self.gate()
@@ -361,10 +413,45 @@ class Run:
                 "elapsedSeconds": elapsed,
                 "gate": gate,
                 "hasReport": bool(self.project and (self.project / "REPORT.html").is_file()),
+                "results": self.results(),
             }
 
 
 RUN = Run()
+
+
+class ChunkedWriter:
+    """Minimal file-like object that writes HTTP chunked-encoding frames.
+
+    zipfile needs something it can write to and tell(); it never seeks backwards when
+    allowZip64 is on and the stream is not seekable, so tracking the offset is enough.
+    """
+
+    def __init__(self, raw) -> None:
+        self.raw = raw
+        self.offset = 0
+
+    def write(self, data: bytes) -> int:
+        if not data:
+            return 0
+        self.raw.write(b"%X\r\n" % len(data))
+        self.raw.write(data)
+        self.raw.write(b"\r\n")
+        self.offset += len(data)
+        return len(data)
+
+    def tell(self) -> int:
+        return self.offset
+
+    def flush(self) -> None:
+        try:
+            self.raw.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def close(self) -> None:
+        self.raw.write(b"0\r\n\r\n")
+        self.flush()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -425,6 +512,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(RUN.snapshot())
             if route == "/api/log":
                 return self.json_out({"log": RUN.log_tail()})
+            if route == "/api/results":
+                return self.json_out({"results": RUN.results()})
+            if route == "/api/download":
+                return self.download_file(query.get("path", [""])[0])
+            if route == "/api/download-zip":
+                return self.download_zip(query.get("group", ["all"])[0])
             if route.startswith("/project/"):
                 return self.serve_project(route[len("/project/"):])
             if route.startswith("/static/"):
@@ -542,6 +635,87 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(error.code, error.read() or b"{}", "application/json; charset=utf-8")
         except (urllib.error.URLError, socket.timeout, OSError) as error:
             return self.json_out({"ok": False, "error": f"could not reach CoreAlign: {error}"}, 502)
+
+    def resolve_in_project(self, relative: str) -> Path | None:
+        project = RUN.project
+        if not project or not relative:
+            return None
+        try:
+            resolved = (project / relative).resolve()
+            resolved.relative_to(project.resolve())
+        except (OSError, ValueError):
+            return None
+        return resolved
+
+    def download_file(self, relative: str) -> None:
+        target = self.resolve_in_project(relative)
+        if target is None or not target.is_file():
+            return self.json_out({"error": "not found"}, 404)
+        kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        try:
+            size = target.stat().st_size
+        except OSError as error:
+            return self.json_out({"error": str(error)}, 500)
+        self.send_response(200)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        try:
+            with target.open("rb") as handle:
+                shutil.copyfileobj(handle, self.wfile, 1024 * 256)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def download_zip(self, group: str) -> None:
+        """Stream a zip of one result folder, or of everything worth keeping.
+
+        Streamed rather than built in a temp file: a research run's PNG folder can be larger than
+        anything this job should be writing twice.
+        """
+        project = RUN.project
+        if not project:
+            return self.json_out({"error": "no run yet"}, 404)
+        if group == "all":
+            folders = [(key, RUN.group_folder(key)) for key, *_ in RUN.RESULT_GROUPS]
+            folders = [(key, path) for key, path in folders if path is not None]
+        else:
+            folder = RUN.group_folder(group)
+            if folder is None:
+                return self.json_out({"error": "no such result folder"}, 404)
+            folders = [(group, folder)]
+        if not folders:
+            return self.json_out({"error": "nothing to download yet"}, 404)
+
+        stem = (RUN.slide.name.split(".")[0] if RUN.slide else "corealign")
+        name = f"{stem}-{group}.zip"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        writer = ChunkedWriter(self.wfile)
+        try:
+            # ZIP_STORED: PNG and OME-TIFF are already compressed, so deflating them costs CPU
+            # on a shared node and saves almost nothing.
+            with zipfile.ZipFile(writer, "w", zipfile.ZIP_STORED, allowZip64=True) as archive:
+                for key, folder in folders:
+                    for item in sorted(folder.rglob("*")):
+                        if not item.is_file():
+                            continue
+                        try:
+                            archive.write(item, f"{key}/{item.relative_to(folder)}")
+                        except OSError:
+                            continue
+            writer.close()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def serve_project(self, relative: str) -> None:
         project = RUN.project

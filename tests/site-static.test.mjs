@@ -210,6 +210,11 @@ test("ships one guarded production workflow", async () => {
   assert.match(finalReviewSource, /headlessRun/);
   assert.match(gridReviewSource, /headless run reached grid approval with no review decision/);
 
+  // The core card clips its image, so a bare rotate() hides the corners while dragging: only
+  // 71% of the frame survives at 45 degrees. The preview must shrink to keep the frame whole.
+  assert.match(groovy, /fit=1\/\(Math\.abs\(Math\.cos\(r\)\)\+Math\.abs\(Math\.sin\(r\)\)\)/);
+  assert.match(groovy, /rotate\("\+delta\+"deg\) scale\("\+fit\.toFixed\(4\)\+"\)/);
+
   // The embedded approval steps must accept a gate decision as human approval,
   // and must still be able to ask directly when no gate is open.
   assert.match(gridReviewSource, /corealign\.gate\.gridApproved/);
