@@ -1149,6 +1149,7 @@ function drawActionBar(){
     $("askTitle").textContent = openGate ? openGate.title : "รอ CoreAlign เปิดขั้นตอนตรวจกริด";
     $("askSummary").textContent = openGate ? openGate.summary : "";
     go.textContent = openGate ? (openGate.primaryLabel || "ไปต่อ") : "รออยู่...";
+    go.dataset.act = "gate";
     go.disabled = !openGate;
     return;
   }
@@ -1175,18 +1176,33 @@ function drawActionBar(){
     go.textContent = (changes && !synced)
       ? "บันทึกก่อนจึงจะอนุมัติได้"
       : (openGate.primaryLabel || "อนุมัติ และสร้างผลลัพธ์");
+    go.dataset.act = "gate";
     go.disabled = changes > 0 && !synced;
+  } else if (runState === "complete" && changes === 0) {
+    // Approved and the files exist. Offering to run again to approve would be wrong, and
+    // pressing it would do nothing useful. Point at the results instead.
+    $("askTitle").textContent = "การรันนี้อนุมัติแล้ว และสร้างไฟล์ครบ";
+    $("askSummary").textContent = "ดูย้อนหลังได้ตามสบาย · ปรับมุม core ไหนก็ได้ถ้าจะรันใหม่";
+    go.textContent = "ไปที่ผลลัพธ์";
+    go.dataset.act = "export";
+    go.disabled = false;
+    return;
   } else {
-    $("askTitle").textContent = "การรันครั้งนี้จบไปแล้ว";
+    $("askTitle").textContent = runState === "complete"
+      ? "การรันนี้อนุมัติไปแล้ว แต่มีมุมที่ปรับใหม่"
+      : "การรันครั้งนี้จบไปแล้ว";
     $("askSummary").textContent = changes
       ? "ปรับมุมไว้ " + changes + " core · บันทึกก่อน แล้วรันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้"
       : "ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ";
-    go.textContent = (changes && !synced) ? "บันทึกก่อนจึงจะรันได้" : "รันอีกครั้งเพื่ออนุมัติ";
+    go.textContent = (changes && !synced) ? "บันทึกก่อนจึงจะรันได้"
+      : (runState === "complete" ? "รันใหม่ด้วยมุมที่แก้" : "รันอีกครั้งเพื่ออนุมัติ");
+    go.dataset.act = "run";
     go.disabled = changes > 0 && !synced;
   }
 }
 $("gateGo").addEventListener("click", function(){
   var button = this;
+  if (button.dataset.act === "export") { setStage("export"); drawActionBar(); return; }
   if (!openGate) { startRun(button); return; }
   button.disabled = true;
   api("/api/bridge/gate", {method:"POST", headers:{"Content-Type":"application/json"},
@@ -1308,7 +1324,7 @@ var STATE_TEXT = {
   cancelled: ["ยกเลิกแล้ว", "wait"],
   failed:    ["ล้มเหลว", "bad"]
 };
-var lastLogLine = "", lastGateId = "";
+var lastLogLine = "", lastGateId = "", runState = "idle";
 
 function poll(){
   api("/api/status").then(function(res){
@@ -1316,6 +1332,7 @@ function poll(){
   });
 }
 function paintStatus(status){
+  runState = status.state || "idle";
   var gate = status.gate;
   var waiting = !!(gate && gate.gate);
   var text = STATE_TEXT[status.state] || ["", "idle"];
