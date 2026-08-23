@@ -163,15 +163,21 @@ def allocated_memory_mb() -> int:
     return 0
 
 
-# Measured on node3, 23 Aug 2026, on the 117-core reference slide: 2 workers ran 21.0 s
-# per core and 8 ran 6.3 s, so 41 minutes became 12. The gain is real but sublinear, and
-# what actually runs out first is memory: each worker holds its own full-resolution crop
-# on top of QuPath's shared tile cache.
+# Measured on node3, 23 Aug 2026, on the 117-core reference slide, steady state:
+#
+#     2 workers   21.0 s per core    40.9 min
+#     8 workers    6.0 s per core    11.7 min
+#    16 workers    6.5 s per core    12.6 min
+#
+# It plateaus at 8. Past that the extra workers wait on something shared, most likely the
+# read path to the NAS, and only add memory pressure: each worker holds its own
+# full-resolution crop on top of QuPath's shared tile cache. A 16-worker run with an
+# uncapped JVM heap was killed by Slurm at 94 GB of a 96 GB allocation.
 WORKER_MEMORY_MB = 2048
 JVM_HEADROOM_MB = 8192
-# Scaling is sublinear, so there is little left to win past this and every extra worker
-# still costs memory. Raise it only with a measurement that says it helps.
-MAX_WORKERS = 16
+# The measurement above, not a guess. A different slide on a faster path might scale
+# further; a config can still ask for more explicitly, up to the runner's own limit of 32.
+MAX_WORKERS = 8
 
 
 def orientation_workers() -> int:

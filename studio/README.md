@@ -62,16 +62,31 @@ used to be a fixed 2 while the AppHub job held 8 CPUs, and the runner capped any
 Measured on node3 on 23 Aug 2026, on the 117-core reference slide, steady state with warm-up
 excluded:
 
-| Workers | Per core | 117 cores |
-|---|---|---|
-| 2 | 21.0 s | 40.9 min |
-| 8 | 6.0 s | 11.8 min |
+| Workers | Per core | 117 cores | |
+|---|---|---|---|
+| 2 | 21.0 s | 40.9 min | the old fixed default |
+| 8 | 6.0 s | 11.7 min | |
+| 16 | 6.5 s | 12.6 min | no better, and it needs the heap cap below |
 
-The gain is real but sublinear, and what runs out first is memory: each worker holds its own
-full-resolution crop on top of QuPath's shared tile cache. `orientation_workers()` therefore takes
-the smaller of the CPU allocation less one, the memory allocation divided by 2 GB per worker after
-8 GB of JVM headroom, and a ceiling of 16. Research OME-TIFF output still runs one core at a time,
-because the Bio-Formats writer is not thread safe.
+**It plateaus at 8.** Past that the extra workers wait on something shared, most likely the read
+path to the NAS, and only add memory pressure: each worker holds its own full-resolution crop on
+top of QuPath's shared tile cache. `orientation_workers()` therefore takes the smaller of the CPU
+allocation less one, the memory allocation divided by 2 GB per worker after 8 GB of JVM headroom,
+and a ceiling of 8. The AppHub default is 12 CPUs and 48 GB, which lands exactly on 8 workers.
+
+Research OME-TIFF output still runs one core at a time, because the Bio-Formats writer is not
+thread safe.
+
+### The JVM was sizing itself from the node, not the job
+
+A 16-worker run was killed by Slurm at 94 GB of a 96 GB allocation. The cause was in the log all
+along: *Setting tile cache size to 64456.00 MB (25.0% max memory)*. Java was not seeing the job's
+cgroup limit, so it sized its heap, and therefore QuPath's tile cache, from the node's 503 GB. At
+two workers the cache never grew that far and nothing looked wrong.
+
+The AppHub runner now exports `APPHUB_MEMORY_MB` and passes `-Xmx` at 70% of the allocation. The
+same run then reported an 11,472 MB tile cache and finished without being killed. Anyone running
+Studio outside AppHub should set `-Xmx` themselves for the same reason.
 
 ## Running it outside AppHub
 

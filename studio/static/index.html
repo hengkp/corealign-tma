@@ -229,6 +229,21 @@ h2{font-size:17px;font-weight:750}
 .runCounts div{text-align:center}
 .runCounts b{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em}
 .runCounts span{font-size:12px;color:var(--faint)}
+.activity{
+  list-style:none;margin:22px auto 0;padding:14px 18px;max-width:560px;
+  text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  display:grid;gap:7px;
+}
+.activity:empty{display:none}
+.activity li{
+  display:flex;gap:9px;align-items:baseline;font-size:13px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.activity li::before{
+  content:"";width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:var(--line-strong);
+}
+.activity li:last-child{color:var(--text);font-weight:650}
+.activity li:last-child::before{background:var(--accent)}
 
 /* ---------------------------------------------------------------- metric strip */
 .strip{display:flex;gap:9px;flex-wrap:wrap}
@@ -536,7 +551,8 @@ kbd{
         <div class="bar indeterminate" id="runBar"><i style="width:100%"></i></div>
         <div class="runStep" id="runStep">กำลังเปิดสไลด์</div>
         <div class="runCounts" id="runCounts" hidden></div>
-        <div class="controlsRow" style="justify-content:center;margin-top:22px">
+        <ul class="activity" id="activity" aria-label="สิ่งที่เพิ่งเกิดขึ้น"></ul>
+        <div class="controlsRow" style="justify-content:center;margin-top:20px">
           <button class="btn danger" id="stopBtn">หยุดการทำงาน</button>
         </div>
       </div>
@@ -1342,6 +1358,37 @@ function showPriorRun(){
     " · ถูกทัก " + (counts.review || 0) + " · ไม่มีเนื้อเยื่อ " + (counts.missing || 0);
   banner.hidden = false;
 }
+// CoreAlign logs in English because the log is also the audit trail. The run screen is
+// read by people mid-task, so say the same thing in Thai and leave anything unrecognised
+// alone rather than guessing at a translation.
+var STEP_WORDS = [
+  [/Running 01_build_tma_grid/,        "กำลังหาตำแหน่ง core ทั้งแผ่น"],
+  [/Running 02_auto_orient/,           "กำลังหมุนและครอปทีละ core"],
+  [/Running 03_review_correct/,        "กำลังใส่การแก้ไขกริดที่คุณวาดไว้"],
+  [/Running 04_restore_approved_grid/, "กำลังกู้กริดที่อนุมัติไว้แล้ว"],
+  [/Running 05_finalize/,              "กำลังสรุปผลการตรวจ"],
+  [/Running 06_export/,                "กำลังส่งออกไฟล์ผลลัพธ์"],
+  [/Running 07_build_qupath/,          "กำลังสร้างโปรเจกต์ QuPath"],
+  [/Orientation workers: (\d+)/,       "ใช้ $1 หน่วยประมวลผลพร้อมกัน"],
+  [/Orientation progress: (\d+)\/(\d+)/, "หมุนและครอปแล้ว $1 จาก $2 core"],
+  [/Estimating core size/,             "กำลังประมาณขนาดของ core"],
+  [/Detecting TMA cores/,              "กำลังตรวจหา core"],
+  [/Published (\d+)/,                  "จัดไฟล์ให้หาง่ายแล้ว $1 ไฟล์"],
+  [/WAITING FOR REVIEW/,               "รอให้คุณตรวจ"],
+  [/COREALIGN_GATE_CLOSED/,            "รับคำตอบแล้ว กำลังเดินต่อ"],
+  [/Pipeline stopped safely/,          "หยุดไว้อย่างปลอดภัย ยังไม่ได้อนุมัติ"],
+  [/CoreAlign COMPLETE/,               "เสร็จสมบูรณ์"]
+];
+function inThai(line){
+  for (var i = 0; i < STEP_WORDS.length; i++) {
+    var found = STEP_WORDS[i][0].exec(line);
+    if (found) {
+      return STEP_WORDS[i][1].replace(/\$(\d)/g, function(_, n){ return found[Number(n)] || ""; });
+    }
+  }
+  return line;
+}
+
 function paintProgress(){
   api("/api/log").then(function(res){
     var log = (res.body && res.body.log) || "";
@@ -1350,7 +1397,18 @@ function paintProgress(){
     if (tail === lastLogLine) return;
     lastLogLine = tail;
     $("logTail").textContent = tail;
-    $("runStep").textContent = tail.slice(0, 140) || "กำลังทำงาน";
+    $("runStep").textContent = tail ? inThai(tail).slice(0, 140) : "กำลังทำงาน";
+    // The last few things that happened, so a long step does not look like a hang.
+    var recent = lines.filter(function(line){
+      return /Running \d\d_|Orientation workers|Orientation progress|Estimating core size|Detecting TMA cores|Published \d+|WAITING FOR REVIEW|GATE_CLOSED|Pipeline stopped safely|CoreAlign COMPLETE/.test(line);
+    }).slice(-5);
+    var activity = $("activity");
+    activity.textContent = "";
+    recent.forEach(function(line){
+      var li = document.createElement("li");
+      li.textContent = inThai(line.trim());
+      activity.appendChild(li);
+    });
     var match = /Orientation progress: (\d+)\/(\d+)/.exec(log.slice(-6000));
     var bar = $("runBar");
     if (match) {
