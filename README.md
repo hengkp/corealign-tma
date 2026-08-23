@@ -112,6 +112,20 @@ Run `node scripts/ui-harness.mjs` to render both dialogs and assert that a gate 
 delivered once and only once. Run `npm run workflow:verify` to prove that every embedded step
 still matches its source in `workflow/embedded/`.
 
+## Approving a grid once
+
+A grid a person already approved is not put in front of them again. On a later run CoreAlign
+restores the approved checkpoint and goes straight to the rotated cores.
+
+It only skips when all three hold, and each is a way a reviewer could otherwise be moved past
+something they have not seen:
+
+1. the approval came from a person, never from an integration test
+2. it names this exact grid, hash for hash, under the current detector
+3. no `TMA correction` or `TMA mark missing` annotation is waiting to be applied
+
+Draw a correction and the hash changes, so the gate comes straight back.
+
 ## Headless mode
 
 `-Dcorealign.headless=true` runs the whole workflow with no display and no JavaFX, which is what

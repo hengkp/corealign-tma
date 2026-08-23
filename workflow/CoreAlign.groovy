@@ -4016,6 +4016,59 @@ if (!validateDetectionAgainstTechnicalReference('before_grid_approval')) return
 // to see the updated circles first. That used to mean another manual run. Now
 // the QC image is refreshed and the same gate simply opens again.
 boolean gridApproved = false
+
+// Do not ask again for a grid a person already approved.
+//
+// The approval is bound to the grid hash, so this skips only when the circles are byte for
+// byte the ones that were signed off. Drawing a correction changes the hash and brings the
+// gate straight back. Three things must all hold, and each one is a way the reviewer could
+// otherwise be skipped past something they have not seen:
+//   1. the approval was given by a person, never by an integration test
+//   2. it names this exact grid, under the current detector
+//   3. no correction annotation is waiting to be applied
+def approvalGridSignature = { g ->
+    g == null ? '' : hashText(canonicalGrid(g))
+}
+def correctionIsPending = { ->
+    def hierarchy = imageData.getHierarchy()
+    def gridNow = hierarchy.getTMAGrid()
+    if (gridNow == null) return false
+    Set<String> applied = gridNow.getTMACoreList().collect { core ->
+        try { return core.getMetadataString('Correction annotation signature') }
+        catch (Throwable ignored) { return null }
+    }.findAll { it != null && !it.trim().isEmpty() } as Set<String>
+    def tagged = { obj ->
+        String cls = ''
+        try { cls = obj.getPathClass()?.toString() ?: '' } catch (Throwable ignored) {}
+        String nm = obj.getName() ?: ''
+        ['TMA correction', 'TMA mark missing'].any { tag ->
+            cls.trim().equalsIgnoreCase(tag) ||
+                nm.toLowerCase(Locale.ROOT).contains(tag.toLowerCase(Locale.ROOT))
+        }
+    }
+    // Same signature formula step 3 uses, so "already applied" means the same thing here.
+    return hierarchy.getAnnotationObjects().any { ann ->
+        if (ann.getROI() == null || !tagged(ann)) return false
+        String action = (ann.getName() ?: '').toLowerCase(Locale.ROOT).contains('mark missing') ?
+            'mark_missing' : 'replace_center'
+        String signature = [ann.getID(), action, fmt3(ann.getROI().getCentroidX()),
+            fmt3(ann.getROI().getCentroidY())].join('|')
+        return !applied.contains(signature)
+    }
+}
+if (savedApproval != null && savedApproval.status == 'APPROVED' &&
+        savedApproval.approvalMode == 'human' && approvalUsesCurrentDetector) {
+    String gridNowHash = approvalGridSignature(imageData.getHierarchy().getTMAGrid())
+    if (!gridNowHash.isEmpty() && savedApproval.gridHash == gridNowHash) {
+        if (correctionIsPending()) {
+            println 'A correction is waiting to be applied, so the grid still needs review.'
+        } else {
+            println "Grid ${gridNowHash.take(12)} was already approved by a person on " +
+                "${savedApproval.approvedAt ?: 'an earlier run'}; not asking again."
+            gridApproved = true
+        }
+    }
+}
 while (!gridApproved) {
     def gridForGate = imageData.getHierarchy().getTMAGrid()
     int gatePresent = gridForGate == null ? 0 :

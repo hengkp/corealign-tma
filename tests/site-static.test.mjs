@@ -192,6 +192,14 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /awaitReviewGate\('grid'/);
   assert.match(groovy, /awaitReviewGate\('orientation'/);
   assert.match(groovy, /corealign\.gate\.gridApproved/);
+
+  // A grid a person already approved is not put in front of them again, but only when the
+  // approval names that exact grid, came from a person, and nothing is waiting to be applied.
+  assert.match(groovy, /was already approved by a person on/);
+  assert.match(groovy, /savedApproval\.approvalMode == 'human'/);
+  assert.match(groovy, /savedApproval\.gridHash == gridNowHash/);
+  assert.match(groovy, /def correctionIsPending = \{/);
+  assert.match(groovy, /A correction is waiting to be applied, so the grid still needs review/);
   assert.match(groovy, /corealign\.gate\.finalApproved/);
   assert.match(groovy, /QuPath is waiting for you/);
   assert.match(groovy, /id="gateContinue"/);
