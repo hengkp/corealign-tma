@@ -277,6 +277,7 @@ class Run:
             self.tissue = "skin"
             self.output = "presentation"
             self.process: subprocess.Popen | None = None
+            self._results_cache: tuple[float, list[dict]] | None = None
             self.log_path: Path | None = None
             self.started_at = 0.0
             self.finished_at = 0.0
@@ -311,6 +312,7 @@ class Run:
             )
             self.slide = slide
             self.project = project
+            self._results_cache = None
             self.tissue = tissue
             self.output = output
             self.state = "running"
@@ -331,6 +333,7 @@ class Run:
                 return False
             self.slide = slide
             self.project = slide.parent
+            self._results_cache = None
             log = slide.parent / "work" / "studio-run.log"
             self.log_path = log if log.is_file() else None
             self.bridge_base = ""
@@ -482,10 +485,23 @@ class Run:
          "โปรเจกต์ core ที่เรียงลำดับแล้ว เฉพาะโหมดวิเคราะห์ต่อ"),
     )
 
-    def results(self) -> list[dict]:
+    # The page polls status every two seconds and this walk stats every produced file, which
+    # for a finished run is several hundred on an NFS share. Hold the answer briefly: a run
+    # that is writing files still shows them within a few seconds, and an idle tab left open
+    # stops hammering the lab NAS.
+    RESULTS_TTL_SECONDS = 5.0
+
+    def results(self, detail: bool = True) -> list[dict]:
         """What this run has actually produced, folder by folder."""
         if not self.project:
             return []
+        with self.lock:
+            cached = self._results_cache
+        if cached and time.time() - cached[0] < self.RESULTS_TTL_SECONDS:
+            groups = cached[1]
+            if detail:
+                return groups
+            return [{k: v for k, v in group.items() if k != "files"} for group in groups]
         groups = []
         for key, relative, title, note in self.RESULT_GROUPS:
             folder = self.project / relative
@@ -512,7 +528,11 @@ class Run:
                 "count": len(files), "size": human_size(total),
                 "files": files[:400], "truncated": len(files) > 400,
             })
-        return groups
+        with self.lock:
+            self._results_cache = (time.time(), groups)
+        if detail:
+            return groups
+        return [{k: v for k, v in group.items() if k != "files"} for group in groups]
 
     def group_folder(self, key: str) -> Path | None:
         if not self.project:
@@ -732,7 +752,7 @@ class Run:
                 "hasResults": bool(self.project and
                                    (self.project / "qc" / "02-orientation" /
                                     "run_report.json").is_file()),
-                "results": self.results(),
+                "results": self.results(detail=False),
             }
 
 
