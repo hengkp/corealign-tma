@@ -800,6 +800,10 @@ if (!correctionAudit.isEmpty()) {
 // pressed the primary button. Asking the same question again in a modal adds a
 // click and no information, so the dialogs below are the fallback for a run
 // that reached this step without an open gate.
+// Without a GUI, Dialogs.showConfirmDialog throws on the first javafx.scene.control.Label.
+// A run that reaches this point headless and without a gate decision has no way to ask, so it
+// refuses clearly instead of dying with an initializer error.
+boolean headlessRun = 'true'.equalsIgnoreCase(System.getProperty('corealign.headless', 'false'))
 boolean gateApproved = 'true'.equalsIgnoreCase(
     System.getProperty('corealign.gate.gridApproved', 'false'))
 boolean approved = false
@@ -813,6 +817,13 @@ if (approveForTest) {
     approved = true
     missingConfirmed = true
     note = 'Approved in the CoreAlign report review gate'
+} else if (headlessRun) {
+    System.setProperty('tma.review.status', 'BLOCKED')
+    appendEvent([event: 'APPROVAL_BLOCKED', gridHash: currentHash,
+        errors: ['headless run reached grid approval with no review decision'],
+        warnings: warnings])
+    println 'BLOCKED: headless runs must approve the grid through the review gate.'
+    return
 } else {
     if (missingCount > 0) {
         String missingMessage = "The grid marks ${missingCount} position(s) as missing.\n\n" +

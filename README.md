@@ -112,6 +112,30 @@ Run `node scripts/ui-harness.mjs` to render both dialogs and assert that a gate 
 delivered once and only once. Run `npm run workflow:verify` to prove that every embedded step
 still matches its source in `workflow/embedded/`.
 
+## Headless mode
+
+`-Dcorealign.headless=true` runs the whole workflow with no display and no JavaFX, which is what
+lets it run as a batch job with the reviewer somewhere else:
+
+```bash
+QuPath -D corealign.headless=true script --image /path/to/slide.ome.tif CoreAlign.groovy
+```
+
+- No setup dialog. Tissue and output come from `corealign.config.json`, which the caller writes.
+- No review window. Gates are answered only over the loopback bridge.
+- While a gate is open, `work/state/<image>/gate.json` names the gate, the counts, the report
+  path, and the endpoint to post the decision to, so a controller never has to scrape the log.
+  The log also carries `COREALIGN_GATE_OPEN` and `COREALIGN_GATE_CLOSED` markers.
+- If a run somehow reaches an approval step headless with no gate decision, it refuses and says
+  so rather than throwing. QuPath's `Dialogs` API is only half safe without a GUI: the
+  notifications degrade to log lines, but `showMessageDialog` and `showConfirmDialog` throw
+  `ExceptionInInitializerError` on the first `javafx.scene.control.Label`.
+
+Verified on the 18x7 reference slide: detection headless gives 117 present and 9 missing of 126,
+the same as the reviewed result, and writes the same QC image, coordinates CSV, and `REPORT.html`.
+
+Desktop behaviour is unchanged. The flag is off unless it is set.
+
 ## Optional config choices
 
 | Choice | Purpose |

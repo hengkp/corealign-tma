@@ -196,6 +196,20 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /QuPath is waiting for you/);
   assert.match(groovy, /id="gateContinue"/);
 
+  // Headless mode: a Slurm job has no display, and QuPath's Dialogs API is only half safe
+  // without one. Nothing that can throw may be reachable when corealign.headless is set.
+  assert.match(groovy, /corealign\.headless/);
+  assert.match(groovy, /boolean HEADLESS = /);
+  assert.match(groovy, /if \(!HEADLESS\)\n        CoreAlignGateWindow\.open/);
+  assert.match(groovy, /corealign\.gate\.endpoint/);
+  assert.match(groovy, /def writeGateState = \{/);
+  assert.match(groovy, /COREALIGN_GATE_OPEN/);
+  // showMessageDialog and showConfirmDialog throw on the first javafx Label with no GUI.
+  assert.doesNotMatch(groovy.split("EmbeddedWorkflowScript")[0], /showMessageDialog|showConfirmDialog/);
+  assert.match(gridReviewSource, /headlessRun/);
+  assert.match(finalReviewSource, /headlessRun/);
+  assert.match(gridReviewSource, /headless run reached grid approval with no review decision/);
+
   // The embedded approval steps must accept a gate decision as human approval,
   // and must still be able to ask directly when no gate is open.
   assert.match(gridReviewSource, /corealign\.gate\.gridApproved/);

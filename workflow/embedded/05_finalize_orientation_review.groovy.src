@@ -106,6 +106,10 @@ String manifestProcessingHash = (manifest.processingHash ?: manifest.profileHash
 boolean approveForTest = 'true'.equalsIgnoreCase(System.getProperty('tma.finalApproveForTest', 'false'))
 // Set when the reviewer approved the rotated cores on REPORT.html. The same
 // counts and the same per-core images were on screen there.
+// Without a GUI, Dialogs.showConfirmDialog throws on the first javafx.scene.control.Label.
+// A run that reaches this point headless and without a gate decision has no way to ask, so it
+// refuses clearly instead of dying with an initializer error.
+boolean headlessRun = 'true'.equalsIgnoreCase(System.getProperty('corealign.headless', 'false'))
 boolean gateApproved = 'true'.equalsIgnoreCase(
     System.getProperty('corealign.gate.finalApproved', 'false'))
 if (finalApprovalFile.isFile()) {
@@ -145,6 +149,10 @@ if (approveForTest) {
     fullResolutionConfirmed = true
     approve = true
     note = 'Approved in the CoreAlign report review gate'
+} else if (headlessRun) {
+    System.setProperty('tma.final.status', 'BLOCKED')
+    println 'BLOCKED: headless runs must approve the rotated cores through the review gate.'
+    return
 } else {
     String finalMessage = "Positions: ${manifest.coreCount as int}\n" +
         "Missing: ${manifest.missing as int}\n" +
