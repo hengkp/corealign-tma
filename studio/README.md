@@ -53,6 +53,17 @@ PORT=8848 python3 corealign_studio.py
 Standard library only, on purpose: the image is QuPath plus a Python interpreter and nothing that
 needs a package index at build time.
 
+## Slide formats: everything goes through Bio-Formats
+
+QuPath 0.7 bundles `openslide-4.0.0.6` and expects OpenSlide 4.x. Ubuntu 22.04 ships 3.4.1, so
+installing the distribution package does **not** make `isOpenSlideAvailable()` true, and adding it
+was a fix that was not one. The image therefore has no working OpenSlide.
+
+In practice this is a performance question, not a capability one: Bio-Formats reads OME-TIFF, SVS,
+NDPI, CZI, VSI and MRXS, so the picker's formats all open. Pyramidal whole-slide formats simply
+read more slowly than they would through OpenSlide. OME-TIFF, which is what this lab produces, is
+a Bio-Formats format anyway and is unaffected.
+
 ## The one constraint worth knowing
 
 CoreAlign writes its results **beside the slide it opened**. Studio checks that the folder is
