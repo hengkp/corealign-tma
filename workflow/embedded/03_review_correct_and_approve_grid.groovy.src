@@ -26,7 +26,9 @@ import qupath.lib.common.ColorTools
 import qupath.lib.objects.PathObjects
 import qupath.lib.objects.hierarchy.DefaultTMAGrid
 import qupath.lib.plugins.parameters.ParameterList
+import qupath.lib.regions.ImagePlane
 import qupath.lib.regions.RegionRequest
+import qupath.lib.roi.ROIs
 
 import javax.imageio.ImageIO
 import java.awt.AlphaComposite
@@ -448,6 +450,72 @@ def appliedCorrectionSignatures = cores.collect {
     try { return it.getMetadataString('Correction annotation signature') }
     catch (Throwable ignored) { return null }
 }.findAll { it != null && !it.trim().isEmpty() } as Set
+// Grid corrections sent from the CoreAlign Studio page.
+//
+// Somebody driving Studio has no QuPath window to draw in, and telling them to open one
+// defeats the point of the app. The page sends the same three edits as a file instead:
+// move a circle onto the tissue, put a core back where one was marked missing, or mark a
+// position empty. Turning them into the annotations this script already understands keeps
+// a single code path for corrections, however they were made.
+//
+// The file names the grid it was made against. If the grid has moved on since, the
+// corrections are stale and describe positions that no longer mean what they meant, so
+// they are skipped and said so rather than applied to the wrong cells. Applying them
+// changes the hash, which is what stops the same file being applied twice: an insert
+// shifts later cores along, and doing that twice would silently corrupt the row labels.
+File studioGridFile = new File(resolveBaseDir(), 'corealign-grid-corrections.json')
+if (studioGridFile.isFile()) {
+    try {
+        def sent = json.fromJson(studioGridFile.getText('UTF-8'), Map.class) ?: [:]
+        String sentBase = sent.baseGridHash?.toString() ?: ''
+        String gridHashNow = sha256(canonicalGrid(grid))
+        def sentList = (sent.corrections instanceof List) ? sent.corrections : []
+        if (sentList.isEmpty()) {
+            // nothing to do
+        } else if (sentBase.isEmpty() || sentBase != gridHashNow) {
+            println "Skipping ${sentList.size()} grid correction(s) from Studio: they were " +
+                "made against grid ${sentBase.take(12)} and this grid is ${gridHashNow.take(12)}."
+        } else {
+            int made = 0
+            for (def entry : sentList) {
+                String coreName = entry?.core?.toString()?.trim() ?: ''
+                String action = entry?.action?.toString()?.trim()?.toLowerCase(Locale.ROOT) ?: ''
+                if (coreName.isEmpty() || !(action in ['move', 'restore', 'mark_missing'])) {
+                    println "Ignoring a grid correction with no core name or an unknown action."
+                    continue
+                }
+                double cx, cy, dd
+                try {
+                    cx = (entry.centerX as Number).doubleValue()
+                    cy = (entry.centerY as Number).doubleValue()
+                    dd = (entry.diameter as Number).doubleValue()
+                } catch (Throwable ignored) {
+                    println "Ignoring the grid correction for ${coreName}: it has no usable position."
+                    continue
+                }
+                if (!Double.isFinite(cx) || !Double.isFinite(cy) || !Double.isFinite(dd) || dd <= 0d) {
+                    println "Ignoring the grid correction for ${coreName}: its position is out of range."
+                    continue
+                }
+                boolean markMissing = action == 'mark_missing'
+                def roi = ROIs.createEllipseROI(cx - dd / 2.0d, cy - dd / 2.0d, dd, dd,
+                    ImagePlane.getDefaultPlane())
+                def ann = PathObjects.createAnnotationObject(roi)
+                ann.setName("${markMissing ? MARK_MISSING_CLASS : CORRECTION_CLASS} ${coreName}")
+                ann.putMetadataValue('Correction origin', 'corealign-studio')
+                hierarchy.addObject(ann)
+                made++
+            }
+            if (made > 0) {
+                try { fireHierarchyUpdate() } catch (Throwable ignored) {}
+                println "Applied ${made} grid correction(s) sent from the Studio page."
+            }
+        }
+    } catch (Throwable studioGridError) {
+        println "WARNING: could not read the Studio grid corrections: ${studioGridError.getMessage()}"
+    }
+}
+
 def corrections = hierarchy.getAnnotationObjects().findAll {
     it.getROI() != null && (isTagged(it, CORRECTION_CLASS) || isTagged(it, MARK_MISSING_CLASS)) &&
         !appliedCorrectionSignatures.contains(correctionSignatureFor(it))
@@ -588,8 +656,8 @@ for (int i = 0; i < cores.size(); i++) {
 int missingCount = cores.count { it.isMissing() }
 int presentCount = cores.size() - missingCount
 if (missingCount > 0)
-    warnings << "${missingCount}/${cores.size()} positions are marked missing and require explicit confirmation"
-if (!queue.isEmpty()) warnings << "${queue.size()} positions are in the targeted review queue"
+    warnings << "${missingCount}/${cores.size()} positions are marked missing and require explicit confirmation".toString()
+if (!queue.isEmpty()) warnings << "${queue.size()} positions are in the targeted review queue".toString()
 
 def queueText = new StringBuilder()
 queueText.append('index,core,row,col,center_x_px,center_y_px,missing,detection_confidence,detection_source,review_reason\n')
@@ -728,6 +796,10 @@ try {
         reviewQueueCount: queue.size(), hardErrors: hardErrors,
         warnings: warnings, gridHash: currentHash,
         overlayPng: latestPng.getAbsolutePath(),
+        // Geometry so a viewer can place the overlay's circles back onto slide pixels.
+        // The Studio page needs this to let somebody drag a circle without opening QuPath.
+        overviewWidth: overviewWidth, overviewHeight: overviewHeight,
+        slideWidth: server.getWidth(), slideHeight: server.getHeight(),
         coordinatesCsv: latestCsv.getAbsolutePath(), cores: latestRows]
     writeAtomic(latestJson, json.toJson(latestQc) + '\n')
     appendEvent([event: 'LATEST_GRID_QC_EXPORTED', gridHash: currentHash,

@@ -267,16 +267,42 @@ h2{font-size:17px;font-weight:750}
   background:var(--stage-bg);display:flex;align-items:center;justify-content:center;
   min-height:0;min-width:0;overflow:auto;padding:18px;border-right:1px solid var(--line);
 }
-.gridStage img{max-width:100%;max-height:100%;flex:0 1 auto;object-fit:contain;border-radius:8px;cursor:zoom-in}
+.gridCanvas{position:relative;flex:0 1 auto;line-height:0}
+.gridStage img{max-width:100%;max-height:100%;display:block;object-fit:contain;border-radius:8px}
 .gridStage[data-zoom="true"]{align-items:flex-start;justify-content:flex-start}
-.gridStage[data-zoom="true"] img{
-  max-width:none;max-height:none;width:auto;height:auto;flex:0 0 auto;cursor:zoom-out;
+.gridStage[data-zoom="true"] .gridCanvas{flex:0 0 auto}
+.gridStage[data-zoom="true"] img{max-width:none;max-height:none;width:auto;height:auto}
+.gridOverlay{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.gridOverlay circle{
+  fill:transparent;stroke-width:2;cursor:grab;
+  transition:stroke-width 120ms ease,fill 120ms ease;
 }
-.zoomHint{
-  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
-  padding:5px 12px;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;
-  font-size:12px;font-weight:650;pointer-events:none;
+.gridOverlay circle:hover{fill:rgba(255,255,255,.10);stroke-width:3}
+.gridOverlay circle[data-state="present"]{stroke:#00ebe6}
+.gridOverlay circle[data-state="missing"]{stroke:#ff4650;stroke-dasharray:5 4}
+.gridOverlay circle[data-state="edited"]{stroke:#50f07d;stroke-width:3;fill:rgba(80,240,125,.13)}
+.gridOverlay circle[data-picked="true"]{stroke:#ffd166;stroke-width:4;fill:rgba(255,209,102,.16)}
+.gridOverlay circle.dragging{cursor:grabbing}
+.gridOverlay text{fill:rgba(255,255,255,.62);font-size:11px;font-weight:700;pointer-events:none}
+.gridTools{
+  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:6px 8px 6px 6px;border-radius:999px;
+  background:rgba(0,0,0,.62);backdrop-filter:blur(6px);
 }
+.gridTools .nudge{background:transparent;border-color:rgba(255,255,255,.28);color:#fff;height:28px}
+.gridTools .nudge:hover{background:rgba(255,255,255,.16);color:#fff}
+.zoomHint{color:rgba(255,255,255,.78);font-size:12px;font-weight:650;white-space:nowrap;padding-right:6px}
+
+.picked{
+  padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);
+  display:grid;gap:10px;
+}
+.picked[hidden]{display:none}
+.pickedHead b{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
+.pickedHead span{display:block;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;margin-top:1px}
+.pickedActions{display:grid;gap:6px}
+.pickedActions .btn{min-height:38px;font-size:13.5px}
+.pickedHint{margin:0;color:var(--faint);font-size:12px}
 .sideRail{overflow-y:auto;padding:22px 20px;background:var(--surface);display:grid;gap:18px;align-content:start}
 .warnList{display:grid;gap:8px;margin:0;padding:0;list-style:none}
 .warnList li{
@@ -573,8 +599,14 @@ kbd{
     <!-- 4a ---------------------------------------------------------------- grid gate -->
     <section class="panel gridGate" data-panel="grid" aria-label="ตรวจกริด">
       <div class="gridStage" id="gridStage" style="position:relative">
-        <img id="gridImg" alt="ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ">
-        <span class="zoomHint" id="zoomHint">คลิกที่ภาพเพื่อขยายเต็มขนาด</span>
+        <div class="gridCanvas" id="gridCanvas">
+          <img id="gridImg" alt="ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ">
+          <svg class="gridOverlay" id="gridOverlay" aria-hidden="true"></svg>
+        </div>
+        <div class="gridTools">
+          <button class="nudge" id="zoomToggle">ขยายเต็มขนาด</button>
+          <span class="zoomHint" id="zoomHint">ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก</span>
+        </div>
       </div>
       <aside class="sideRail">
         <div>
@@ -582,6 +614,20 @@ kbd{
           <p class="lede">ถ้าตรงแล้วกดปุ่มด้านล่างเพื่อไปต่อ · ถ้ามี core ที่ระบบมองไม่เห็น ให้วาดวงรีทับใน QuPath แล้วตั้งชื่อว่า <code>TMA correction</code></p>
         </div>
         <div class="strip" id="gridStrip"></div>
+
+        <div class="picked" id="gridPicked" hidden>
+          <div class="pickedHead">
+            <b id="pickedName">–</b>
+            <span id="pickedFacts"></span>
+          </div>
+          <div class="pickedActions">
+            <button class="btn" id="markMissing">ตำแหน่งนี้ไม่มีเนื้อเยื่อ</button>
+            <button class="btn" id="markPresent">ตำแหน่งนี้มีเนื้อเยื่อ</button>
+            <button class="btn quiet" id="undoCore">คืนค่าเดิม</button>
+          </div>
+          <p class="pickedHint">ลากวงกลมบนภาพเพื่อย้ายให้ตรงเนื้อเยื่อ</p>
+        </div>
+
         <ul class="warnList" id="gridWarnings"></ul>
       </aside>
     </section>
@@ -673,6 +719,7 @@ kbd{
       <span id="askSummary"></span>
     </div>
     <span class="saveState" id="saveState"></span>
+    <button class="btn" id="saveGrid" hidden>บันทึกการแก้กริด</button>
     <button class="btn" id="saveEdits" hidden>บันทึกมุมที่ปรับ</button>
     <button class="btn primary big" id="gateGo"></button>
   </div>
@@ -1157,14 +1204,31 @@ function drawActionBar(){
 
   if (stage === "grid") {
     save.hidden = true;
-    setSaveState("");
-    $("askTitle").textContent = openGate ? openGate.title : "รอ CoreAlign เปิดขั้นตอนตรวจกริด";
-    $("askSummary").textContent = openGate ? openGate.summary : "";
-    go.textContent = openGate ? (openGate.primaryLabel || "ไปต่อ") : "รออยู่...";
+    var gridChanges = Object.keys(gridEdits).length;
+    var gridSynced = gridChanges === gridSaved;
+    $("saveGrid").hidden = gridChanges === 0;
+    $("saveGrid").disabled = gridSynced;
+    if (gridChanges && gridSynced) setSaveState("บันทึกแล้ว " + gridChanges + " ตำแหน่ง", "ok");
+    else if (gridChanges) setSaveState("ยังไม่ได้บันทึก " + gridChanges + " ตำแหน่ง", "");
+    else setSaveState("");
+
+    $("askTitle").textContent = openGate
+      ? (gridChanges ? "แก้ไว้ " + gridChanges + " ตำแหน่ง" : openGate.title)
+      : "รอ CoreAlign เปิดขั้นตอนตรวจกริด";
+    $("askSummary").textContent = openGate
+      ? (gridChanges
+          ? "บันทึกก่อน แล้วกดยืนยัน · CoreAlign จะใส่การแก้แล้วให้ดูกริดอีกรอบก่อนไปต่อ"
+          : openGate.summary)
+      : "";
+    go.textContent = !openGate ? "รออยู่..."
+      : (gridChanges && !gridSynced) ? "บันทึกก่อนจึงจะไปต่อได้"
+      : gridChanges ? "ใส่การแก้ แล้วดูกริดอีกครั้ง"
+      : (openGate.primaryLabel || "ไปต่อ");
     go.dataset.act = "gate";
-    go.disabled = !openGate;
+    go.disabled = !openGate || (gridChanges > 0 && !gridSynced);
     return;
   }
+  $("saveGrid").hidden = true;
 
   var changes = pendingEdits().length;
   var synced = editsMatchSaved();
@@ -1232,11 +1296,37 @@ $("gateGo").addEventListener("click", function(){
 });
 
 /* ------------------------------------------------------------------ grid gate */
+var gridKey = "";
+
 function drawGrid(){
   if (!model || !model.grid || !model.grid.image) return;
   var img = $("gridImg");
   var wanted = "/project/" + model.grid.image;
-  if (img.getAttribute("src") !== wanted) img.src = wanted;
+  // A new grid hash means CoreAlign has moved on: any edit made against the old one is
+  // about positions that no longer mean the same thing, so start clean.
+  if (model.grid.gridHash && model.grid.gridHash !== gridKey) {
+    gridKey = model.grid.gridHash;
+    gridEdits = {};
+    pickedCore = "";
+    gridSaved = -1;
+    (model.grid.savedCorrections || []).forEach(function(item){
+      if (item && item.core) {
+        gridEdits[item.core] = {action: item.action, centerX: item.centerX,
+                                centerY: item.centerY, diameter: item.diameter};
+      }
+    });
+    if (Object.keys(gridEdits).length) gridSaved = Object.keys(gridEdits).length;
+    $("gridPicked").hidden = true;
+  }
+  if (img.getAttribute("src") !== wanted) {
+    img.onload = function(){ drawGridOverlay(); };
+    img.src = wanted;
+  } else {
+    requestAnimationFrame(drawGridOverlay);
+  }
+  $("zoomHint").textContent = model.grid.editable
+    ? "ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก"
+    : "รันใหม่หนึ่งรอบเพื่อให้แก้กริดในหน้านี้ได้";
   var grid = model.grid;
   $("gridStrip").innerHTML =
     metric(grid.present == null ? "–" : grid.present, "core ที่พบ", "ok") +
@@ -1253,13 +1343,157 @@ function drawGrid(){
     box.appendChild(li);
   });
 }
-$("gridImg").addEventListener("click", function(){
+$("zoomToggle").addEventListener("click", function(){
   var stage = $("gridStage");
   var zoomed = stage.dataset.zoom !== "true";
   stage.dataset.zoom = String(zoomed);
-  $("zoomHint").textContent = zoomed ? "คลิกอีกครั้งเพื่อย่อกลับ" : "คลิกที่ภาพเพื่อขยายเต็มขนาด";
+  this.textContent = zoomed ? "ย่อกลับให้พอดีจอ" : "ขยายเต็มขนาด";
   if (zoomed) { stage.scrollTop = 0; stage.scrollLeft = 0; }
+  requestAnimationFrame(drawGridOverlay);
 });
+
+/* ------------------------------------------------------------------ grid editor */
+// Somebody driving Studio has no QuPath window to draw a correction in. The circles are
+// drawn over the QC image instead, and dragging one is the same edit as moving an
+// annotation by hand: CoreAlign's step 3 receives it either way.
+var gridEdits = {};     // core -> {action, centerX, centerY, diameter}
+var pickedCore = "";
+var gridDrag = null;
+
+function gridCores(){ return (model && model.grid && model.grid.cores) || []; }
+function gridScale(){
+  // Slide pixels to rendered pixels. The overlay image is a render of the whole slide, so
+  // one factor covers both axes; use the rendered width, which changes with zoom.
+  var img = $("gridImg");
+  var slideW = Number(model && model.grid && model.grid.slideWidth) || 0;
+  var shown = img.getBoundingClientRect().width;
+  return (slideW > 0 && shown > 0) ? shown / slideW : 0;
+}
+function coreNow(core){
+  var edit = gridEdits[core.core];
+  return {
+    core: core.core, row: core.row, col: core.col,
+    centerX: edit && edit.centerX != null ? edit.centerX : core.centerX,
+    centerY: edit && edit.centerY != null ? edit.centerY : core.centerY,
+    diameter: edit && edit.diameter != null ? edit.diameter : core.diameter,
+    missing: edit ? (edit.action === "mark_missing") : core.missing,
+    edited: !!edit,
+    confidence: core.confidence
+  };
+}
+function drawGridOverlay(){
+  var svg = $("gridOverlay"), img = $("gridImg");
+  if (!svg || !img || !img.naturalWidth) return;
+  var scale = gridScale();
+  var cores = gridCores();
+  svg.textContent = "";
+  if (!scale || !cores.length) return;
+  var rect = img.getBoundingClientRect();
+  svg.setAttribute("viewBox", "0 0 " + rect.width + " " + rect.height);
+  cores.forEach(function(raw){
+    var core = coreNow(raw);
+    if (core.centerX == null || core.diameter == null) return;
+    var c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", (core.centerX * scale).toFixed(2));
+    c.setAttribute("cy", (core.centerY * scale).toFixed(2));
+    c.setAttribute("r", Math.max(5, core.diameter * scale / 2).toFixed(2));
+    c.setAttribute("data-state", core.edited ? "edited" : (core.missing ? "missing" : "present"));
+    if (core.core === pickedCore) c.setAttribute("data-picked", "true");
+    c.dataset.core = core.core;
+    svg.appendChild(c);
+  });
+}
+function pickCore(name){
+  pickedCore = name;
+  var raw = gridCores().filter(function(c){ return c.core === name; })[0];
+  var panel = $("gridPicked");
+  if (!raw) { panel.hidden = true; drawGridOverlay(); return; }
+  var core = coreNow(raw);
+  $("pickedName").textContent = core.core;
+  var confidence = core.confidence ? Math.round(Number(core.confidence) * 100) + "%" : "–";
+  $("pickedFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
+    " · " + (core.missing ? "ทำเครื่องหมายว่าไม่มีเนื้อเยื่อ" : "ตรวจพบ") +
+    " · ความมั่นใจ " + confidence + (core.edited ? " · แก้ไว้แล้ว" : "");
+  $("markMissing").hidden = core.missing;
+  $("markPresent").hidden = !core.missing;
+  $("undoCore").hidden = !core.edited;
+  panel.hidden = false;
+  drawGridOverlay();
+}
+function editCore(name, action, x, y) {
+  var raw = gridCores().filter(function(c){ return c.core === name; })[0];
+  if (!raw) return;
+  var base = coreNow(raw);
+  gridEdits[name] = {
+    action: action,
+    centerX: x == null ? base.centerX : x,
+    centerY: y == null ? base.centerY : y,
+    diameter: base.diameter
+  };
+  pickCore(name);
+  drawActionBar();
+}
+$("gridOverlay").addEventListener("pointerdown", function(event){
+  var target = event.target;
+  if (!target || target.tagName !== "circle") return;
+  event.preventDefault();
+  pickCore(target.dataset.core);
+  var scale = gridScale();
+  if (!scale) return;
+  var rect = $("gridImg").getBoundingClientRect();
+  gridDrag = {core: target.dataset.core, scale: scale, rect: rect, moved: false, node: target};
+  target.classList.add("dragging");
+  target.setPointerCapture(event.pointerId);
+});
+$("gridOverlay").addEventListener("pointermove", function(event){
+  if (!gridDrag) return;
+  var x = (event.clientX - gridDrag.rect.left) / gridDrag.scale;
+  var y = (event.clientY - gridDrag.rect.top) / gridDrag.scale;
+  gridDrag.moved = true;
+  gridDrag.node.setAttribute("cx", (x * gridDrag.scale).toFixed(2));
+  gridDrag.node.setAttribute("cy", (y * gridDrag.scale).toFixed(2));
+  gridDrag.at = {x: x, y: y};
+});
+$("gridOverlay").addEventListener("pointerup", function(){
+  if (!gridDrag) return;
+  gridDrag.node.classList.remove("dragging");
+  if (gridDrag.moved && gridDrag.at) {
+    // Dragging a circle onto tissue is a move; doing it to a position marked empty is
+    // also a statement that there is tissue there after all.
+    var raw = gridCores().filter(function(c){ return c.core === gridDrag.core; })[0];
+    var action = (raw && coreNow(raw).missing) ? "restore" : "move";
+    editCore(gridDrag.core, action, gridDrag.at.x, gridDrag.at.y);
+  }
+  gridDrag = null;
+});
+$("markMissing").addEventListener("click", function(){ editCore(pickedCore, "mark_missing"); });
+$("markPresent").addEventListener("click", function(){ editCore(pickedCore, "restore"); });
+$("undoCore").addEventListener("click", function(){
+  delete gridEdits[pickedCore];
+  pickCore(pickedCore);
+  drawActionBar();
+});
+$("saveGrid").addEventListener("click", function(){
+  var payload = Object.keys(gridEdits).map(function(name){
+    var edit = gridEdits[name];
+    return {core: name, action: edit.action, centerX: edit.centerX,
+            centerY: edit.centerY, diameter: edit.diameter};
+  });
+  setSaveState("กำลังบันทึก...", "busy");
+  api("/api/grid-corrections", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({corrections: payload})})
+  .then(function(res){
+    if (!res.ok || res.body.ok === false) {
+      setSaveState(res.body.error || "บันทึกไม่สำเร็จ", "bad");
+      return;
+    }
+    gridSaved = payload.length;
+    setSaveState("บันทึกแล้ว " + payload.length + " ตำแหน่ง", "ok");
+    toast("บันทึกการแก้กริดแล้ว · กดยืนยันเพื่อให้ CoreAlign ใส่การแก้นี้");
+    drawActionBar();
+  });
+});
+var gridSaved = -1;
 
 function metric(value, label, tone){
   var div = document.createElement("div");
@@ -1527,6 +1761,13 @@ function route(status, gateId){
   if (stage === "export") drawExport(status);
   drawActionBar();
 }
+
+// The overlay is positioned against the image's rendered box, which moves with the window,
+// the log drawer and the zoom toggle. Redraw whenever it actually changes.
+if (window.ResizeObserver) {
+  new ResizeObserver(function(){ drawGridOverlay(); }).observe($("gridImg"));
+}
+window.addEventListener("resize", function(){ drawGridOverlay(); });
 
 /* ------------------------------------------------------------------ start */
 buildStages();

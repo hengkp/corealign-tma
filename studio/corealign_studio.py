@@ -632,7 +632,30 @@ class Run:
                 "humanCorrectedTotal": grid_json.get("humanCorrectedTotal"),
                 "warnings": [self._flatten(item) for item in (grid_json.get("warnings") or [])],
                 "hardErrors": [self._flatten(item) for item in (grid_json.get("hardErrors") or [])],
+                # What the grid editor needs: the circles, and the mapping from slide pixels
+                # to overlay pixels so the page can place them on the QC image and send an
+                # edit back in the coordinates CoreAlign works in.
+                "gridHash": grid_json.get("gridHash") or "",
+                "overviewWidth": grid_json.get("overviewWidth"),
+                "overviewHeight": grid_json.get("overviewHeight"),
+                "slideWidth": grid_json.get("slideWidth"),
+                "slideHeight": grid_json.get("slideHeight"),
+                "cores": [{
+                    "core": item.get("core") or "",
+                    "row": item.get("row"), "col": item.get("column"),
+                    "centerX": item.get("centerX"), "centerY": item.get("centerY"),
+                    "diameter": item.get("diameter"),
+                    "missing": bool(item.get("missing")),
+                    "source": item.get("detectionSource") or "",
+                    "confidence": item.get("detectionConfidence") or "",
+                } for item in (grid_json.get("cores") or [])],
+                "editable": bool(grid_json.get("overviewWidth") and grid_json.get("slideWidth")),
             }
+            saved_grid = self._read_json("corealign-grid-corrections.json") or {}
+            if str(saved_grid.get("baseGridHash") or "") == str(grid["gridHash"]):
+                grid["savedCorrections"] = saved_grid.get("corrections") or []
+            else:
+                grid["savedCorrections"] = []
 
         report = self._read_json("qc/02-orientation/run_report.json")
         if not report:
@@ -689,6 +712,68 @@ class Run:
             "cores": cores,
             "corrections": corrections,
         }
+
+    GRID_ACTIONS = ("move", "restore", "mark_missing")
+
+    def save_grid_corrections(self, edits: list) -> dict:
+        """Write the grid edits made in the page, for step 3 to apply.
+
+        Studio writes the file rather than posting through the bridge: CoreAlign only reads
+        it when the grid gate is answered, and no bridge endpoint accepts grid edits. The
+        grid it was made against is stamped here, so a correction can never be applied to a
+        grid that has since changed.
+        """
+        model = self.review()
+        grid = model.get("grid") or {}
+        if not grid.get("cores"):
+            return {"ok": False, "error": "There is no detected grid to correct yet."}
+        if not grid.get("gridHash"):
+            return {"ok": False,
+                    "error": "This grid has no hash, so a correction could not be tied to it."}
+        known = {str(core["core"]).lower(): core for core in grid["cores"] if core.get("core")}
+        width = float(grid.get("slideWidth") or 0)
+        height = float(grid.get("slideHeight") or 0)
+
+        clean, seen = [], set()
+        for item in edits or []:
+            name = str((item or {}).get("core") or "").strip()
+            key = name.lower()
+            action = str((item or {}).get("action") or "").strip().lower()
+            if key not in known:
+                return {"ok": False, "error": f"{name or 'A core'} is not a position in this grid."}
+            if action not in self.GRID_ACTIONS:
+                return {"ok": False, "error": f"{name}: {action or 'that'} is not something to do."}
+            if key in seen:
+                return {"ok": False, "error": f"{name} was sent twice."}
+            source = known[key]
+            try:
+                x = float(item.get("centerX", source.get("centerX")))
+                y = float(item.get("centerY", source.get("centerY")))
+                diameter = float(item.get("diameter", source.get("diameter")))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"{name} has no usable position."}
+            if diameter <= 0 or (width and not 0 <= x <= width) or (height and not 0 <= y <= height):
+                return {"ok": False, "error": f"{name} is outside the slide."}
+            seen.add(key)
+            clean.append({"core": name, "action": action,
+                          "centerX": round(x, 3), "centerY": round(y, 3),
+                          "diameter": round(diameter, 3)})
+
+        target = self.project / "corealign-grid-corrections.json"
+        document = {
+            "schemaVersion": 1,
+            "image": model.get("image") or grid.get("image") or "",
+            "baseGridHash": grid["gridHash"],
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "corrections": clean,
+        }
+        temporary = target.with_name("." + target.name + ".tmp")
+        try:
+            temporary.write_text(json.dumps(document, indent=2) + "\n", "utf-8")
+            os.replace(temporary, target)
+        except OSError as error:
+            return {"ok": False, "error": f"Could not write the grid corrections: {error}"}
+        return {"ok": True, "saved": len(clean)}
 
     def save_corrections(self, edits: list) -> dict:
         """Send angle changes to CoreAlign's bridge.
@@ -924,6 +1009,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not RUN.attach(target):
                     return self.json_out({"error": "a run is already in progress"}, 409)
                 return self.json_out(RUN.snapshot())
+            if route == "/api/grid-corrections":
+                body = self.read_json()
+                answer = RUN.save_grid_corrections(body.get("corrections") or [])
+                return self.json_out(answer, 200 if answer.get("ok") else 409)
             if route == "/api/corrections":
                 body = self.read_json()
                 answer = RUN.save_corrections(body.get("corrections") or [])
