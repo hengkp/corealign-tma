@@ -78,3 +78,16 @@ test("the worker count comes from the allocation, not a constant", () => {
   assert.ok(!/["']parallelWorkers["']:\s*\d/.test(server),
     "no hardcoded worker count belongs in the config");
 });
+
+// The worker count is the one number that can take a node down. Every path through it must
+// end at the measured ceiling, including the one where nothing said how much memory the job
+// holds: on a 112-CPU node the bare CPU count would ask for 111 workers.
+test("the worker count is capped on every path", () => {
+  const body = server.slice(server.indexOf("def orientation_workers"),
+                            server.indexOf("def build_config"));
+  const returns = [...body.matchAll(/^\s+return .+$/gm)].map((m) => m[0]);
+  assert.ok(returns.length >= 2, "expected orientation_workers to have several exits");
+  for (const line of returns) {
+    assert.match(line, /MAX_WORKERS/, `an exit skips the cap: ${line.trim()}`);
+  }
+});

@@ -190,7 +190,9 @@ def orientation_workers() -> int:
     by_cpu = max(1, cpus - 1) if cpus >= 4 else max(1, cpus)
     memory = allocated_memory_mb()
     if memory <= 0:
-        return by_cpu
+        # Nothing said how much memory this job holds, so trust the CPU count only as far
+        # as the measurement goes. On a 112-CPU node the bare count would ask for 111.
+        return max(1, min(by_cpu, MAX_WORKERS))
     by_memory = max(1, (memory - JVM_HEADROOM_MB) // WORKER_MEMORY_MB)
     return max(1, min(by_cpu, by_memory, MAX_WORKERS))
 
