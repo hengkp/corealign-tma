@@ -167,7 +167,7 @@ def allocated_memory_mb() -> int:
 #
 #     2 workers   21.0 s per core    40.9 min
 #     8 workers    6.0 s per core    11.7 min
-#    16 workers    6.5 s per core    12.6 min
+#    16 workers    6.1 s per core    11.9 min
 #
 # It plateaus at 8. Past that the extra workers wait on something shared, most likely the
 # read path to the NAS, and only add memory pressure: each worker holds its own

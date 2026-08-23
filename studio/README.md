@@ -66,7 +66,7 @@ excluded:
 |---|---|---|---|
 | 2 | 21.0 s | 40.9 min | the old fixed default |
 | 8 | 6.0 s | 11.7 min | |
-| 16 | 6.5 s | 12.6 min | no better, and it needs the heap cap below |
+| 16 | 6.1 s | 11.9 min | no better, and it needs the heap cap below |
 
 **It plateaus at 8.** Past that the extra workers wait on something shared, most likely the read
 path to the NAS, and only add memory pressure: each worker holds its own full-resolution crop on
@@ -85,8 +85,9 @@ cgroup limit, so it sized its heap, and therefore QuPath's tile cache, from the 
 two workers the cache never grew that far and nothing looked wrong.
 
 The AppHub runner now exports `APPHUB_MEMORY_MB` and passes `-Xmx` at 70% of the allocation. The
-same run then reported an 11,472 MB tile cache and finished without being killed. Anyone running
-Studio outside AppHub should set `-Xmx` themselves for the same reason.
+same 16-worker run then reported an 11,472 MB tile cache and peaked at 51 GB instead of 94 GB, so
+it was not killed. Anyone running Studio outside AppHub should set `-Xmx` themselves for the same
+reason.
 
 ## Running it outside AppHub
 
