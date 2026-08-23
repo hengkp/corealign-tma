@@ -1,444 +1,1421 @@
 <!doctype html>
-<html lang="en">
+<html lang="th" data-theme="auto">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CoreAlign Studio</title>
+<!--
+  CoreAlign Studio.
+
+  One screen, five stages, one question per stage. Everything is drawn from Studio's own
+  API (/api/status, /api/review, /api/results); the page does not embed REPORT.html and
+  never sees the bridge token.
+
+  Layout patterns taken from shipped products, via Mobbin:
+    Reddit mod queue     queue on the left, the item and its two decisions on the right
+    ClassDojo review     media on a dark stage, the decision rail beside it
+    Databricks pipeline  run header with state and duration, event log in a drawer
+    Frontify assets      filter chips and a count above the list
+    AWS upload status    a summary strip of counts above the detail
+    Zoho CRM migration   numbered stage tracker across the top
+
+  Icons are Remixicon (Apache-2.0), inlined so the page needs no network.
+-->
 <style>
-:root{color-scheme:light;--bg:#fff;--surface:#f7f8fc;--fg:#171842;--muted:#5f6486;--line:#dfe3f2;
---accent:#4262ff;--accent-ink:#fff;--warn:#ffd02f;--warn-bg:#fff8dd;--warn-ink:#7a5c00;
---ok:#1aa998;--ok-bg:#e9f7f4;--bad:#ec6972;--bad-bg:#fdeef0;--radius:14px}
-@media(prefers-color-scheme:dark){:root{--bg:#070b21;--surface:#111834;--fg:#f2f4ff;--muted:#9aa2c8;
---line:#2a3358;--warn-bg:#3a2f00;--warn-ink:#ffd94a;--ok-bg:#0f3b34;--bad-bg:#41161b}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:14px clamp(16px,4vw,36px);
-border-bottom:1px solid var(--line);background:color-mix(in oklch,var(--bg) 92%,transparent);backdrop-filter:blur(14px)}
-header b{font-size:17px;letter-spacing:-.02em}
-header .spacer{margin-left:auto}
-main{width:min(100%,1180px);margin:auto;padding:clamp(20px,4vw,40px) clamp(16px,4vw,36px) 80px}
-h1{margin:0 0 6px;font-size:clamp(1.7rem,1.3rem+1.6vw,2.4rem);letter-spacing:-.03em}
-.lede{margin:0 0 28px;color:var(--muted);max-width:62ch}
-.step{margin:0 0 20px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
-.step>summary,.stephead{display:flex;align-items:center;gap:12px;padding:16px 20px;font-weight:700;cursor:default}
-.num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:14px;font-weight:800;flex:0 0 auto}
-.step .body{padding:0 20px 20px}
-.crumb{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;font-size:13px;color:var(--muted)}
-.crumb button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
-.list{max-height:330px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
-.row{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border:0;border-bottom:1px solid var(--line);
-background:transparent;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
-.row:last-child{border-bottom:0}
-.row:hover{background:var(--surface)}
-.row.sel{background:color-mix(in oklch,var(--accent) 14%,transparent);font-weight:700}
-.row .ic{width:18px;text-align:center;opacity:.7}
-.row .meta{margin-left:auto;color:var(--muted);font-size:13px;font-weight:400}
-.seg{display:inline-grid;grid-auto-flow:column;padding:4px;border:1px solid var(--line);border-radius:999px;background:var(--bg)}
-.seg button{border:0;border-radius:999px;padding:9px 18px;background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer}
-.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
-.field{display:flex;align-items:center;gap:16px;margin:0 0 14px;flex-wrap:wrap}
-.field>span:first-child{min-width:76px;font-weight:700;font-size:14px}
-.hint{color:var(--muted);font-size:13px;margin:6px 0 0}
-.primary{border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);
-padding:13px 28px;font:inherit;font-weight:800;font-size:15px;cursor:pointer}
-.primary:disabled{opacity:.45;cursor:not-allowed}
-.ghost{border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);padding:9px 18px;font:inherit;font-weight:700;cursor:pointer}
-.gate{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 24px;align-items:center;
-padding:18px 20px;border:1px solid var(--warn);border-radius:var(--radius);background:var(--warn-bg);color:var(--warn-ink);margin:0 0 20px}
-.gate .k{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-.gate strong{display:block;font-size:17px;color:var(--fg)}
-.gate p{margin:4px 0 0;font-size:14px;color:var(--muted)}
-.gate .primary{min-height:48px}
-.state{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:800}
-.state.running{background:var(--warn-bg);color:var(--warn-ink)}
-.state.complete{background:var(--ok-bg);color:var(--ok)}
-.state.failed,.state.cancelled,.state.stopped{background:var(--bad-bg);color:var(--bad)}
-.state.idle{background:var(--surface);color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
-.state.running .dot{animation:pulse 1.1s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-iframe{width:100%;height:min(78vh,900px);border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)}
-pre.log{max-height:280px;overflow:auto;margin:0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;
-background:var(--bg);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
-.err{margin:0 0 16px;padding:12px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-bg);color:var(--bad);font-size:14px}
-.err[hidden],[hidden]{display:none!important}
-.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
-.resCard{display:flex;flex-direction:column;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
-.resCard h3{margin:0;font-size:15px}
-.resCard .n{margin:6px 0 2px;font-size:26px;font-weight:800;letter-spacing:-.02em}
-.resCard .sub,.resCard .note{color:var(--muted);font-size:13px}
-.resCard .note{margin:6px 0 14px;line-height:1.5}
-.resCard .ghost{margin-top:auto;align-self:flex-start}
-.exportBar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 18px;margin:0 0 14px;
-border:1px solid var(--ok);border-radius:12px;background:var(--ok-bg)}
-.exportBar b{font-size:15px}
-.exportBar .sub{color:var(--muted);font-size:13px;margin-left:auto}
-details.files{margin-top:10px}
-details.files summary{cursor:pointer;font-size:13px;color:var(--muted)}
-details.files ul{margin:8px 0 0;padding-left:18px;max-height:180px;overflow:auto;font-size:13px}
-details.files a{color:var(--fg)}
-@media(max-width:720px){.gate{grid-template-columns:1fr}.gate .primary{width:100%}}
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f2f2f0; --sunk:#ebebe8;
+  --text:#191919; --muted:#626260; --faint:#8a8a86;
+  --line:#e3e2df; --line-strong:#c9c8c4;
+  --accent:#2383e2; --accent-dark:#1f6fbd; --accent-soft:#eaf3fb; --on-accent:#ffffff;
+  --ok:#0f7b6c; --ok-soft:#e7f3f1;
+  --warn:#a66b00; --warn-soft:#fff1c7;
+  --bad:#d44c47; --bad-soft:#fdebec;
+  --none:#8a8a86; --none-soft:#eeeeec;
+  --stage-bg:#0d0d0f;
+  --radius-lg:16px;
+  --shadow:0 1px 2px rgba(15,15,15,.06); --shadow-lg:0 8px 28px rgba(15,15,15,.14);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#141416; --surface:#1c1c1f; --surface-2:#232327; --sunk:#0f0f11;
+    --text:#f4f3f1; --muted:#b6b5b1; --faint:#8b8a87;
+    --line:#33333a; --line-strong:#4b4b53;
+    --accent:#4f9dea; --accent-dark:#7bb7f0; --accent-soft:#14283d; --on-accent:#08121c;
+    --ok:#3fbfa8; --ok-soft:#0e2b28;
+    --warn:#e0a63a; --warn-soft:#33280f;
+    --bad:#ef6b66; --bad-soft:#361a1a;
+    --none:#7c7b78; --none-soft:#26262a;
+    --stage-bg:#08080a;
+    --shadow:0 1px 2px rgba(0,0,0,.5); --shadow-lg:0 10px 34px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141416; --surface:#1c1c1f; --surface-2:#232327; --sunk:#0f0f11;
+  --text:#f4f3f1; --muted:#b6b5b1; --faint:#8b8a87;
+  --line:#33333a; --line-strong:#4b4b53;
+  --accent:#4f9dea; --accent-dark:#7bb7f0; --accent-soft:#14283d; --on-accent:#08121c;
+  --ok:#3fbfa8; --ok-soft:#0e2b28;
+  --warn:#e0a63a; --warn-soft:#33280f;
+  --bad:#ef6b66; --bad-soft:#361a1a;
+  --none:#7c7b78; --none-soft:#26262a;
+  --stage-bg:#08080a;
+  --shadow:0 1px 2px rgba(0,0,0,.5); --shadow-lg:0 10px 34px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","IBM Plex Sans Thai","Noto Sans Thai",
+    "Sarabun",Roboto,"Helvetica Neue",system-ui,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+svg{display:block;fill:currentColor}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+
+/* ---------------------------------------------------------------- app shell */
+.app{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto auto;height:100dvh}
+
+.topbar{
+  display:flex;align-items:center;gap:14px;
+  padding:0 18px;height:56px;
+  background:var(--surface);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.brand .mark{
+  width:28px;height:28px;flex:0 0 auto;border-radius:9px;
+  display:grid;place-items:center;background:var(--accent);color:var(--on-accent);
+}
+.topbar .slideName{
+  min-width:0;flex:1 1 auto;color:var(--muted);font-size:13.5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  padding:5px 12px 5px 10px;border-radius:999px;
+  font-size:13px;font-weight:700;white-space:nowrap;
+  background:var(--none-soft);color:var(--muted);
+}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.pill[data-tone="run"]{background:var(--accent-soft);color:var(--accent-dark)}
+.pill[data-tone="run"] .dot{animation:breathe 1.6s ease-in-out infinite}
+.pill[data-tone="wait"]{background:var(--warn-soft);color:var(--warn)}
+.pill[data-tone="ok"]{background:var(--ok-soft);color:var(--ok)}
+.pill[data-tone="bad"]{background:var(--bad-soft);color:var(--bad)}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.25}}
+.clock{font-variant-numeric:tabular-nums;color:var(--faint);font-size:13px;flex:0 0 auto}
+.iconBtn{
+  width:34px;height:34px;flex:0 0 auto;border-radius:9px;display:grid;place-items:center;
+  color:var(--muted);
+}
+.iconBtn:hover{background:var(--surface-2);color:var(--text)}
+
+/* stage tracker */
+.stages{
+  display:flex;align-items:stretch;gap:2px;
+  padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line);
+  overflow-x:auto;scrollbar-width:none;
+}
+.stages::-webkit-scrollbar{display:none}
+.stageTab{
+  display:flex;align-items:center;gap:9px;padding:7px 14px 7px 9px;border-radius:999px;
+  color:var(--faint);font-size:13.5px;font-weight:650;white-space:nowrap;
+}
+.stageTab .num{
+  width:22px;height:22px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
+  border:1.5px solid currentColor;font-size:11.5px;font-weight:800;
+}
+.stageTab[data-state="done"]{color:var(--ok)}
+.stageTab[data-state="done"] .num{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.stageTab[data-state="now"]{color:var(--accent-dark);background:var(--accent-soft)}
+.stageTab[data-state="now"] .num{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.stageTab:disabled{cursor:default}
+.stageTab:not(:disabled):hover{background:var(--surface-2)}
+.stageSep{align-self:center;width:14px;height:1px;background:var(--line-strong);flex:0 0 auto}
+
+.stageBody{min-height:0;position:relative;overflow:hidden}
+.panel{position:absolute;inset:0;display:none;min-height:0}
+.panel.is-active{display:grid}
+
+/* ---------------------------------------------------------------- generic bits */
+.center{place-items:center;overflow-y:auto;padding:32px 24px}
+.card{
+  width:100%;max-width:720px;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:26px;
+}
+h1,h2{margin:0;letter-spacing:-.015em}
+h1{font-size:23px;font-weight:800}
+h2{font-size:17px;font-weight:750}
+.lede{margin:6px 0 0;color:var(--muted);font-size:14px}
+.rowGap{display:grid;gap:18px}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:42px;padding:0 20px;border-radius:10px;
+  font-size:14.5px;font-weight:750;white-space:nowrap;
+  border:1px solid var(--line-strong);background:var(--surface);color:var(--text);
+  transition:background 140ms ease,border-color 140ms ease,transform 90ms ease;
+}
+.btn:hover:not(:disabled){background:var(--surface-2)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.42;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover:not(:disabled){background:var(--accent-dark);border-color:var(--accent-dark)}
+.btn.big{min-height:48px;padding:0 26px;font-size:15.5px}
+.btn.quiet{border-color:transparent;color:var(--muted)}
+.btn.quiet:hover:not(:disabled){background:var(--surface-2);color:var(--text)}
+.btn.danger{color:var(--bad)}
+
+/* segmented choice: two options on one line, nothing to open */
+.choice{display:grid;gap:9px}
+.choice > .label{font-size:13px;font-weight:750;color:var(--muted)}
+.segmented{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.segmented button{
+  text-align:left;padding:13px 15px;border-radius:12px;
+  border:1.5px solid var(--line);background:var(--surface);
+  transition:border-color 140ms ease,background 140ms ease;
+}
+.segmented button:hover{border-color:var(--line-strong)}
+.segmented button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.segmented .t{display:block;font-weight:750;font-size:14.5px}
+.segmented .d{display:block;margin-top:2px;color:var(--muted);font-size:12.5px;line-height:1.45}
+
+.priorRun{
+  display:flex;align-items:center;gap:14px;padding:13px 15px;border-radius:12px;
+  background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
+}
+.priorRun[hidden]{display:none}
+.priorRun .txt{flex:1 1 auto;min-width:0}
+.priorRun .txt b{display:block;font-size:14px;font-weight:750}
+.priorRun .txt span{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+
+/* ---------------------------------------------------------------- slide picker */
+.picker{grid-template-rows:auto minmax(0,1fr)}
+.pickerHead{padding:18px 22px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.crumbs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--muted)}
+.crumbs button{padding:3px 9px;border-radius:7px;background:var(--surface-2);font-size:12.5px;font-weight:650}
+.crumbs button:hover{background:var(--sunk)}
+.crumbs .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pickerBody{overflow-y:auto;padding:14px 22px 26px}
+.fileList{display:grid;gap:6px;max-width:920px}
+.fileRow{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:11px 14px;border-radius:11px;border:1px solid transparent;background:var(--surface);
+}
+.fileRow:hover:not([disabled]){border-color:var(--line);background:var(--surface-2)}
+.fileRow .ico{color:var(--faint);flex:0 0 auto}
+.fileRow .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
+.fileRow .meta{color:var(--faint);font-size:12.5px;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.fileRow.slide .ico{color:var(--accent)}
+.fileRow[disabled]{opacity:.45;cursor:default}
+.emptyNote{padding:26px 4px;color:var(--muted);font-size:14px}
+
+/* ---------------------------------------------------------------- running */
+.running{place-items:center;padding:28px}
+.runCard{width:100%;max-width:660px;text-align:center}
+.bar{height:8px;border-radius:999px;background:var(--sunk);overflow:hidden;margin:20px 0 10px}
+.bar > i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width 400ms ease}
+.bar.indeterminate > i{width:36%;animation:slide 1.5s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-36%}100%{margin-left:100%}}
+.runStep{color:var(--muted);font-size:14px;min-height:22px;word-break:break-word}
+.runCounts{display:flex;justify-content:center;gap:26px;margin-top:18px;font-variant-numeric:tabular-nums}
+.runCounts div{text-align:center}
+.runCounts b{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.runCounts span{font-size:12px;color:var(--faint)}
+
+/* ---------------------------------------------------------------- metric strip */
+.strip{display:flex;gap:9px;flex-wrap:wrap}
+.metric{
+  flex:1 1 118px;min-width:112px;padding:11px 14px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--line);
+}
+.metric b{display:block;font-size:21px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.metric span{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.metric[data-tone="ok"] b{color:var(--ok)} .metric[data-tone="warn"] b{color:var(--warn)}
+.metric[data-tone="none"] b{color:var(--none)} .metric[data-tone="bad"] b{color:var(--bad)}
+
+/* ---------------------------------------------------------------- grid gate */
+.gridGate{grid-template-columns:minmax(0,1fr) 340px}
+.gridStage{
+  background:var(--stage-bg);display:flex;align-items:center;justify-content:center;
+  min-height:0;min-width:0;overflow:auto;padding:18px;border-right:1px solid var(--line);
+}
+.gridStage img{max-width:100%;max-height:100%;flex:0 1 auto;object-fit:contain;border-radius:8px;cursor:zoom-in}
+.gridStage[data-zoom="true"]{align-items:flex-start;justify-content:flex-start}
+.gridStage[data-zoom="true"] img{
+  max-width:none;max-height:none;width:auto;height:auto;flex:0 0 auto;cursor:zoom-out;
+}
+.zoomHint{
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  padding:5px 12px;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:12px;font-weight:650;pointer-events:none;
+}
+.sideRail{overflow-y:auto;padding:22px 20px;background:var(--surface);display:grid;gap:18px;align-content:start}
+.warnList{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.warnList li{
+  display:flex;gap:9px;padding:10px 12px;border-radius:10px;
+  background:var(--warn-soft);color:var(--warn);font-size:13px;line-height:1.5;
+}
+
+/* ---------------------------------------------------------------- core review */
+.review{grid-template-columns:minmax(288px,332px) minmax(0,1fr)}
+.queue{
+  display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;
+  border-right:1px solid var(--line);background:var(--surface);
+}
+.queueHead{padding:14px 16px 12px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:700;
+  background:var(--surface-2);color:var(--muted);
+}
+.chip:hover{background:var(--sunk)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.chip .n{opacity:.72;margin-left:5px;font-variant-numeric:tabular-nums}
+.queueCount{font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.queueList{overflow-y:auto;padding:8px;display:grid;gap:6px;align-content:start}
+.btn.confirm{border-color:var(--ok);color:var(--ok)}
+.btn.confirm:hover:not(:disabled){background:var(--ok-soft)}
+.coreRow{
+  display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:11px;
+  width:100%;text-align:left;padding:7px;border-radius:11px;
+  border:1.5px solid transparent;background:transparent;
+}
+.coreRow:hover{background:var(--surface-2)}
+.coreRow[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.coreRow .thumb{
+  width:56px;height:56px;border-radius:8px;background:var(--stage-bg);object-fit:contain;
+  filter:brightness(2.1) contrast(1.15);
+}
+.coreRow .nm{font-weight:750;font-size:14px}
+.coreRow .sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tick{
+  width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  border:1.5px solid var(--line-strong);color:transparent;
+}
+.coreRow[data-checked="true"] .tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.coreRow[data-edited="true"] .nm::after{
+  content:"ปรับแล้ว";margin-left:7px;padding:1px 7px;border-radius:999px;
+  background:var(--accent-soft);color:var(--accent-dark);font-size:10.5px;font-weight:800;vertical-align:middle;
+}
+.sDot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+.sDot[data-s="ok"]{background:var(--ok)} .sDot[data-s="review"]{background:var(--warn)}
+.sDot[data-s="missing"]{background:var(--none)} .sDot[data-s="error"]{background:var(--bad)}
+
+.detail{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0}
+.viewer{position:relative;background:var(--stage-bg);display:flex;align-items:center;
+  justify-content:center;min-height:0;min-width:0;overflow:hidden;padding:20px}
+.viewer img{
+  max-width:100%;max-height:100%;object-fit:contain;
+  transform-origin:center center;transition:transform 90ms linear;border-radius:6px;
+}
+.viewerTag{
+  position:absolute;top:14px;left:16px;
+  padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;
+  font-size:13px;font-weight:750;
+}
+.viewerNav{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(0,0,0,.5);color:#fff;
+}
+.viewerNav:hover:not(:disabled){background:rgba(0,0,0,.75)}
+.viewerNav.prev{left:12px} .viewerNav.next{right:12px}
+.viewerNav:disabled{opacity:.25;cursor:default}
+.topMark{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.62);
+  font-size:11.5px;font-weight:700;letter-spacing:.06em;
+}
+
+.controls{border-top:1px solid var(--line);background:var(--surface);padding:14px 20px;display:grid;gap:12px}
+.controlsTop{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.controlsTop .who{font-size:16px;font-weight:800;letter-spacing:-.01em}
+.controlsTop .facts{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.reasonTag{padding:3px 9px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:11.5px;font-weight:750}
+.dial{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px}
+.dial input[type="range"]{width:100%;accent-color:var(--accent);height:26px}
+.angleBox{
+  display:flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--line);font-variant-numeric:tabular-nums;font-weight:750;
+}
+.angleBox input{width:66px;border:0;background:transparent;text-align:right;font-weight:750;font-variant-numeric:tabular-nums}
+.angleBox input::-webkit-outer-spin-button,.angleBox input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.nudges{display:flex;gap:5px;flex-wrap:wrap}
+.nudge{
+  min-width:52px;height:32px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--surface);
+  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted);
+}
+.nudge:hover{background:var(--surface-2);color:var(--text)}
+.controlsRow{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1 1 auto}
+.hint{color:var(--faint);font-size:12px}
+kbd{
+  padding:1px 6px;margin-right:3px;border-radius:5px;border:1px solid var(--line-strong);
+  background:var(--surface-2);font-size:11px;font-family:inherit;font-weight:700;
+}
+
+/* ---------------------------------------------------------------- action bar */
+.actionBar{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 20px;background:var(--surface);border-top:1px solid var(--line);
+}
+.actionBar[hidden]{display:none}
+.actionBar .ask{min-width:0;flex:1 1 auto}
+.actionBar .ask b{display:block;font-size:14.5px;font-weight:750;letter-spacing:-.01em}
+.actionBar .ask span{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+.saveState{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.saveState[data-tone="busy"]{color:var(--accent-dark)}
+.saveState[data-tone="bad"]{color:var(--bad)}
+.saveState[data-tone="ok"]{color:var(--ok)}
+
+/* ---------------------------------------------------------------- export */
+.export{overflow-y:auto;padding:26px 24px;align-content:start}
+.exportInner{width:100%;max-width:1000px;margin:0 auto;display:grid;gap:16px}
+.groupList{display:grid;gap:9px}
+.group{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.group .txt{flex:1 1 auto;min-width:0}
+.group .txt b{display:block;font-weight:750;font-size:14.5px}
+.group .txt span{display:block;color:var(--muted);font-size:12.5px}
+.group .cnt{color:var(--faint);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------------------------------------------------------------- log drawer */
+.logDrawer{background:var(--surface);border-top:1px solid var(--line)}
+.logToggle{display:flex;align-items:center;gap:9px;width:100%;padding:9px 20px;font-size:13px;font-weight:700;color:var(--muted)}
+.logToggle:hover{background:var(--surface-2);color:var(--text)}
+.logToggle .caret{transition:transform 160ms ease;flex:0 0 auto}
+.logDrawer[data-open="true"] .logToggle .caret{transform:rotate(90deg)}
+.logToggle .tail{
+  flex:1 1 auto;min-width:0;text-align:right;font-weight:500;color:var(--faint);
+  font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.logBody{display:none;height:min(34vh,300px);overflow:auto;background:var(--sunk);border-top:1px solid var(--line)}
+.logDrawer[data-open="true"] .logBody{display:block}
+.logBody pre{
+  margin:0;padding:14px 20px;font-size:12px;line-height:1.65;white-space:pre-wrap;word-break:break-word;
+  color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+
+/* ---------------------------------------------------------------- toast */
+.toast{
+  position:fixed;left:50%;bottom:78px;transform:translate(-50%,14px);
+  max-width:min(560px,86vw);padding:11px 18px;border-radius:11px;
+  background:var(--text);color:var(--bg);font-size:13.5px;font-weight:650;
+  box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;
+  transition:opacity 180ms ease,transform 180ms ease;z-index:50;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:900px){
+  /* One column. The queue becomes a filmstrip across the top so the core being reviewed
+     still gets the space, and the detail takes the flexible row rather than the queue. */
+  .review{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .queue{border-right:0;border-bottom:1px solid var(--line);grid-template-rows:auto auto}
+  .queueHead{padding:10px 14px 8px}
+  .queueList{
+    display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
+    padding:8px 14px 12px;align-content:stretch;
+  }
+  .coreRow{
+    flex:0 0 88px;grid-template-columns:1fr;justify-items:center;gap:5px;
+    padding:6px;text-align:center;position:relative;
+  }
+  .coreRow .thumb{width:72px;height:72px}
+  .coreRow .sub{display:none}
+  .coreRow .nm{font-size:13px}
+  .coreRow[data-edited="true"] .nm::after{display:block;margin:2px auto 0;width:fit-content}
+  .coreRow .tick{position:absolute;top:4px;right:4px;width:18px;height:18px;background:var(--surface)}
+  .coreRow[data-checked="true"] .tick{background:var(--ok)}
+
+  .gridGate{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
+  .gridStage{border-right:0;border-bottom:1px solid var(--line)}
+  .sideRail{max-height:44vh;padding:16px}
+  .actionBar{flex-wrap:wrap}
+  .actionBar .ask{flex:1 1 100%}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <b>CoreAlign Studio</b>
-  <span class="spacer"></span>
-  <span class="state idle" id="state" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="stateText">Ready</span></span>
-  <button class="ghost" id="newRun" hidden>New slide</button>
-</header>
+<div class="app">
 
-<main>
-  <div class="err" id="error" hidden></div>
-
-  <section id="setup">
-    <h1>Prepare a TMA slide.</h1>
-    <p class="lede">Pick a slide, answer two questions, press Start. CoreAlign runs on the cluster
-      and comes back here when it needs you. Nothing is exported until you approve it.</p>
-
-    <section class="step">
-      <div class="stephead"><span class="num">1</span> Choose the slide</div>
-      <div class="body">
-        <div class="crumb" id="crumb"></div>
-        <div class="list" id="browser" role="group" aria-label="Folders and slides"></div>
-        <p class="hint" id="pickHint">Results are written beside the slide, so the folder has to be yours to write to.</p>
-      </div>
-    </section>
-
-    <section class="step">
-      <div class="stephead"><span class="num">2</span> Two choices</div>
-      <div class="body">
-        <div class="field"><span>Tissue</span>
-          <span class="seg" id="tissue">
-            <button data-v="skin" aria-pressed="true">Skin</button>
-            <button data-v="other" aria-pressed="false">Other tissue</button>
-          </span>
-          <span class="hint" id="tissueHint">Keeps the epidermis at the top of every core.</span>
-        </div>
-        <div class="field"><span>Results</span>
-          <span class="seg" id="output">
-            <button data-v="presentation" aria-pressed="true">Images</button>
-            <button data-v="research" aria-pressed="false">Images + research files</button>
-          </span>
-          <span class="hint" id="outputHint">Full resolution PNG, one per core.</span>
-        </div>
-        <p class="hint">Rows, columns, core size and array position are measured from the slide. You are never asked for them.</p>
-      </div>
-    </section>
-
-    <button class="primary" id="start" disabled>Start</button>
-  </section>
-
-  <section id="live" hidden>
-    <div class="gate" id="gate" hidden>
-      <div>
-        <span class="k">CoreAlign is waiting for you</span>
-        <strong id="gateTitle"></strong>
-        <p id="gateSummary"></p>
-      </div>
-      <button class="primary" id="gateGo"></button>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2v3.06a7 7 0 0 1 5.94 5.94H22v2h-3.06A7 7 0 0 1 13 18.94V22h-2v-3.06A7 7 0 0 1 5.06 13H2v-2h3.06A7 7 0 0 1 11 5.06V2h2zm-1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg></span>
+      CoreAlign Studio
     </div>
+    <div class="slideName" id="slideName">ยังไม่ได้เลือกสไลด์</div>
+    <div class="pill" id="statePill" data-tone="idle"><i class="dot"></i><span id="stateText">พร้อมใช้งาน</span></div>
+    <div class="clock" id="clock" hidden>0:00</div>
+    <button class="iconBtn" id="themeBtn" title="สลับโหมดสว่างและมืด" aria-label="สลับโหมดสว่างและมืด">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.51 4.93l1.42-1.42 2.12 2.12-1.41 1.42-2.13-2.12zm12.44 12.44l1.41-1.41 2.12 2.12-1.41 1.41-2.12-2.12zM19.07 3.5l1.42 1.42-2.12 2.12-1.42-1.41 2.12-2.13zM6.64 15.95l1.41 1.41-2.12 2.12-1.41-1.41 2.12-2.12zM23 11v2h-3v-2h3zM4 11v2H1v-2h3z"/></svg>
+    </button>
+  </header>
 
-    <h1 id="liveTitle">Working on it.</h1>
-    <p class="lede" id="liveText"></p>
+  <nav class="stages" id="stages" aria-label="ขั้นตอนการทำงาน"></nav>
 
-    <section class="step" id="reportStep" hidden>
-      <div class="stephead"><span class="num">3</span> Review</div>
-      <div class="body"><iframe id="report" title="CoreAlign report"></iframe></div>
+  <main class="stageBody">
+
+    <!-- 1 ---------------------------------------------------------- pick a slide -->
+    <section class="panel picker" data-panel="slide" aria-label="เลือกสไลด์">
+      <div class="pickerHead">
+        <h1>เลือกสไลด์ที่จะจัดเรียง</h1>
+        <p class="lede">ไฟล์ <code>.ome.tif</code> หรือ <code>.tif</code> ในโฟลเดอร์ที่คุณเข้าถึงได้</p>
+        <div class="crumbs" id="crumbs"></div>
+      </div>
+      <div class="pickerBody"><div class="fileList" id="fileList"></div></div>
     </section>
 
-    <section class="step" id="resultsStep" hidden>
-      <div class="stephead"><span class="num">4</span> Results and export</div>
-      <div class="body">
-        <div class="exportBar">
-          <b>Take everything with you</b>
-          <button class="primary" id="exportAll">Export all as one zip</button>
-          <span class="sub" id="exportTotal"></span>
+    <!-- 2 ------------------------------------------------------------- two choices -->
+    <section class="panel center" data-panel="setup" aria-label="ตั้งค่าก่อนเริ่ม">
+      <div class="card rowGap">
+        <div>
+          <h1>ตอบสองข้อ แล้วกดเริ่ม</h1>
+          <p class="lede" id="setupSlide"></p>
         </div>
-        <div class="res" id="results"></div>
+
+        <div class="choice">
+          <span class="label">1 · เนื้อเยื่อชนิดไหน</span>
+          <div class="segmented" id="tissueChoice" role="group" aria-label="ชนิดเนื้อเยื่อ">
+            <button type="button" data-value="skin" aria-pressed="true">
+              <span class="t">ผิวหนัง</span>
+              <span class="d">หมุนให้ชั้นหนังกำพร้าอยู่ด้านบน</span>
+            </button>
+            <button type="button" data-value="other" aria-pressed="false">
+              <span class="t">เนื้อเยื่ออื่น</span>
+              <span class="d">หมุนให้ขอบเนื้อเยื่อที่เด่นที่สุดอยู่ด้านบน</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="choice">
+          <span class="label">2 · ต้องการไฟล์แบบไหน</span>
+          <div class="segmented" id="outputChoice" role="group" aria-label="ชนิดไฟล์ผลลัพธ์">
+            <button type="button" data-value="presentation" aria-pressed="true">
+              <span class="t">ภาพสำหรับนำเสนอ</span>
+              <span class="d">PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core · เร็วกว่ามาก</span>
+            </button>
+            <button type="button" data-value="research" aria-pressed="false">
+              <span class="t">ไฟล์สำหรับวิเคราะห์ต่อ</span>
+              <span class="d">OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="priorRun" id="priorRun" hidden>
+          <div class="txt">
+            <b>โฟลเดอร์นี้เคยผ่าน CoreAlign มาแล้ว</b>
+            <span id="priorRunNote"></span>
+          </div>
+          <button class="btn" id="openPrior">ดูผลเดิม</button>
+        </div>
+
+        <div class="controlsRow">
+          <button class="btn quiet" id="backToPicker">เปลี่ยนสไลด์</button>
+          <span class="spacer"></span>
+          <button class="btn primary big" id="startBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.376 12.416L8.777 19.482A.5.5 0 0 1 8 19.066V4.934a.5.5 0 0 1 .777-.416l10.599 7.066a.5.5 0 0 1 0 .832z"/></svg>
+            เริ่มประมวลผล
+          </button>
+        </div>
       </div>
     </section>
 
-    <section class="step">
-      <div class="stephead"><span class="num">5</span> Progress log</div>
-      <div class="body"><pre class="log" id="log"></pre>
-        <p class="hint"><button class="ghost" id="stop">Stop this run</button></p>
+    <!-- 3 ------------------------------------------------------------------ running -->
+    <section class="panel running" data-panel="run" aria-label="กำลังประมวลผล">
+      <div class="runCard">
+        <h1>กำลังประมวลผล</h1>
+        <div class="bar indeterminate" id="runBar"><i style="width:100%"></i></div>
+        <div class="runStep" id="runStep">กำลังเปิดสไลด์</div>
+        <div class="runCounts" id="runCounts" hidden></div>
+        <div class="controlsRow" style="justify-content:center;margin-top:22px">
+          <button class="btn danger" id="stopBtn">หยุดการทำงาน</button>
+        </div>
       </div>
     </section>
-  </section>
-</main>
+
+    <!-- 4a ---------------------------------------------------------------- grid gate -->
+    <section class="panel gridGate" data-panel="grid" aria-label="ตรวจกริด">
+      <div class="gridStage" id="gridStage" style="position:relative">
+        <img id="gridImg" alt="ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ">
+        <span class="zoomHint" id="zoomHint">คลิกที่ภาพเพื่อขยายเต็มขนาด</span>
+      </div>
+      <aside class="sideRail">
+        <div>
+          <h2>ตรวจว่าวงกลมตรงกับเนื้อเยื่อไหม</h2>
+          <p class="lede">ถ้าตรงแล้วกดปุ่มด้านล่างเพื่อไปต่อ · ถ้ามี core ที่ระบบมองไม่เห็น ให้วาดวงรีทับใน QuPath แล้วตั้งชื่อว่า <code>TMA correction</code></p>
+        </div>
+        <div class="strip" id="gridStrip"></div>
+        <ul class="warnList" id="gridWarnings"></ul>
+      </aside>
+    </section>
+
+    <!-- 4b --------------------------------------------------------------- core review -->
+    <section class="panel review" data-panel="review" aria-label="ตรวจ core ที่หมุนแล้ว">
+      <div class="queue">
+        <div class="queueHead">
+          <div class="chips" id="filterChips"></div>
+          <div class="queueCount" id="queueCount"></div>
+        </div>
+        <div class="queueList" id="queueList"></div>
+      </div>
+      <div class="detail">
+        <div class="viewer">
+          <span class="topMark">
+            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414L13 7.828z"/></svg>
+            ด้านบน
+          </span>
+          <img id="viewerImg" alt="">
+          <span class="viewerTag" id="viewerTag"></span>
+          <button class="viewerNav prev" id="prevCore" aria-label="core ก่อนหน้า">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.828 12l4.95 4.95-1.414 1.414L8 12l6.364-6.364 1.414 1.414z"/></svg>
+          </button>
+          <button class="viewerNav next" id="nextCore" aria-label="core ถัดไป">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>
+          </button>
+        </div>
+        <div class="controls">
+          <div class="controlsTop">
+            <span class="who" id="coreName">—</span>
+            <span class="facts" id="coreFacts"></span>
+            <span class="spacer"></span>
+            <span class="reasonTag" id="coreReason" hidden></span>
+          </div>
+          <div class="dial">
+            <div class="nudges">
+              <button class="nudge" data-nudge="-90">−90°</button>
+              <button class="nudge" data-nudge="-5">−5°</button>
+              <button class="nudge" data-nudge="-1">−1°</button>
+            </div>
+            <input type="range" id="angle" min="-180" max="180" step="0.5" value="0" aria-label="ปรับมุมหมุนเพิ่มเติม">
+            <div class="nudges">
+              <button class="nudge" data-nudge="1">+1°</button>
+              <button class="nudge" data-nudge="5">+5°</button>
+              <button class="nudge" data-nudge="90">+90°</button>
+            </div>
+          </div>
+          <div class="controlsRow">
+            <span class="angleBox"><input type="number" id="angleNum" step="0.5" min="-180" max="180" value="0" aria-label="มุมที่ปรับ">°</span>
+            <button class="nudge" data-nudge="180" style="min-width:86px">กลับหัว 180°</button>
+            <button class="btn quiet" id="resetAngle">คืนค่าเดิม</button>
+            <span class="spacer"></span>
+            <span class="hint"><kbd>←</kbd><kbd>→</kbd> เปลี่ยน core · <kbd>space</kbd> ผ่าน · <kbd>0</kbd> คืนค่า</span>
+            <button class="btn confirm" id="confirmCore">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg>
+              <span id="confirmLabel">ถูกต้อง</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 ------------------------------------------------------------------- export -->
+    <section class="panel export" data-panel="export" aria-label="ผลลัพธ์">
+      <div class="exportInner">
+        <div>
+          <h1 id="exportTitle">ผลลัพธ์</h1>
+          <p class="lede" id="exportPath"></p>
+        </div>
+        <div class="strip" id="exportStrip"></div>
+        <div class="groupList" id="groupList"></div>
+        <div class="controlsRow">
+          <button class="btn quiet" id="newRun">เริ่มสไลด์ใหม่</button>
+          <span class="spacer"></span>
+          <button class="btn primary big" id="zipAll">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
+            ดาวน์โหลดทั้งหมดเป็น zip
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="actionBar" id="actionBar" hidden>
+    <div class="ask">
+      <b id="askTitle"></b>
+      <span id="askSummary"></span>
+    </div>
+    <span class="saveState" id="saveState"></span>
+    <button class="btn" id="saveEdits" hidden>บันทึกมุมที่ปรับ</button>
+    <button class="btn primary big" id="gateGo"></button>
+  </div>
+
+  <div class="logDrawer" id="logDrawer" data-open="false">
+    <button class="logToggle" id="logToggle" aria-expanded="false">
+      <svg class="caret" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>
+      บันทึกการทำงาน
+      <span class="tail" id="logTail"></span>
+    </button>
+    <div class="logBody"><pre id="logText"></pre></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 "use strict";
-var picked = null, tissue = "skin", output = "presentation", timer = null, lastGate = "", reportLoaded = false;
-var $ = function (id) { return document.getElementById(id); };
-
-function showError(text) { var box = $("error"); box.textContent = text || ""; box.hidden = !text; }
-
-async function api(path, options) {
-  var response = await fetch(path, options || {});
-  var data = {};
-  try { data = await response.json(); } catch (e) {}
-  if (!response.ok) throw new Error(data.error || ("request failed: " + response.status));
-  return data;
+var $ = function(id){ return document.getElementById(id); };
+var api = function(path, options){
+  return fetch(path, Object.assign({cache:"no-store"}, options || {})).then(function(r){
+    return r.json().then(function(body){ return {ok:r.ok, body:body}; })
+                   .catch(function(){ return {ok:r.ok, body:{}}; });
+  }).catch(function(){ return {ok:false, body:{}}; });
+};
+var toastTimer = 0;
+function toast(message){
+  var el = $("toast"); el.textContent = message; el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove("show"); }, 3200);
 }
 
-// ---- slide picker ----------------------------------------------------------
-async function browse(path) {
-  try {
-    var data = await api("/api/browse?path=" + encodeURIComponent(path || ""));
-    var list = $("browser"); list.innerHTML = "";
-    if (data.parent) list.appendChild(makeRow("↑", "Up one folder", "", function () { browse(data.parent); }, "Go up"));
-    data.folders.forEach(function (folder) {
-      list.appendChild(makeRow("\u{1F4C1}", folder.name, "", function () { browse(folder.path); }, "Folder"));
+/* ------------------------------------------------------------------ theme */
+(function(){
+  var saved = localStorage.getItem("corealign-studio-theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+  $("themeBtn").addEventListener("click", function(){
+    var now = document.documentElement.dataset.theme;
+    var isDark = now === "dark" ||
+      (now !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = isDark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("corealign-studio-theme", next);
+  });
+})();
+
+/* ------------------------------------------------------------------ stages */
+var STAGES = [
+  {key:"slide",  label:"เลือกสไลด์"},
+  {key:"setup",  label:"ตั้งค่า"},
+  {key:"run",    label:"ประมวลผล"},
+  {key:"review", label:"ตรวจผล"},
+  {key:"export", label:"ผลลัพธ์"}
+];
+var stage = "slide";
+var reached = {slide:true};
+
+function buildStages(){
+  var nav = $("stages"); nav.textContent = "";
+  STAGES.forEach(function(item, index){
+    if (index) { var sep = document.createElement("i"); sep.className = "stageSep"; nav.appendChild(sep); }
+    var b = document.createElement("button");
+    b.className = "stageTab"; b.dataset.key = item.key; b.type = "button";
+    b.innerHTML = '<span class="num">' + (index + 1) + "</span>";
+    b.appendChild(document.createTextNode(item.label));
+    b.addEventListener("click", function(){
+      if (!reached[item.key]) return;
+      setStage(item.key === "review" && lastGateId === "grid" ? "grid" : item.key);
+      drawActionBar();
     });
-    data.slides.forEach(function (slide) {
-      var note = slide.size;
-      if (slide.reachable === false) note += " · not reachable from this app";
-      else if (!slide.folderWritable) note += " · folder is read only";
-      var row = makeRow("\u{1F52C}", slide.name, note, function () { choose(slide, row); }, "Slide");
-      if (!slide.folderWritable || slide.reachable === false) row.style.opacity = ".55";
-      list.appendChild(row);
+    nav.appendChild(b);
+  });
+}
+function paintStages(){
+  var order = STAGES.map(function(s){ return s.key; });
+  var here = order.indexOf(stage === "grid" ? "review" : stage);
+  document.querySelectorAll(".stageTab").forEach(function(tab){
+    var index = order.indexOf(tab.dataset.key);
+    tab.dataset.state = index === here ? "now" : (index < here ? "done" : "next");
+    tab.disabled = !reached[tab.dataset.key];
+  });
+}
+function setStage(next){
+  stage = next;
+  reached[next === "grid" ? "review" : next] = true;
+  document.querySelectorAll(".panel").forEach(function(panel){
+    panel.classList.toggle("is-active", panel.dataset.panel === next);
+  });
+  paintStages();
+}
+
+/* ------------------------------------------------------------------ picker */
+var chosenSlide = null, tissue = "skin", output = "presentation";
+
+function browse(path){
+  api("/api/browse?path=" + encodeURIComponent(path || "")).then(function(res){
+    if (!res.ok) { toast(res.body.error || "เปิดโฟลเดอร์นี้ไม่ได้"); return; }
+    var data = res.body;
+    var crumbs = $("crumbs"); crumbs.textContent = "";
+    if (data.parent) {
+      var up = document.createElement("button");
+      up.type = "button"; up.textContent = "↑ ขึ้นหนึ่งชั้น";
+      up.addEventListener("click", function(){ browse(data.parent); });
+      crumbs.appendChild(up);
+    }
+    var here = document.createElement("span");
+    here.className = "where"; here.textContent = data.path || "";
+    crumbs.appendChild(here);
+
+    var list = $("fileList"); list.textContent = "";
+    (data.folders || []).forEach(function(folder){
+      list.appendChild(fileRow("folder", folder.name, "", false, function(){ browse(folder.path); }));
     });
-    if (!data.folders.length && !data.slides.length) {
-      var empty = document.createElement("div");
-      empty.className = "row"; empty.style.cursor = "default";
-      empty.textContent = "Nothing to open in this folder.";
+    (data.slides || []).forEach(function(slide){
+      var blocked = !slide.reachable || !slide.folderWritable;
+      var meta = !slide.reachable ? "อยู่นอกพื้นที่ที่เปิดให้เข้าถึง"
+        : (!slide.folderWritable ? slide.size + " · เขียนไฟล์ในโฟลเดอร์นี้ไม่ได้" : slide.size);
+      list.appendChild(fileRow("slide", slide.name, meta, blocked, function(){ pick(slide); }));
+    });
+    if (!(data.folders || []).length && !(data.slides || []).length) {
+      var empty = document.createElement("p");
+      empty.className = "emptyNote";
+      empty.textContent = "โฟลเดอร์นี้ไม่มีสไลด์และไม่มีโฟลเดอร์ย่อย";
       list.appendChild(empty);
     }
-    var crumb = $("crumb"); crumb.innerHTML = "";
-    var label = document.createElement("span"); label.textContent = data.path; crumb.appendChild(label);
-    showError("");
-  } catch (error) { showError(error.message); }
-}
-
-function makeRow(icon, label, meta, onClick, kind) {
-  var row = document.createElement("button");
-  row.type = "button"; row.className = "row";
-  // The visible text sits in child spans, and the icon is decorative, so the button needs an
-  // explicit name or it is announced as nothing at all.
-  row.setAttribute("aria-label", (kind ? kind + ": " : "") + label + (meta ? ", " + meta : ""));
-  row.innerHTML = '<span class="ic" aria-hidden="true"></span><span class="name"></span><span class="meta"></span>';
-  row.querySelector(".ic").textContent = icon;
-  row.querySelector(".name").textContent = label;
-  row.querySelector(".meta").textContent = meta || "";
-  row.addEventListener("click", onClick);
-  return row;
-}
-
-function choose(slide, row) {
-  if (slide.reachable === false) {
-    showError("This app cannot open that slide." +
-      (slide.linkTarget ? " It is a link to " + slide.linkTarget + ", which is outside the folders it may read." : ""));
-    return;
-  }
-  if (!slide.folderWritable) {
-    showError("CoreAlign writes its results beside the slide, and that folder is read only. " +
-              "Copy the slide into your locker first.");
-    return;
-  }
-  picked = slide;
-  Array.prototype.forEach.call(document.querySelectorAll(".row.sel"), function (element) { element.classList.remove("sel"); });
-  row.classList.add("sel");
-  $("pickHint").textContent = "Selected: " + slide.name;
-  $("start").disabled = false;
-  showError("");
-}
-
-// ---- the two choices -------------------------------------------------------
-function wireSegment(id, onPick) {
-  $(id).addEventListener("click", function (event) {
-    var button = event.target.closest("button"); if (!button) return;
-    Array.prototype.forEach.call(this.querySelectorAll("button"), function (other) {
-      other.setAttribute("aria-pressed", String(other === button));
-    });
-    onPick(button.dataset.v);
   });
 }
-wireSegment("tissue", function (value) {
-  tissue = value;
-  $("tissueHint").textContent = value === "skin"
-    ? "Keeps the epidermis at the top of every core."
-    : "Keeps the strongest outer tissue edge at the top.";
-});
-wireSegment("output", function (value) {
-  output = value;
-  $("outputHint").textContent = value === "presentation"
-    ? "Full resolution PNG, one per core."
-    : "PNG, multichannel OME-TIFF, and an ordered QuPath project.";
-});
-
-// ---- run -------------------------------------------------------------------
-$("start").addEventListener("click", async function () {
-  if (!picked) return;
-  this.disabled = true;
-  try {
-    await api("/api/run", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slide: picked.path, tissue: tissue, output: output })
-    });
-    $("setup").hidden = true; $("live").hidden = false; $("newRun").hidden = false;
-    poll();
-  } catch (error) { showError(error.message); this.disabled = false; }
-});
-
-$("stop").addEventListener("click", async function () {
-  if (!confirm("Stop this run? Finished cores are kept and it can be resumed later.")) return;
-  try { await api("/api/stop", { method: "POST" }); } catch (error) { showError(error.message); }
-});
-
-$("newRun").addEventListener("click", async function () {
-  try { await api("/api/reset", { method: "POST" }); } catch (error) {}
-  location.reload();
-});
-
-$("gateGo").addEventListener("click", async function () {
-  var gate = this.dataset.gate; if (!gate) return;
-  this.disabled = true;
-  try {
-    var result = await api("/api/bridge/gate", {
-      method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ gate: gate, decision: "continue" })
-    });
-    if (!result.ok) throw new Error(result.error || "CoreAlign did not accept that");
-    $("gate").hidden = true; lastGate = "";
-  } catch (error) { showError(error.message); this.disabled = false; }
-});
-
-// ---- status ----------------------------------------------------------------
-var TITLES = {
-  running: ["Working on it.", "CoreAlign is running on the cluster. You can leave this page open."],
-  complete: ["Finished.", "Your files are in results/ beside the slide."],
-  stopped: ["Stopped safely.", "Nothing was lost. The log below says where it stopped."],
-  failed: ["That run failed.", "The log below has the reason."],
-  cancelled: ["Stopped.", "Finished cores are kept. Starting again resumes from the last one."]
-};
-
-async function poll() {
-  try {
-    var status = await api("/api/status");
-    var badge = $("state");
-    badge.className = "state " + status.state;
-    $("stateText").textContent = status.state.charAt(0).toUpperCase() + status.state.slice(1);
-
-    var copy = TITLES[status.state] || TITLES.running;
-    $("liveTitle").textContent = copy[0];
-    $("liveText").textContent = status.message || copy[1];
-
-    if (status.gate && status.gate.gate) {
-      $("gate").hidden = false;
-      $("gateTitle").textContent = status.gate.title || "Check the result";
-      $("gateSummary").textContent = status.gate.summary || "";
-      var go = $("gateGo");
-      go.textContent = status.gate.primaryLabel || "Continue";
-      go.dataset.gate = status.gate.gate;
-      if (lastGate !== status.gate.gate) { go.disabled = false; lastGate = status.gate.gate; }
-    } else {
-      $("gate").hidden = true; lastGate = "";
-    }
-
-    renderResults(status.results || []);
-
-    if (status.hasReport) {
-      $("reportStep").hidden = false;
-      var frame = $("report");
-      // Reload the report whenever a gate opens or closes: CoreAlign rewrites it at both edges.
-      var wanted = "/project/REPORT.html?v=" + (status.gate ? status.gate.gate : status.state);
-      if (frame.dataset.src !== wanted) { frame.dataset.src = wanted; frame.src = wanted; }
-    }
-
-    var log = await api("/api/log");
-    var pre = $("log");
-    var atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
-    pre.textContent = log.log || "";
-    if (atBottom) pre.scrollTop = pre.scrollHeight;
-
-    var done = ["complete", "failed", "cancelled", "stopped"].indexOf(status.state) >= 0;
-    $("stop").hidden = done;
-    timer = setTimeout(poll, done ? 5000 : 1500);
-  } catch (error) {
-    showError(error.message);
-    timer = setTimeout(poll, 4000);
-  }
+function fileRow(kind, name, meta, blocked, onClick){
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "fileRow" + (kind === "slide" ? " slide" : "");
+  if (blocked) b.setAttribute("disabled", "disabled");
+  var path = kind === "slide"
+    ? 'M20 5H4v14h16V5zM2 4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4zm5.5 8a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM19 17l-4.5-6-3.5 4.5-2-2.5L6 17h13z'
+    : 'M12.414 5H21a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7.414l2 2zM4 5v14h16V7h-8.414l-2-2H4z';
+  b.innerHTML = '<span class="ico"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="' + path + '"/></svg></span><span class="nm"></span><span class="meta"></span>';
+  b.querySelector(".nm").textContent = name;
+  b.querySelector(".meta").textContent = meta || "";
+  if (!blocked) b.addEventListener("click", onClick);
+  return b;
+}
+function pick(slide){
+  chosenSlide = slide;
+  $("slideName").textContent = slide.name;
+  $("setupSlide").textContent = slide.path;
+  reached.setup = true;
+  setStage("setup");
+  // If this folder has been through CoreAlign before, show what is already there rather
+  // than making a person run it again to find out.
+  model = null; reviewKey = ""; lastGateId = "";
+  api("/api/attach", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({slide:slide.path})}).then(function(){ poll(); });
 }
 
-// ---- results and export ----------------------------------------------------
-var lastResultsKey = "";
+function segmented(containerId, onChange){
+  $(containerId).addEventListener("click", function(event){
+    var button = event.target.closest("button[data-value]");
+    if (!button) return;
+    var children = this.children;
+    for (var i = 0; i < children.length; i++)
+      children[i].setAttribute("aria-pressed", String(children[i] === button));
+    onChange(button.dataset.value);
+  });
+}
+segmented("tissueChoice", function(value){ tissue = value; });
+segmented("outputChoice", function(value){ output = value; });
+$("backToPicker").addEventListener("click", function(){ setStage("slide"); });
+$("openPrior").addEventListener("click", function(){ setStage("review"); drawActionBar(); });
 
-function renderResults(groups) {
-  var key = groups.map(function (g) { return g.key + ":" + g.count + ":" + g.size; }).join("|");
-  if (key === lastResultsKey) return;
-  lastResultsKey = key;
+function startRun(button){
+  if (!chosenSlide) { toast("เลือกสไลด์ก่อน"); return; }
+  button.disabled = true;
+  api("/api/run", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({slide:chosenSlide.path, tissue:tissue, output:output})})
+  .then(function(res){
+    button.disabled = false;
+    if (!res.ok) { toast(res.body.error || "เริ่มไม่สำเร็จ"); return; }
+    reviewKey = ""; model = null; lastGateId = "";
+    setStage("run"); poll();
+  });
+}
+$("startBtn").addEventListener("click", function(){ startRun(this); });
+$("stopBtn").addEventListener("click", function(){
+  api("/api/stop", {method:"POST"}).then(function(){ toast("หยุดแล้ว"); poll(); });
+});
+$("newRun").addEventListener("click", function(){
+  api("/api/reset", {method:"POST"}).then(function(){
+    chosenSlide = null; model = null; reviewKey = ""; lastGateId = "";
+    reached = {slide:true};
+    setStage("slide"); browse("");
+  });
+});
 
-  var step = $("resultsStep");
-  if (!groups.length) { step.hidden = true; return; }
-  step.hidden = false;
+/* ------------------------------------------------------------------ review model */
+var model = null;      // the /api/review payload
+var reviewKey = "";    // baseRun of the model currently drawn
+var filter = "review";
+var current = 0;
+var visible = [];
+var edits = {};        // core -> cumulative web adjustment in degrees
+var checked = {};      // core -> true
+var savedEdits = {};   // what the bridge already holds
 
-  var totalFiles = groups.reduce(function (sum, g) { return sum + g.count; }, 0);
-  $("exportTotal").textContent = totalFiles + " file" + (totalFiles === 1 ? "" : "s") +
-    " across " + groups.length + " folder" + (groups.length === 1 ? "" : "s");
+function storeKey(){ return "corealign-studio:" + (model ? model.baseRun : "none"); }
+function loadLocal(){
+  edits = {}; checked = {};
+  try {
+    var raw = JSON.parse(localStorage.getItem(storeKey()) || "{}");
+    edits = raw.edits || {}; checked = raw.checked || {};
+  } catch (error) { edits = {}; checked = {}; }
+  Object.keys(savedEdits).forEach(function(name){
+    if (!(name in edits)) edits[name] = savedEdits[name];
+  });
+}
+function saveLocal(){
+  try { localStorage.setItem(storeKey(), JSON.stringify({edits:edits, checked:checked})); }
+  catch (error) { /* a full quota must not break the review */ }
+}
+function baseAngleOf(core){ return Number(core.adjustmentDeg || 0); }
+function angleOf(core){ return core.core in edits ? Number(edits[core.core]) : baseAngleOf(core); }
+function isEdited(core){ return Math.abs(angleOf(core) - baseAngleOf(core)) >= 0.05; }
 
-  var host = $("results"); host.innerHTML = "";
-  groups.forEach(function (group) {
-    var card = document.createElement("article");
-    card.className = "resCard";
+var FILTERS = [
+  {key:"review",  label:"ต้องตรวจ",       test:function(c){ return c.status === "review"; }},
+  {key:"edited",  label:"ปรับแล้ว",        test:function(c){ return isEdited(c); }},
+  {key:"ok",      label:"ผ่านแล้ว",        test:function(c){ return c.status === "ok"; }},
+  {key:"missing", label:"ไม่มีเนื้อเยื่อ", test:function(c){ return c.status !== "ok" && c.status !== "review"; }},
+  {key:"all",     label:"ทั้งหมด",         test:function(){ return true; }}
+];
+function filterTest(key){
+  for (var i = 0; i < FILTERS.length; i++) if (FILTERS[i].key === key) return FILTERS[i].test;
+  return FILTERS[FILTERS.length - 1].test;
+}
 
-    var title = document.createElement("h3"); title.textContent = group.title;
-    var count = document.createElement("p"); count.className = "n"; count.textContent = group.count;
-    var sub = document.createElement("p"); sub.className = "sub";
-    sub.textContent = (group.count === 1 ? "file" : "files") + " · " + group.size;
-    var note = document.createElement("p"); note.className = "note"; note.textContent = group.note;
+function drawReview(fresh){
+  if (!model || !model.available) return;
+  if (fresh) {
+    savedEdits = model.corrections || {};
+    loadLocal();
+    var pending = model.cores.filter(function(c){ return c.status === "review"; });
+    filter = pending.length ? "review" : "all";
+    current = 0;
+  }
+  drawChips();
+  applyFilter(fresh);
+}
+function drawChips(){
+  var box = $("filterChips"); box.textContent = "";
+  FILTERS.forEach(function(item){
+    var count = model.cores.filter(item.test).length;
+    if (!count && item.key !== "all" && item.key !== filter) return;
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "chip";
+    b.setAttribute("aria-pressed", String(filter === item.key));
+    b.innerHTML = '<span class="n"></span>';
+    b.insertBefore(document.createTextNode(item.label), b.firstChild);
+    b.querySelector(".n").textContent = count;
+    b.addEventListener("click", function(){
+      filter = item.key; current = 0; drawChips(); applyFilter(true);
+    });
+    box.appendChild(b);
+  });
+}
+function applyFilter(rebuild){
+  var previous = visible[current] ? visible[current].core : "";
+  visible = model.cores.filter(filterTest(filter));
+  if (!rebuild) {
+    var found = visible.map(function(c){ return c.core; }).indexOf(previous);
+    current = found >= 0 ? found : Math.min(current, Math.max(0, visible.length - 1));
+  }
+  updateQueueCount();
+  drawQueue();
+  drawDetail();
+  drawActionBar();
+}
+function updateQueueCount(){
+  var done = visible.filter(function(c){ return checked[c.core]; }).length;
+  $("queueCount").textContent = visible.length
+    ? "ตรวจแล้ว " + done + " จาก " + visible.length
+    : "ไม่มี core ในตัวกรองนี้";
+}
+function drawQueue(){
+  var list = $("queueList"); list.textContent = "";
+  visible.forEach(function(core, index){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "coreRow";
+    b.dataset.checked = String(!!checked[core.core]);
+    b.dataset.edited = String(isEdited(core));
+    if (index === current) b.setAttribute("aria-current", "true");
+    var dot = core.status === "ok" ? "ok"
+      : (core.status === "review" ? "review"
+      : (core.status === "missing" ? "missing" : "error"));
+    var confidence = core.confidence == null ? "—" : Math.round(core.confidence * 100) + "%";
+    b.innerHTML =
+      '<img class="thumb" alt="" loading="lazy" decoding="async">' +
+      '<span><span class="nm"></span><br>' +
+      '<span class="sub"><i class="sDot" data-s="' + dot + '"></i>ความมั่นใจ ' + confidence + '</span></span>' +
+      '<span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg></span>';
+    b.querySelector(".nm").textContent = core.core;
+    if (core.rotated) b.querySelector(".thumb").src = "/project/" + core.rotated;
+    b.addEventListener("click", function(){
+      current = index;
+      markCurrentRow();
+      drawDetail();
+    });
+    list.appendChild(b);
+  });
+  var active = list.children[current];
+  if (active) active.scrollIntoView({block:"nearest"});
+}
+function markCurrentRow(){
+  var list = $("queueList");
+  for (var i = 0; i < list.children.length; i++) {
+    if (i === current) list.children[i].setAttribute("aria-current", "true");
+    else list.children[i].removeAttribute("aria-current");
+  }
+  var active = list.children[current];
+  if (active) active.scrollIntoView({block:"nearest"});
+}
+function drawDetail(){
+  var core = visible[current];
+  $("prevCore").disabled = current <= 0;
+  $("nextCore").disabled = current >= visible.length - 1;
+  var img = $("viewerImg");
+  if (!core) {
+    img.removeAttribute("src"); img.dataset.core = "";
+    $("coreName").textContent = "—";
+    $("coreFacts").textContent = "";
+    $("viewerTag").textContent = "";
+    $("coreReason").hidden = true;
+    return;
+  }
+  if (img.dataset.core !== core.core) {
+    img.dataset.core = core.core;
+    img.src = core.rotated ? "/project/" + core.rotated : "";
+    img.alt = "core " + core.core;
+  }
+  $("coreName").textContent = core.core;
+  var residual = core.residualDeg == null ? "—" : core.residualDeg.toFixed(1) + "°";
+  var confidence = core.confidence == null ? "—" : Math.round(core.confidence * 100) + "%";
+  var applied = core.rotateToTopDeg == null ? "—" : core.rotateToTopDeg.toFixed(1) + "°";
+  $("coreFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
+    " · หมุนอัตโนมัติ " + applied + " · ความมั่นใจ " + confidence + " · เหลือเอียง " + residual;
+  $("viewerTag").textContent = core.core + "  ·  " + (current + 1) + "/" + visible.length;
+  var reason = (core.reasons || []).join(" · ");
+  $("coreReason").hidden = !reason;
+  $("coreReason").textContent = reason;
+  setAngle(angleOf(core), false);
+  $("confirmLabel").textContent = checked[core.core] ? "ยกเลิกการผ่าน" : "ถูกต้อง";
+}
+function setAngle(value, mark){
+  var core = visible[current];
+  if (!core) return;
+  var angle = Math.max(-180, Math.min(180, Number(value) || 0));
+  $("angle").value = String(angle);
+  $("angleNum").value = String(Math.round(angle * 10) / 10);
+  // Rotating a contained image clips its corners. Scale by 1/(|cos|+|sin|) so the whole
+  // core stays inside the frame at every angle.
+  var delta = angle - baseAngleOf(core);
+  var radians = delta * Math.PI / 180;
+  var fit = 1 / (Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians)));
+  $("viewerImg").style.transform = "rotate(" + delta + "deg) scale(" + fit.toFixed(4) + ")";
+  if (!mark) return;
+  if (Math.abs(angle - baseAngleOf(core)) < 0.05) delete edits[core.core];
+  else edits[core.core] = angle;
+  saveLocal();
+  var row = $("queueList").children[current];
+  if (row) row.dataset.edited = String(isEdited(core));
+  drawActionBar();
+}
+$("angle").addEventListener("input", function(){ setAngle(this.value, true); });
+$("angleNum").addEventListener("change", function(){ setAngle(this.value, true); });
+document.querySelectorAll("[data-nudge]").forEach(function(button){
+  button.addEventListener("click", function(){
+    setAngle(Number($("angle").value) + Number(this.dataset.nudge), true);
+  });
+});
+$("resetAngle").addEventListener("click", function(){
+  var core = visible[current];
+  if (!core) return;
+  delete edits[core.core];
+  saveLocal();
+  setAngle(baseAngleOf(core), false);
+  var row = $("queueList").children[current];
+  if (row) row.dataset.edited = "false";
+  drawActionBar();
+});
+$("prevCore").addEventListener("click", function(){
+  if (current > 0) { current--; markCurrentRow(); drawDetail(); }
+});
+$("nextCore").addEventListener("click", function(){
+  if (current < visible.length - 1) { current++; markCurrentRow(); drawDetail(); }
+});
+$("confirmCore").addEventListener("click", function(){ toggleChecked(); });
 
-    var download = document.createElement("button");
-    download.type = "button"; download.className = "ghost";
-    download.textContent = "Download zip";
-    download.setAttribute("aria-label", "Download " + group.title + " as a zip");
-    download.addEventListener("click", function () {
+function toggleChecked(){
+  var core = visible[current];
+  if (!core) return;
+  if (checked[core.core]) delete checked[core.core]; else checked[core.core] = true;
+  saveLocal();
+  var row = $("queueList").children[current];
+  if (row) row.dataset.checked = String(!!checked[core.core]);
+  $("confirmLabel").textContent = checked[core.core] ? "ยกเลิกการผ่าน" : "ถูกต้อง";
+  updateQueueCount();
+  if (checked[core.core] && current < visible.length - 1) {
+    current++; markCurrentRow(); drawDetail();
+  }
+  drawActionBar();
+}
+
+document.addEventListener("keydown", function(event){
+  if (stage !== "review") return;
+  var target = event.target || {};
+  var tag = (target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea") return;
+  if (event.key === "ArrowLeft")  { event.preventDefault(); $("prevCore").click(); }
+  if (event.key === "ArrowRight") { event.preventDefault(); $("nextCore").click(); }
+  if (event.key === " ")          { event.preventDefault(); toggleChecked(); }
+  if (event.key === "0")          { event.preventDefault(); $("resetAngle").click(); }
+});
+
+/* ------------------------------------------------------------------ saving edits */
+function pendingEdits(){
+  if (!model || !model.cores) return [];
+  return model.cores.filter(isEdited).map(function(core){
+    return {core:core.core, rotationAdjustmentDeg:Math.round(angleOf(core) * 10) / 10};
+  });
+}
+function editsMatchSaved(){
+  var now = pendingEdits();
+  var keys = Object.keys(savedEdits);
+  if (now.length !== keys.length) return false;
+  return now.every(function(item){
+    var saved = savedEdits[item.core];
+    return saved != null && Math.abs(Number(saved) - item.rotationAdjustmentDeg) < 0.05;
+  });
+}
+function setSaveState(text, tone){
+  var el = $("saveState");
+  el.textContent = text || "";
+  el.dataset.tone = tone || "";
+}
+$("saveEdits").addEventListener("click", function(){
+  var payload = pendingEdits();
+  setSaveState("กำลังบันทึก...", "busy");
+  api("/api/corrections", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({corrections:payload})})
+  .then(function(res){
+    if (!res.ok || res.body.ok === false) {
+      setSaveState(res.body.error || "บันทึกไม่สำเร็จ", "bad");
+      return;
+    }
+    savedEdits = {};
+    payload.forEach(function(item){ savedEdits[item.core] = item.rotationAdjustmentDeg; });
+    drawActionBar();
+    toast("บันทึกมุมที่ปรับแล้ว " + payload.length + " core");
+  });
+});
+
+/* ------------------------------------------------------------------ action bar */
+var openGate = null;
+
+function drawActionBar(){
+  var bar = $("actionBar");
+  var show = (stage === "grid" || stage === "review");
+  bar.hidden = !show;
+  if (!show) return;
+  var go = $("gateGo");
+  var save = $("saveEdits");
+
+  if (stage === "grid") {
+    save.hidden = true;
+    setSaveState("");
+    $("askTitle").textContent = openGate ? openGate.title : "รอ CoreAlign เปิดขั้นตอนตรวจกริด";
+    $("askSummary").textContent = openGate ? openGate.summary : "";
+    go.textContent = openGate ? (openGate.primaryLabel || "ไปต่อ") : "รออยู่...";
+    go.disabled = !openGate;
+    return;
+  }
+
+  var changes = pendingEdits().length;
+  var synced = editsMatchSaved();
+  var pending = model && model.cores
+    ? model.cores.filter(function(c){ return c.status === "review"; }) : [];
+  var left = pending.filter(function(c){ return !checked[c.core]; }).length;
+
+  save.hidden = changes === 0 && synced;
+  save.disabled = synced;
+  if (changes && synced) setSaveState("บันทึกไว้แล้ว " + changes + " core", "ok");
+  else if (changes) setSaveState("ยังไม่ได้บันทึก " + changes + " core", "");
+  else setSaveState("");
+
+  if (openGate) {
+    $("askTitle").textContent = left
+      ? "เหลืออีก " + left + " core ที่ยังไม่ได้ดู"
+      : "ดูครบทุก core ที่ระบบทักแล้ว";
+    $("askSummary").textContent = changes
+      ? "ปรับมุมไว้ " + changes + " core · บันทึกก่อน แล้วอนุมัติเพื่อให้ประมวลผลใหม่เฉพาะที่แก้"
+      : "อนุมัติเพื่อสร้างไฟล์ผลลัพธ์";
+    go.textContent = (changes && !synced)
+      ? "บันทึกก่อนจึงจะอนุมัติได้"
+      : (openGate.primaryLabel || "อนุมัติ และสร้างผลลัพธ์");
+    go.disabled = changes > 0 && !synced;
+  } else {
+    $("askTitle").textContent = "การรันครั้งนี้จบไปแล้ว";
+    $("askSummary").textContent = changes
+      ? "ปรับมุมไว้ " + changes + " core · บันทึกก่อน แล้วรันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้"
+      : "ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ";
+    go.textContent = (changes && !synced) ? "บันทึกก่อนจึงจะรันได้" : "รันอีกครั้งเพื่ออนุมัติ";
+    go.disabled = changes > 0 && !synced;
+  }
+}
+$("gateGo").addEventListener("click", function(){
+  var button = this;
+  if (!openGate) { startRun(button); return; }
+  button.disabled = true;
+  api("/api/bridge/gate", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({gate:openGate.gate, decision:"continue"})})
+  .then(function(res){
+    if (!res.ok || res.body.ok === false) {
+      toast((res.body && res.body.error) || "ส่งคำตอบไม่สำเร็จ");
+      button.disabled = false;
+      return;
+    }
+    openGate = null;
+    setStage("run");
+    poll();
+  });
+});
+
+/* ------------------------------------------------------------------ grid gate */
+function drawGrid(){
+  if (!model || !model.grid || !model.grid.image) return;
+  var img = $("gridImg");
+  var wanted = "/project/" + model.grid.image;
+  if (img.getAttribute("src") !== wanted) img.src = wanted;
+  var grid = model.grid;
+  $("gridStrip").innerHTML =
+    metric(grid.present == null ? "—" : grid.present, "core ที่พบ", "ok") +
+    metric(grid.missing == null ? "—" : grid.missing, "ตำแหน่งว่าง", "none") +
+    metric((grid.rows || "?") + " × " + (grid.cols || "?"), "แถว × คอลัมน์", "") +
+    metric(grid.humanCorrectedTotal || 0, "คนแก้ไว้", "");
+  var box = $("gridWarnings"); box.textContent = "";
+  (grid.hardErrors || []).concat(grid.warnings || []).forEach(function(text){
+    if (!text) return;
+    var li = document.createElement("li");
+    li.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" style="flex:0 0 auto;margin-top:2px" ' +
+      'aria-hidden="true"><path d="M12 2l10 18H2L12 2zm0 4.14L5.43 18h13.14L12 6.14zM11 15h2v2h-2v-2zm0-6h2v5h-2V9z"/></svg><span></span>';
+    li.querySelector("span").textContent = text;
+    box.appendChild(li);
+  });
+}
+$("gridImg").addEventListener("click", function(){
+  var stage = $("gridStage");
+  var zoomed = stage.dataset.zoom !== "true";
+  stage.dataset.zoom = String(zoomed);
+  $("zoomHint").textContent = zoomed ? "คลิกอีกครั้งเพื่อย่อกลับ" : "คลิกที่ภาพเพื่อขยายเต็มขนาด";
+  if (zoomed) { stage.scrollTop = 0; stage.scrollLeft = 0; }
+});
+
+function metric(value, label, tone){
+  var div = document.createElement("div");
+  div.className = "metric";
+  div.dataset.tone = tone || "";
+  var b = document.createElement("b"); b.textContent = value;
+  var s = document.createElement("span"); s.textContent = label;
+  div.appendChild(b); div.appendChild(s);
+  return div.outerHTML;
+}
+
+/* ------------------------------------------------------------------ export */
+function drawExport(status){
+  $("exportPath").textContent = status.project || "";
+  var counts = model && model.counts ? model.counts : null;
+  $("exportStrip").innerHTML = counts
+    ? metric(counts.positions || 0, "ตำแหน่งทั้งหมด", "") +
+      metric(counts.ok || 0, "ผ่าน QC อัตโนมัติ", "ok") +
+      metric(counts.review || 0, "เคยถูกทัก", "warn") +
+      metric(counts.missing || 0, "ไม่มีเนื้อเยื่อ", "none")
+    : "";
+  var list = $("groupList"); list.textContent = "";
+  (status.results || []).forEach(function(group){
+    var el = document.createElement("div");
+    el.className = "group";
+    el.innerHTML = '<div class="txt"><b></b><span></span></div><span class="cnt"></span>' +
+      '<button class="btn"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg> zip</button>';
+    el.querySelector("b").textContent = group.title;
+    el.querySelector(".txt span").textContent = group.note || "";
+    el.querySelector(".cnt").textContent = group.count + " ไฟล์ · " + (group.size || "");
+    el.querySelector("button").addEventListener("click", function(){
       window.location.href = "/api/download-zip?group=" + encodeURIComponent(group.key);
     });
-
-    card.append(title, count, sub, note, download);
-
-    if (group.files.length) {
-      var files = document.createElement("details"); files.className = "files";
-      var summary = document.createElement("summary");
-      summary.textContent = group.truncated
-        ? "List the first 400 files" : "List the files";
-      var list = document.createElement("ul");
-      group.files.forEach(function (file) {
-        var item = document.createElement("li");
-        var link = document.createElement("a");
-        link.href = "/api/download?path=" + encodeURIComponent(file.path);
-        link.textContent = file.name;
-        item.append(link, document.createTextNode(" · " + file.size));
-        list.appendChild(item);
-      });
-      files.append(summary, list);
-      card.appendChild(files);
-    }
-    host.appendChild(card);
+    list.appendChild(el);
   });
+  if (!(status.results || []).length) {
+    var note = document.createElement("p");
+    note.className = "emptyNote";
+    note.textContent = "ยังไม่มีไฟล์ผลลัพธ์";
+    list.appendChild(note);
+  }
 }
-
-$("exportAll").addEventListener("click", function () {
+$("zipAll").addEventListener("click", function(){
   window.location.href = "/api/download-zip?group=all";
 });
 
-// ---- boot ------------------------------------------------------------------
-(async function () {
-  try {
-    var status = await api("/api/status");
-    if (status.state !== "idle") {
-      $("setup").hidden = true; $("live").hidden = false; $("newRun").hidden = false;
-      poll(); return;
+/* ------------------------------------------------------------------ log drawer */
+$("logToggle").addEventListener("click", function(){
+  var drawer = $("logDrawer");
+  var open = drawer.dataset.open !== "true";
+  drawer.dataset.open = String(open);
+  this.setAttribute("aria-expanded", String(open));
+  if (open) refreshLog();
+});
+function refreshLog(){
+  api("/api/log").then(function(res){
+    var text = (res.body && res.body.log) || "";
+    var pre = $("logText");
+    if (pre.textContent === text) return;
+    pre.textContent = text;
+    var body = pre.parentElement;
+    body.scrollTop = body.scrollHeight;
+  });
+}
+
+/* ------------------------------------------------------------------ polling */
+var STATE_TEXT = {
+  idle:      ["พร้อมใช้งาน", "idle"],
+  starting:  ["กำลังเริ่ม", "run"],
+  running:   ["กำลังทำงาน", "run"],
+  complete:  ["เสร็จสมบูรณ์", "ok"],
+  stopped:   ["หยุดไว้", "wait"],
+  cancelled: ["ยกเลิกแล้ว", "wait"],
+  failed:    ["ล้มเหลว", "bad"]
+};
+var lastLogLine = "", lastGateId = "";
+
+function poll(){
+  api("/api/status").then(function(res){
+    if (res.ok) paintStatus(res.body);
+  });
+}
+function paintStatus(status){
+  var gate = status.gate;
+  var waiting = !!(gate && gate.gate);
+  var text = STATE_TEXT[status.state] || ["", "idle"];
+  $("stateText").textContent = waiting ? "รอคุณตัดสินใจ" : text[0];
+  $("statePill").dataset.tone = waiting ? "wait" : text[1];
+
+  var clock = $("clock");
+  clock.hidden = !status.elapsedSeconds;
+  if (status.elapsedSeconds) {
+    var m = Math.floor(status.elapsedSeconds / 60), s = status.elapsedSeconds % 60;
+    clock.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  if (status.slide) {
+    var name = status.slide.split("/").pop();
+    $("slideName").textContent = name;
+    if (!chosenSlide) chosenSlide = {name:name, path:status.slide};
+  }
+  paintProgress();
+
+  openGate = waiting ? gate : null;
+  var gateId = waiting ? gate.gate : "";
+  var gateChanged = gateId !== lastGateId;
+  lastGateId = gateId;
+
+  // Fetch the review model only when something new could be in it: a gate opened or
+  // closed, or the run reached a resting state. Never on every tick, so the list is not
+  // re-rendered under the cursor.
+  var needModel = gateChanged || (!model && status.hasResults) ||
+    (!model && (status.state === "complete" || status.state === "stopped"));
+  if (!needModel) { route(status, gateId); return; }
+  api("/api/review").then(function(res){
+    var next = res.body || {};
+    var fresh = !model || next.baseRun !== reviewKey;
+    model = next;
+    if (model.available) { reviewKey = model.baseRun; drawReview(fresh); }
+    if (model.grid) drawGrid();
+    showPriorRun();
+    route(status, gateId);
+  });
+}
+function showPriorRun(){
+  var banner = $("priorRun");
+  if (!model || !model.available) { banner.hidden = true; return; }
+  // Results already exist here, so the review and results stages are worth opening even
+  // though nothing is running. Reaching them is the whole point of attaching.
+  reached.review = true; reached.export = true; paintStages();
+  var counts = model.counts || {};
+  $("priorRunNote").textContent =
+    (counts.positions || 0) + " ตำแหน่ง · ผ่าน QC " + (counts.ok || 0) +
+    " · ถูกทัก " + (counts.review || 0) + " · ไม่มีเนื้อเยื่อ " + (counts.missing || 0);
+  banner.hidden = false;
+}
+function paintProgress(){
+  api("/api/log").then(function(res){
+    var log = (res.body && res.body.log) || "";
+    var lines = log.replace(/\s+$/, "").split("\n");
+    var tail = lines[lines.length - 1] || "";
+    if (tail === lastLogLine) return;
+    lastLogLine = tail;
+    $("logTail").textContent = tail;
+    $("runStep").textContent = tail.slice(0, 140) || "กำลังทำงาน";
+    var match = /Orientation progress: (\d+)\/(\d+)/.exec(log.slice(-6000));
+    var bar = $("runBar");
+    if (match) {
+      bar.classList.remove("indeterminate");
+      bar.firstElementChild.style.width = (100 * Number(match[1]) / Number(match[2])) + "%";
+      $("runCounts").hidden = false;
+      $("runCounts").innerHTML =
+        "<div><b>" + match[1] + "</b><span>ทำเสร็จ</span></div>" +
+        "<div><b>" + match[2] + "</b><span>ทั้งหมด</span></div>";
+    } else {
+      bar.classList.add("indeterminate");
+      bar.firstElementChild.style.width = "100%";
+      $("runCounts").hidden = true;
     }
-  } catch (error) {}
-  try {
-    var roots = await api("/api/roots");
-    browse(roots.roots.length ? roots.roots[0].path : "");
-  } catch (error) { showError(error.message); }
-})();
+    if ($("logDrawer").dataset.open === "true") refreshLog();
+  });
+}
+function route(status, gateId){
+  if (gateId === "grid") {
+    reached.review = true;
+    if (stage !== "grid") setStage("grid");
+    drawActionBar();
+    return;
+  }
+  if (gateId === "orientation") {
+    reached.review = true;
+    if (stage !== "review") setStage("review");
+    drawActionBar();
+    return;
+  }
+  if (status.state === "running" || status.state === "starting") {
+    if (stage !== "run") setStage("run");
+    $("actionBar").hidden = true;
+    return;
+  }
+  if (status.state === "complete") {
+    reached.review = true; reached.export = true;
+    if (stage !== "export" && stage !== "review") setStage("export");
+    $("exportTitle").textContent = "ผลลัพธ์พร้อมแล้ว";
+    drawExport(status);
+    drawActionBar();
+    return;
+  }
+  if (status.state === "stopped" || status.state === "failed" || status.state === "cancelled") {
+    reached.export = true;
+    if (model && model.available) {
+      reached.review = true;
+      // Results exist and nobody has approved them yet: the review screen is the useful one.
+      if (stage !== "review" && stage !== "export" && stage !== "grid") setStage("review");
+    }
+    if (stage === "export") { $("exportTitle").textContent = "ผลลัพธ์ที่มีอยู่ตอนนี้"; drawExport(status); }
+    drawActionBar();
+    return;
+  }
+  // Idle, but a folder with results can be attached: keep the bar on the review stage.
+  if (stage === "export") drawExport(status);
+  drawActionBar();
+}
+
+/* ------------------------------------------------------------------ start */
+buildStages();
+setStage("slide");
+browse("");
+poll();
+setInterval(poll, 2000);
 </script>
 </body>
 </html>

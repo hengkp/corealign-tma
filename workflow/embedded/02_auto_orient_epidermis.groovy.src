@@ -92,11 +92,16 @@ boolean SAVE_FULL_RESOLUTION_PNG = cfgBool('tma.orientation.saveFullResolutionPn
 boolean SAVE_NATIVE_OME_TIFF = cfgBool('tma.orientation.saveNativeOmeTiff', false)
 boolean SAVE_ROTATED_MULTICHANNEL_OME_TIFF =
     cfgBool('tma.orientation.saveRotatedMultichannelOmeTiff', false)
-int REQUESTED_PARALLEL_WORKERS = cfgInt('tma.orientation.parallelWorkers', 2)
-int AUTO_PARALLEL_WORKERS = Math.max(1, Math.min(2,
-    Math.max(1, Runtime.getRuntime().availableProcessors().intdiv(2))))
+// Cores are independent of each other: each one is read, rotated and written on its own.
+// On a Slurm node the job owns whole CPUs, so the useful ceiling is the size of the
+// allocation, not a number picked in advance. Ask for 0 to mean "decide from the machine",
+// which is what Studio does; a desktop QuPath still gets a sensible number without asking.
+int REQUESTED_PARALLEL_WORKERS = cfgInt('tma.orientation.parallelWorkers', 0)
+int AVAILABLE_CPUS = Math.max(1, Runtime.getRuntime().availableProcessors())
+int AUTO_PARALLEL_WORKERS = Math.max(1, Math.min(16, AVAILABLE_CPUS - 1))
 int PARALLEL_WORKERS = REQUESTED_PARALLEL_WORKERS <= 0 ? AUTO_PARALLEL_WORKERS :
-    Math.max(1, Math.min(4, REQUESTED_PARALLEL_WORKERS))
+    Math.max(1, Math.min(32, REQUESTED_PARALLEL_WORKERS))
+// The Bio-Formats OME-TIFF writer is not thread safe, so research output stays serial.
 if (SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF)
     PARALLEL_WORKERS = 1
 def PRESENTATION_CHANNEL_TOKENS = cfgTokens('tma.presentation.channelTokens', '')
@@ -1646,7 +1651,7 @@ def findCropOverride = { String coreName, double cx, double cy, double radius ->
 
 def records = Collections.synchronizedList([])
 def partialCsvLock = new Object()
-println "Orientation workers: ${PARALLEL_WORKERS}" +
+println "Orientation workers: ${PARALLEL_WORKERS} of ${AVAILABLE_CPUS} CPUs" +
     ((SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF) ?
         ' (research OME-TIFF safety mode)' : ' (bounded parallel processing)')
 
@@ -2264,7 +2269,7 @@ def processCore = { entry ->
         }
     }
     int completed = completedCoreCount.incrementAndGet()
-    int checkpointInterval = Math.max(1, PARALLEL_WORKERS * 4)
+    int checkpointInterval = Math.max(1, Math.min(8, PARALLEL_WORKERS))
     if (completed == coreEntries.size() || completed % checkpointInterval == 0) {
         synchronized (partialCsvLock) {
             try {

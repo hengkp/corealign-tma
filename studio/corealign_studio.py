@@ -13,8 +13,14 @@ had to ship a browser inside the container. Studio removes that: the browser tal
 Studio talks to the bridge. The bridge token stays on the compute node and never reaches the
 browser, so this is also less exposed than the desktop arrangement.
 
-REPORT.html is reused as-is. CoreAlign already writes a good review page; Studio serves it with
-the loopback URLs rewritten to its own proxy paths, so every control in it keeps working.
+The review screen is Studio's own
+--------------------------------
+It is drawn from /api/review, which reads the run's own JSON: qc/02-orientation/run_report.json
+for the cores and qc/01-grid for the detected grid. Embedding REPORT.html in a frame was tried
+first and was wrong: the report carries its own sticky header and gate bar, which stacked on top
+of Studio's and made the page hard to read and hard to click. REPORT.html is still written by
+CoreAlign and still served at /project/REPORT.html with its loopback URLs rewritten, so it stays
+a working artefact to keep or open elsewhere. The page just no longer depends on it.
 
 Standard library only, on purpose: the image should be QuPath plus a Python interpreter, nothing
 that needs a package index at build time.
@@ -124,6 +130,33 @@ def human_size(num: int) -> str:
     return f"{step:.1f} TB"
 
 
+def allocated_cpus() -> int:
+    """How many CPUs this Slurm job actually holds.
+
+    Slurm exports the allocation; os.cpu_count() reports the whole node, which on a
+    112-core box would be a request to oversubscribe by 14x. Prefer what was allocated,
+    and only fall back to the machine when nothing was.
+    """
+    for name in ("SLURM_CPUS_PER_TASK", "APPHUB_CPUS", "SLURM_CPUS_ON_NODE"):
+        try:
+            value = int(os.environ.get(name, "") or 0)
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return os.cpu_count() or 1
+
+
+def orientation_workers() -> int:
+    """Cores are processed independently, so this is the whole allocation bar one CPU.
+
+    The spare CPU keeps this server answering the page while QuPath is saturating the
+    rest. Below 4 CPUs there is nothing to spare, so use them all.
+    """
+    cpus = allocated_cpus()
+    return max(1, cpus - 1) if cpus >= 4 else max(1, cpus)
+
+
 def build_config(tissue: str, output: str) -> dict:
     """The same two choices the desktop setup dialog asks, in the shape CoreAlign expects."""
     skin = tissue == "skin"
@@ -164,7 +197,7 @@ def build_config(tissue: str, output: str) -> dict:
                     ),
                     "analysisDownsample": 4,
                     "exportDownsample": 1,
-                    "parallelWorkers": 2,
+                    "parallelWorkers": orientation_workers(),
                     "cropScale": 1.05,
                     "rotationSupportScale": 1.45,
                     "regionRefinementEnabled": True,
@@ -255,6 +288,23 @@ class Run:
             self.bridge_base = ""
             self.bridge_tokens = {}
 
+    def attach(self, slide: Path) -> bool:
+        """Point at a slide's project folder without running anything.
+
+        Picking a slide that has been through CoreAlign before should show what is already
+        there. Without this the only way to see a previous result is to run it again.
+        """
+        with self.lock:
+            if self.state in ("running", "starting"):
+                return False
+            self.slide = slide
+            self.project = slide.parent
+            log = slide.parent / "work" / "studio-run.log"
+            self.log_path = log if log.is_file() else None
+            self.bridge_base = ""
+            self.bridge_tokens = {}
+            return True
+
     def stop(self) -> None:
         with self.lock:
             process = self.process
@@ -339,9 +389,39 @@ class Run:
                 self.bridge_tokens.update(found)
         return text
 
+    def discover_bridge(self) -> None:
+        """Learn the loopback endpoints by reading REPORT.html here on the node.
+
+        The page used to be the one that taught us these, as a side effect of being
+        served the report. It no longer loads the report at all, so read the file
+        directly. The token stays in this process either way.
+        """
+        if not self.project:
+            return
+        report = self.project / "REPORT.html"
+        if not report.is_file():
+            return
+        try:
+            text = report.read_text("utf-8", "replace")
+        except OSError:
+            return
+        base, found = "", {}
+        for match in self.ENDPOINT_RE.finditer(text):
+            base = f"http://127.0.0.1:{match.group(1)}"
+            found[match.group(2)] = match.group(3)
+        if not base:
+            return
+        with self.lock:
+            self.bridge_base = base
+            self.bridge_tokens.update(found)
+
     def bridge_url(self, action: str) -> str | None:
         with self.lock:
             base, token = self.bridge_base, self.bridge_tokens.get(action)
+        if not (base and token):
+            self.discover_bridge()
+            with self.lock:
+                base, token = self.bridge_base, self.bridge_tokens.get(action)
         if base and token:
             return f"{base}/corealign/{action}?token={token}"
         # A gate can open before the browser has loaded the refreshed report, so fall back to
@@ -354,13 +434,20 @@ class Run:
         return None
 
     # -- results ------------------------------------------------------------
+    # Titles are what the page shows, and the people using Studio read Thai.
     RESULT_GROUPS = (
-        ("png", "results/png", "Aligned images", "One full-resolution PNG per core."),
-        ("ome-tiff", "results/ome-tiff", "Research OME-TIFF", "Multichannel, original bit depth."),
-        ("tables", "results/tables", "Tables and audit", "CSV and JSON: angles, QC, display ranges."),
-        ("grid-qc", "qc/01-grid", "Grid QC", "The whole-slide detection image and coordinates."),
-        ("core-qc", "qc/02-orientation", "Per-core QC", "Previews and the contact sheet."),
-        ("qupath", "qupath", "QuPath project", "Ordered core project, research runs only."),
+        ("png", "results/png", "ภาพที่จัดเรียงแล้ว",
+         "PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core"),
+        ("ome-tiff", "results/ome-tiff", "OME-TIFF สำหรับวิเคราะห์ต่อ",
+         "หลายแชนเนล บิตเดปธ์เดิม"),
+        ("tables", "results/tables", "ตารางและบันทึกตรวจสอบ",
+         "CSV และ JSON: มุมหมุน ค่า QC และช่วงการแสดงผล"),
+        ("grid-qc", "qc/01-grid", "QC ของกริด",
+         "ภาพตรวจจับทั้งสไลด์ พร้อมพิกัดของทุกตำแหน่ง"),
+        ("core-qc", "qc/02-orientation", "QC ราย core",
+         "ภาพตัวอย่างก่อนและหลังหมุน พร้อม contact sheet"),
+        ("qupath", "qupath", "โปรเจกต์ QuPath",
+         "โปรเจกต์ core ที่เรียงลำดับแล้ว เฉพาะโหมดวิเคราะห์ต่อ"),
     )
 
     def results(self) -> list[dict]:
@@ -404,6 +491,195 @@ class Run:
                 return folder if folder.is_dir() else None
         return None
 
+    # -- review -------------------------------------------------------------
+    @staticmethod
+    def _flatten(value):
+        """CoreAlign writes some QC warnings as Groovy GStrings, which land in JSON as
+        {"strings": [...], "values": [...]} instead of a sentence. Put them back together
+        rather than showing a person the raw object."""
+        if isinstance(value, dict) and "strings" in value:
+            parts, strings = [], value.get("strings") or []
+            values = value.get("values") or []
+            for index, chunk in enumerate(strings):
+                parts.append(str(chunk))
+                if index < len(values):
+                    parts.append(str(values[index]))
+            return "".join(parts).strip()
+        return str(value)
+
+    def _read_json(self, relative: str):
+        if not self.project:
+            return None
+        target = self.project / relative
+        if not target.is_file():
+            return None
+        try:
+            return json.loads(target.read_text("utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def review(self) -> dict:
+        """Everything the review screen draws, taken from the run's own JSON.
+
+        The screen is built from this, not from REPORT.html. One source of truth for the
+        numbers, and the page can lay them out however reads best.
+        """
+        if not self.project:
+            return {"available": False}
+        grid_json, grid_image = None, ""
+        grid_dir = self.project / "qc" / "01-grid"
+        if grid_dir.is_dir():
+            for candidate in sorted(grid_dir.glob("*_grid_qc_latest.json")):
+                try:
+                    grid_json = json.loads(candidate.read_text("utf-8"))
+                except (OSError, ValueError):
+                    grid_json = None
+                break
+            for candidate in sorted(grid_dir.glob("*_grid_qc_latest.png")):
+                grid_image = f"qc/01-grid/{candidate.name}"
+                break
+
+        grid = {}
+        if grid_json:
+            grid = {
+                "image": grid_image,
+                "rows": grid_json.get("gridHeight"),
+                "cols": grid_json.get("gridWidth"),
+                "coreCount": grid_json.get("coreCount"),
+                "present": grid_json.get("present"),
+                "missing": grid_json.get("missing"),
+                "reviewQueueCount": grid_json.get("reviewQueueCount"),
+                "humanCorrectedTotal": grid_json.get("humanCorrectedTotal"),
+                "warnings": [self._flatten(item) for item in (grid_json.get("warnings") or [])],
+                "hardErrors": [self._flatten(item) for item in (grid_json.get("hardErrors") or [])],
+            }
+
+        report = self._read_json("qc/02-orientation/run_report.json")
+        if not report:
+            return {"available": False, "grid": grid,
+                    "contactSheet": "", "cores": [], "corrections": {}}
+
+        base_run = ""
+        run_directory = str((report.get("outputs") or {}).get("runDirectory") or "")
+        if run_directory:
+            base_run = Path(run_directory).name
+
+        saved = self._read_json("corealign-review-corrections.json") or {}
+        corrections = {}
+        if str(saved.get("baseRun") or "") == base_run:
+            for item in saved.get("corrections") or []:
+                name = str(item.get("core") or "")
+                try:
+                    corrections[name] = float(item.get("rotationAdjustmentDeg") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+
+        contact = self.project / "qc" / "02-orientation" / "orientation_contact_sheet.png"
+        cores = []
+        for entry in report.get("cores") or []:
+            name = str(entry.get("core") or "")
+            cores.append({
+                "index": entry.get("index"),
+                "core": name,
+                "row": entry.get("row"),
+                "col": entry.get("col"),
+                "status": entry.get("status"),
+                "regionStatus": entry.get("regionStatus"),
+                "confidence": entry.get("confidence"),
+                "rotateToTopDeg": entry.get("rotateToTopDeg"),
+                "adjustmentDeg": entry.get("webRotationAdjustmentDeg") or 0.0,
+                "residualDeg": entry.get("postRotationResidualDeg"),
+                "reasons": [self._flatten(item) for item in (entry.get("reasons") or [])],
+                "rotated": entry.get("rotatedPreview") or "",
+                "unrotated": entry.get("unrotatedPreview") or "",
+            })
+
+        return {
+            "available": True,
+            "image": report.get("image") or "",
+            "baseRun": base_run,
+            "status": report.get("status") or "",
+            "message": report.get("message") or "",
+            "counts": report.get("counts") or {},
+            "qc": report.get("qc") or {},
+            "elapsed": report.get("elapsed") or "",
+            "grid": grid,
+            "contactSheet": ("qc/02-orientation/orientation_contact_sheet.png"
+                             if contact.is_file() else ""),
+            "cores": cores,
+            "corrections": corrections,
+        }
+
+    def save_corrections(self, edits: list) -> dict:
+        """Send angle changes to CoreAlign's bridge.
+
+        The page sends core names and angles only. Which run they belong to is decided
+        here from the report, so a stale tab cannot write corrections onto a different run.
+        """
+        model = self.review()
+        if not model.get("available"):
+            return {"ok": False, "error": "There is nothing to review yet."}
+        allowed = {str(core["core"]).lower() for core in model["cores"]}
+        clean = []
+        seen = set()
+        for item in edits or []:
+            name = str((item or {}).get("core") or "").strip()
+            key = name.lower()
+            try:
+                angle = float((item or {}).get("rotationAdjustmentDeg"))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"{name or 'A core'} has no usable angle."}
+            if not name or key not in allowed:
+                return {"ok": False, "error": f"{name or 'A core'} is not a core in this run."}
+            if key in seen:
+                return {"ok": False, "error": f"{name} was sent twice."}
+            if not -180.0 <= angle <= 180.0:
+                return {"ok": False,
+                        "error": f"{name}: an angle has to be between -180 and 180, not {angle:g}."}
+            seen.add(key)
+            clean.append({"core": name, "rotationAdjustmentDeg": round(angle, 1)})
+
+        document = {
+            "schemaVersion": 1,
+            "image": model["image"],
+            "baseRun": model["baseRun"],
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "corrections": clean,
+        }
+        payload = json.dumps(document).encode("utf-8")
+
+        url = self.bridge_url("save")
+        if not url:
+            # No bridge means no run is waiting, which is the normal state when someone
+            # opens a finished project to look at it. The bridge only ever writes this one
+            # file, and CoreAlign reads it at the gate, so writing it here is the same act.
+            target = self.project / "corealign-review-corrections.json"
+            temporary = target.with_name("." + target.name + ".tmp")
+            try:
+                temporary.write_text(json.dumps(document, indent=2) + "\n", "utf-8")
+                os.replace(temporary, target)
+            except OSError as error:
+                return {"ok": False, "error": f"Could not write the corrections file: {error}"}
+            return {"ok": True, "saved": len(clean), "via": "file"}
+
+        request = urllib.request.Request(
+            url, data=payload, method="POST",
+            headers={"Content-Type": "text/plain;charset=UTF-8"})
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                body = response.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as error:
+            return {"ok": False, "error": error.read().decode("utf-8", "replace")[:400]}
+        except OSError as error:
+            return {"ok": False, "error": str(error)}
+        try:
+            answer = json.loads(body)
+        except ValueError:
+            answer = {"ok": True}
+        answer["saved"] = len(clean)
+        answer["via"] = "bridge"
+        return answer
+
     def snapshot(self) -> dict:
         self.poll()
         gate = self.gate()
@@ -419,6 +695,11 @@ class Run:
                 "elapsedSeconds": elapsed,
                 "gate": gate,
                 "hasReport": bool(self.project and (self.project / "REPORT.html").is_file()),
+                # What the page actually draws from. REPORT.html is only an artefact now,
+                # and a project can hold a finished run without one.
+                "hasResults": bool(self.project and
+                                   (self.project / "qc" / "02-orientation" /
+                                    "run_report.json").is_file()),
                 "results": self.results(),
             }
 
@@ -520,6 +801,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out({"log": RUN.log_tail()})
             if route == "/api/results":
                 return self.json_out({"results": RUN.results()})
+            if route == "/api/review":
+                return self.json_out(RUN.review())
             if route == "/api/download":
                 return self.download_file(query.get("path", [""])[0])
             if route == "/api/download-zip":
@@ -547,6 +830,21 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/reset":
                 RUN.reset()
                 return self.json_out(RUN.snapshot())
+            if route == "/api/attach":
+                raw = str(self.read_json().get("slide") or "")
+                target = Path(raw)
+                # Keep the path exactly as it was picked. Resolving it would follow the
+                # symlink into the share the microscope wrote to, and the project is the
+                # folder the slide was picked in, not wherever the pixels live.
+                if not raw or not inside_roots(target) or not target.is_file():
+                    return self.json_out({"error": "that slide is not one this app can open"}, 400)
+                if not RUN.attach(target):
+                    return self.json_out({"error": "a run is already in progress"}, 409)
+                return self.json_out(RUN.snapshot())
+            if route == "/api/corrections":
+                body = self.read_json()
+                answer = RUN.save_corrections(body.get("corrections") or [])
+                return self.json_out(answer, 200 if answer.get("ok") else 409)
             if route.startswith("/api/bridge/"):
                 return self.proxy_bridge(route[len("/api/bridge/"):])
             return self.json_out({"error": "not found"}, 404)
