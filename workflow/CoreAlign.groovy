@@ -4110,7 +4110,9 @@ def pngSize = { File file ->
     // width and height as big-endian 32 bit integers.
     try {
         byte[] head = new byte[24]
-        file.withInputStream { input -> if (input.read(head) < 24) return null }
+        int read = 0
+        file.withInputStream { input -> read = input.read(head) }
+        if (read < 24) return null
         int w = ((head[16] & 0xff) << 24) | ((head[17] & 0xff) << 16) |
                 ((head[18] & 0xff) << 8) | (head[19] & 0xff)
         int h = ((head[20] & 0xff) << 24) | ((head[21] & 0xff) << 16) |
@@ -4127,7 +4129,7 @@ def writeGridGeometry = { ->
         if (!overlay.isFile()) return
         def size = pngSize(overlay)
         if (size == null) return
-        def server = imageData.getServer()
+        def slideServer = imageData.getServer()
         def rows = []
         int cols = g.getGridWidth()
         g.getTMACoreList().eachWithIndex { core, i ->
@@ -4145,7 +4147,7 @@ def writeGridGeometry = { ->
             gridHash: hashText(canonicalGrid(g)),
             overlayPng: overlay.getName(),
             overviewWidth: size[0], overviewHeight: size[1],
-            slideWidth: server.getWidth(), slideHeight: server.getHeight(),
+            slideWidth: slideServer.getWidth(), slideHeight: slideServer.getHeight(),
             cores: rows]
         File target = new File(gridQcDir, "${imageStem}_grid_geometry.json")
         File temporary = new File(gridQcDir, ".${target.getName()}.tmp")
