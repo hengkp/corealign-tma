@@ -570,10 +570,15 @@ class Handler(BaseHTTPRequestHandler):
                         folders.append({"name": entry.name, "path": str(entry)})
                     elif is_slide(entry):
                         size = entry.stat().st_size
+                        # inside_roots resolves symlinks, so a link pointing at an unbound
+                        # share fails on Start. Say that here rather than in an error later.
+                        reachable = inside_roots(entry)
                         slides.append({
                             "name": entry.name, "path": str(entry),
                             "size": human_size(size),
                             "folderWritable": os.access(entry.parent, os.W_OK),
+                            "reachable": reachable,
+                            "linkTarget": (str(entry.resolve()) if entry.is_symlink() else ""),
                         })
                 except OSError:
                     continue
@@ -592,7 +597,14 @@ class Handler(BaseHTTPRequestHandler):
         tissue = "skin" if payload.get("tissue") != "other" else "other"
         output = "research" if payload.get("output") == "research" else "presentation"
         if not slide.name or not inside_roots(slide):
-            return self.json_out({"error": "that slide is outside the allowed roots"}, 403)
+            target = ""
+            try:
+                if slide.is_symlink():
+                    target = f" It is a link to {slide.resolve()}, which is not one of them."
+            except OSError:
+                pass
+            return self.json_out({"error":
+                "That slide is outside the folders this app is allowed to open." + target}, 403)
         if not slide.is_file():
             return self.json_out({"error": "no such slide"}, 404)
         if not os.access(slide.parent, os.W_OK):

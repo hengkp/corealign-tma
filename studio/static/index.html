@@ -194,9 +194,11 @@ async function browse(path) {
       list.appendChild(makeRow("\u{1F4C1}", folder.name, "", function () { browse(folder.path); }, "Folder"));
     });
     data.slides.forEach(function (slide) {
-      var note = slide.folderWritable ? slide.size : slide.size + " · folder is read only";
+      var note = slide.size;
+      if (slide.reachable === false) note += " · not reachable from this app";
+      else if (!slide.folderWritable) note += " · folder is read only";
       var row = makeRow("\u{1F52C}", slide.name, note, function () { choose(slide, row); }, "Slide");
-      if (!slide.folderWritable) row.style.opacity = ".55";
+      if (!slide.folderWritable || slide.reachable === false) row.style.opacity = ".55";
       list.appendChild(row);
     });
     if (!data.folders.length && !data.slides.length) {
@@ -226,6 +228,11 @@ function makeRow(icon, label, meta, onClick, kind) {
 }
 
 function choose(slide, row) {
+  if (slide.reachable === false) {
+    showError("This app cannot open that slide." +
+      (slide.linkTarget ? " It is a link to " + slide.linkTarget + ", which is outside the folders it may read." : ""));
+    return;
+  }
   if (!slide.folderWritable) {
     showError("CoreAlign writes its results beside the slide, and that folder is read only. " +
               "Copy the slide into your locker first.");
