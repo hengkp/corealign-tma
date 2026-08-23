@@ -394,8 +394,15 @@ class Run:
             return ""
         return data[-limit:].decode("utf-8", "replace")
 
-    def gate(self) -> dict | None:
-        """The gate CoreAlign is currently waiting on, if any."""
+    def stale_gate(self) -> dict | None:
+        """A gate.json left behind by a run that is no longer alive.
+
+        CoreAlign deletes this file in a finally block, which never runs when the JVM is
+        killed: a cancelled job, an out-of-memory kill, a node going away. The file then
+        sits in the project describing a question nobody is waiting for, and the loopback
+        port it names belongs to a process that is gone. Answering it fails with a bare
+        "Connection refused", which reads like a network fault and is not one.
+        """
         if not self.project:
             return None
         for candidate in sorted((self.project / "work" / "state").glob("*/gate.json")):
@@ -404,6 +411,19 @@ class Run:
             except (OSError, ValueError):
                 continue
         return None
+
+    def gate(self) -> dict | None:
+        """The gate CoreAlign is currently waiting on, if any.
+
+        Only this Studio's own QuPath can be waiting: it is a child of this process. If it
+        is not running, whatever is on disk is a leftover, not a question.
+        """
+        with self.lock:
+            process = self.process
+            alive = process is not None and process.poll() is None
+        if not alive:
+            return None
+        return self.stale_gate()
 
     def report_html(self) -> str | None:
         """REPORT.html with the loopback URLs swapped for Studio's proxy paths.
@@ -754,6 +774,9 @@ class Run:
                 "output": self.output,
                 "elapsedSeconds": elapsed,
                 "gate": gate,
+                # A question from a run that has since died. Not answerable, but worth
+                # showing: it says how far the previous attempt got.
+                "abandonedGate": (self.stale_gate() if gate is None else None),
                 "hasReport": bool(self.project and (self.project / "REPORT.html").is_file()),
                 # What the page actually draws from. REPORT.html is only an artefact now,
                 # and a project can hold a finished run without one.

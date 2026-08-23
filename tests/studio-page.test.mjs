@@ -91,3 +91,18 @@ test("the worker count is capped on every path", () => {
     assert.match(line, /MAX_WORKERS/, `an exit skips the cap: ${line.trim()}`);
   }
 });
+
+// CoreAlign removes gate.json in a finally block, which does not run when the JVM is killed:
+// a cancelled job, an OOM kill, a node going away. The file then names a loopback port that
+// belongs to a dead process, and answering it fails with a bare "Connection refused" that
+// reads like a network fault. A gate is only real while the QuPath that asked it is alive.
+test("a gate is only real while its QuPath is running", () => {
+  const body = server.slice(server.indexOf("    def gate(self)"),
+                            server.indexOf("    def report_html"));
+  assert.match(body, /process\.poll\(\) is None/,
+    "gate() must check that the process it belongs to is still running");
+  assert.match(body, /if not alive:\s*\n\s*return None/,
+    "a gate from a dead run must not be reported as open");
+  assert.ok(server.includes('"abandonedGate"'),
+    "the status should still surface the leftover, so the page can explain it");
+});

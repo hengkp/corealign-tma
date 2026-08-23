@@ -192,6 +192,11 @@ h2{font-size:17px;font-weight:750}
   background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
 }
 .priorRun[hidden]{display:none}
+.priorRun.warn{
+  background:var(--warn-soft);color:var(--warn);
+  border-color:color-mix(in srgb,var(--warn) 34%,transparent);
+}
+.priorRun.warn .txt span{color:inherit;opacity:.85}
 .priorRun .txt{flex:1 1 auto;min-width:0}
 .priorRun .txt b{display:block;font-size:14px;font-weight:750}
 .priorRun .txt span{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
@@ -522,6 +527,13 @@ kbd{
               <span class="t">ไฟล์สำหรับวิเคราะห์ต่อ</span>
               <span class="d">OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า</span>
             </button>
+          </div>
+        </div>
+
+        <div class="priorRun warn" id="abandonedRun" hidden>
+          <div class="txt">
+            <b>การรันครั้งก่อนหยุดไปกลางคัน</b>
+            <span id="abandonedNote"></span>
           </div>
         </div>
 
@@ -1351,6 +1363,7 @@ function paintStatus(status){
     if (!chosenSlide) chosenSlide = {name:name, path:status.slide};
   }
   paintProgress();
+  showAbandoned(status);
 
   openGate = waiting ? gate : null;
   var gateId = waiting ? gate.gate : "";
@@ -1373,6 +1386,23 @@ function paintStatus(status){
     route(status, gateId);
   });
 }
+var GATE_WORDS = {grid:"ตอนตรวจกริด", orientation:"ตอนตรวจ core ที่หมุนแล้ว"};
+
+function showAbandoned(status){
+  // A gate.json from a run that has since died. CoreAlign removes that file when it
+  // finishes or is stopped politely, but not when the job is cancelled or killed. Saying
+  // so is better than showing a question whose loopback port is already gone.
+  var left = status.abandonedGate;
+  var banner = $("abandonedRun");
+  if (!left || !left.gate) { banner.hidden = true; return; }
+  var when = String(left.openedAt || "").replace("T", " ").replace(/(Z|\+.*)$/, "");
+  $("abandonedNote").textContent =
+    "หยุด" + (GATE_WORDS[left.gate] || "ระหว่างรอคำตอบ") +
+    (when ? " เมื่อ " + when + " UTC" : "") +
+    " · งานที่ทำไว้ยังอยู่ครบ กดเริ่มอีกครั้งได้เลย จะไม่ทำซ้ำของเดิม";
+  banner.hidden = false;
+}
+
 function showPriorRun(){
   var banner = $("priorRun");
   if (!model || !model.available) { banner.hidden = true; return; }
