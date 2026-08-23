@@ -1409,7 +1409,10 @@ function paintProgress(){
       li.textContent = inThai(line.trim());
       activity.appendChild(li);
     });
-    var match = /Orientation progress: (\d+)\/(\d+)/.exec(log.slice(-6000));
+    // The tail holds several progress lines. Take the last, not the first one the scan
+    // happens to reach, or the bar sits at the oldest reading in the window.
+    var found = log.slice(-6000).match(/Orientation progress: \d+\/\d+/g);
+    var match = found ? /Orientation progress: (\d+)\/(\d+)/.exec(found[found.length - 1]) : null;
     var bar = $("runBar");
     if (match) {
       bar.classList.remove("indeterminate");
