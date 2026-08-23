@@ -80,11 +80,20 @@ Reference: [hengkp.github.io/corealign-tma/docs](https://hengkp.github.io/coreal
 The small CoreAlign window in QuPath carries the same two buttons as the report, so a reviewer
 who prefers to stay in QuPath never has to open a browser at all.
 
-## Validated tutorial
+## Repository layout
 
-Follow [the current tutorial](tutorial/README.md). It includes the one-folder rule, the exact preflight checks, expected results for the example slide, review gates, resume behavior, and realistic PNG and OME-TIFF timing.
+| Path | What it is |
+|---|---|
+| `workflow/CoreAlign.groovy` | The only file a run needs. Everything else is embedded in it. |
+| `workflow/embedded/*.groovy.src` | The real source of the seven numbered steps. Edit here, then `npm run workflow:embed`. |
+| `app/` | The website: home, manual, moodboard, playbook, config builder, reference. |
+| `scripts/` | `embed-workflow` writes the payloads, `verify-embed` proves they match, `ui-harness` renders the dialogs. |
+| `validation/` | Detection and orientation evidence from the reference slide. |
+| `docs/` | Protocol and design notes behind the accuracy policy. |
+| `_archived/` | Superseded material. Never take a workflow file from here. |
 
-Use [the production prompt](tutorial/VIDEO_SCRIPT.md) for the next screen recording. It locks the real click sequence, English narration, privacy setup, captions, and acceptance checks to the v1.4 workflow.
+The v1.x written tutorial taught the old run, review, run again sequence and is archived at
+`_archived/tutorial-v1.9/`. The [manual](https://hengkp.github.io/corealign-tma/guide/) replaces it.
 
 ## How the review gates work
 

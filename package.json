@@ -16,7 +16,7 @@
     "workflow:verify": "node scripts/verify-embed.mjs",
     "ui:check": "node scripts/ui-harness.mjs",
     "test": "npm run workflow:verify && npm run build:pages && node --test tests/site-static.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern _archieved"
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern out --ignore-pattern _archived"
   },
   "dependencies": {
     "next": "^16.2.10",

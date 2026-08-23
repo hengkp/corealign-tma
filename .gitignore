@@ -18,11 +18,7 @@ tma_auto_orient_export/
 tma_grid_qc/
 tma_pipeline_state/
 presentation_ready/
-tutorial/raw/
-tutorial/work/
-tutorial/audio/
-tutorial/qc/
-tutorial/final/
+_archived/local-only/
 *.env
 .env*
 !.env.example

@@ -32,7 +32,7 @@
   ],
   "exclude": [
     "node_modules",
-    "_archieved",
+    "_archived",
     "examples",
     "tutorial",
     "build",
