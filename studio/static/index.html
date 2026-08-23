@@ -899,7 +899,17 @@ function filterTest(key){
 function drawReview(fresh){
   if (!model || !model.available) return;
   if (fresh) {
-    savedEdits = model.corrections || {};
+    // A correction that CoreAlign has already applied comes back as the core's own
+    // adjustment, and the corrections file still names it. Counting it as pending would
+    // show a save button with nothing to save, and pressing it would cost one more
+    // reprocess pass that changes nothing.
+    savedEdits = {};
+    var applied = {};
+    model.cores.forEach(function(core){ applied[core.core] = Number(core.adjustmentDeg || 0); });
+    Object.keys(model.corrections || {}).forEach(function(name){
+      var angle = Number(model.corrections[name]);
+      if (!(name in applied) || Math.abs(applied[name] - angle) >= 0.05) savedEdits[name] = angle;
+    });
     loadLocal();
     var pending = model.cores.filter(function(c){ return c.status === "review"; });
     filter = pending.length ? "review" : "all";
