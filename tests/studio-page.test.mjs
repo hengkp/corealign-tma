@@ -106,3 +106,22 @@ test("a gate is only real while its QuPath is running", () => {
   assert.ok(server.includes('"abandonedGate"'),
     "the status should still surface the leftover, so the page can explain it");
 });
+
+// The liveness check alone is not enough: from the moment a new run starts there is a live
+// process again, so a gate.json left by the previous one would be read as this run's
+// question before it has asked anything.
+test("starting a run clears a gate left by the previous one", () => {
+  const body = server.slice(server.indexOf("    def start(self"),
+                            server.indexOf("    def attach(self"));
+  assert.match(body, /glob\("\*\/gate\.json"\)/,
+    "start must remove a leftover gate before launching QuPath");
+});
+
+// A correction is applied by shifting later cores along, which is not idempotent. Tying the
+// file to the grid it was made against is the only thing stopping a double apply.
+test("grid corrections are tied to the grid they were made against", () => {
+  assert.match(server, /"baseGridHash": grid\["gridHash"\]/,
+    "the corrections file must name the grid it belongs to");
+  assert.ok(page.includes("model.grid.gridHash !== gridKey"),
+    "the page must drop edits when CoreAlign moves to a different grid");
+});

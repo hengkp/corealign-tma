@@ -307,6 +307,16 @@ class Run:
             self.log_path = work / "studio-run.log"
             self.log_path.write_text("", "utf-8")
 
+            # A gate.json left by a run that was killed describes a question this run has
+            # not asked yet. The liveness check alone does not catch it, because from the
+            # moment QuPath starts there is a live process again. Clear it here: the run
+            # about to start writes its own when it actually reaches a gate.
+            for leftover in (work / "state").glob("*/gate.json"):
+                try:
+                    leftover.unlink()
+                except OSError:
+                    pass
+
             command = [
                 QUPATH,
                 "-D", "corealign.headless=true",
@@ -606,21 +616,45 @@ class Run:
         """
         if not self.project:
             return {"available": False}
-        grid_json, grid_image = None, ""
+        # Two files describe the grid, and which one is current depends on where the run is.
+        #
+        #   *_grid_geometry.json  written by the runner every time the grid gate opens, so it
+        #                         always matches what is on screen. Carries the circles, the
+        #                         grid hash and the mapping to overlay pixels.
+        #   *_grid_qc_latest.json written by step 3, so it does not exist at all on a first
+        #                         run, and afterwards can be a step behind. Carries the
+        #                         review queue and the QC warnings.
+        #
+        # Take the positions from the first and the commentary from the second.
         grid_dir = self.project / "qc" / "01-grid"
+        geometry, qc_json, grid_image = None, None, ""
         if grid_dir.is_dir():
+            for candidate in sorted(grid_dir.glob("*_grid_geometry.json")):
+                try:
+                    geometry = json.loads(candidate.read_text("utf-8"))
+                except (OSError, ValueError):
+                    geometry = None
+                break
             for candidate in sorted(grid_dir.glob("*_grid_qc_latest.json")):
                 try:
-                    grid_json = json.loads(candidate.read_text("utf-8"))
+                    qc_json = json.loads(candidate.read_text("utf-8"))
                 except (OSError, ValueError):
-                    grid_json = None
+                    qc_json = None
                 break
-            for candidate in sorted(grid_dir.glob("*_grid_qc_latest.png")):
-                grid_image = f"qc/01-grid/{candidate.name}"
-                break
+            named = str((geometry or {}).get("overlayPng") or "")
+            if named and (grid_dir / named).is_file():
+                grid_image = f"qc/01-grid/{named}"
+            else:
+                for pattern in ("*_grid_qc_latest.png", "*_grid_qc.png"):
+                    found = sorted(grid_dir.glob(pattern))
+                    if found:
+                        grid_image = f"qc/01-grid/{found[0].name}"
+                        break
 
+        grid_json = geometry or qc_json
         grid = {}
         if grid_json:
+            commentary = qc_json or {}
             grid = {
                 "image": grid_image,
                 "rows": grid_json.get("gridHeight"),
@@ -628,10 +662,10 @@ class Run:
                 "coreCount": grid_json.get("coreCount"),
                 "present": grid_json.get("present"),
                 "missing": grid_json.get("missing"),
-                "reviewQueueCount": grid_json.get("reviewQueueCount"),
-                "humanCorrectedTotal": grid_json.get("humanCorrectedTotal"),
-                "warnings": [self._flatten(item) for item in (grid_json.get("warnings") or [])],
-                "hardErrors": [self._flatten(item) for item in (grid_json.get("hardErrors") or [])],
+                "reviewQueueCount": commentary.get("reviewQueueCount"),
+                "humanCorrectedTotal": commentary.get("humanCorrectedTotal"),
+                "warnings": [self._flatten(item) for item in (commentary.get("warnings") or [])],
+                "hardErrors": [self._flatten(item) for item in (commentary.get("hardErrors") or [])],
                 # What the grid editor needs: the circles, and the mapping from slide pixels
                 # to overlay pixels so the page can place them on the QC image and send an
                 # edit back in the coordinates CoreAlign works in.
@@ -649,13 +683,13 @@ class Run:
                     "source": item.get("detectionSource") or "",
                     "confidence": item.get("detectionConfidence") or "",
                 } for item in (grid_json.get("cores") or [])],
-                "editable": bool(grid_json.get("overviewWidth") and grid_json.get("slideWidth")),
             }
+            grid["editable"] = bool(grid["gridHash"] and grid["slideWidth"]
+                                    and grid["overviewWidth"] and grid["cores"])
             saved_grid = self._read_json("corealign-grid-corrections.json") or {}
-            if str(saved_grid.get("baseGridHash") or "") == str(grid["gridHash"]):
-                grid["savedCorrections"] = saved_grid.get("corrections") or []
-            else:
-                grid["savedCorrections"] = []
+            grid["savedCorrections"] = (saved_grid.get("corrections") or []
+                                        if str(saved_grid.get("baseGridHash") or "")
+                                        == str(grid["gridHash"]) else [])
 
         report = self._read_json("qc/02-orientation/run_report.json")
         if not report:

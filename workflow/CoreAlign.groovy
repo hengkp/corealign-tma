@@ -4096,7 +4096,68 @@ if (savedApproval != null && savedApproval.status == 'APPROVED' &&
         }
     }
 }
+// What the Studio page needs to draw the grid editor at this gate.
+//
+// The rich QC JSON is written by step 3, which by definition has not run yet the first
+// time this gate opens: on a fresh slide the page would have no image, no circles and no
+// numbers, which is exactly the state a first-time user meets. Step 1 has already written
+// the overlay PNG and the coordinates; what is missing is the mapping from slide pixels to
+// overlay pixels and the hash of the grid on screen. Write those here, using the same
+// canonical hash step 3 and the approval file use, so a correction made against this grid
+// can be matched to it later.
+def pngSize = { File file ->
+    // IHDR is the first chunk of every PNG: 8 byte signature, 4 length, 4 type, then
+    // width and height as big-endian 32 bit integers.
+    try {
+        byte[] head = new byte[24]
+        file.withInputStream { input -> if (input.read(head) < 24) return null }
+        int w = ((head[16] & 0xff) << 24) | ((head[17] & 0xff) << 16) |
+                ((head[18] & 0xff) << 8) | (head[19] & 0xff)
+        int h = ((head[20] & 0xff) << 24) | ((head[21] & 0xff) << 16) |
+                ((head[22] & 0xff) << 8) | (head[23] & 0xff)
+        return (w > 0 && h > 0) ? [w, h] : null
+    } catch (Throwable ignored) { return null }
+}
+def writeGridGeometry = { ->
+    try {
+        def g = imageData.getHierarchy().getTMAGrid()
+        if (g == null) return
+        File overlay = new File(gridQcDir, "${imageStem}_grid_qc_latest.png")
+        if (!overlay.isFile()) overlay = new File(gridQcDir, "${imageStem}_grid_qc.png")
+        if (!overlay.isFile()) return
+        def size = pngSize(overlay)
+        if (size == null) return
+        def server = imageData.getServer()
+        def rows = []
+        int cols = g.getGridWidth()
+        g.getTMACoreList().eachWithIndex { core, i ->
+            def roi = core.getROI()
+            rows << [index: i + 1, row: i.intdiv(cols) + 1, column: i % cols + 1,
+                core: core.getName() ?: '', centerX: roi.getCentroidX(),
+                centerY: roi.getCentroidY(),
+                diameter: Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()),
+                missing: core.isMissing()]
+        }
+        int present = rows.count { !it.missing }
+        def payload = [schemaVersion: 1, status: 'GATE_GRID',
+            image: imageName, gridWidth: cols, gridHeight: g.getGridHeight(),
+            coreCount: rows.size(), present: present, missing: rows.size() - present,
+            gridHash: hashText(canonicalGrid(g)),
+            overlayPng: overlay.getName(),
+            overviewWidth: size[0], overviewHeight: size[1],
+            slideWidth: server.getWidth(), slideHeight: server.getHeight(),
+            cores: rows]
+        File target = new File(gridQcDir, "${imageStem}_grid_geometry.json")
+        File temporary = new File(gridQcDir, ".${target.getName()}.tmp")
+        temporary.setText(new Gson().toJson(payload) + '\n', 'UTF-8')
+        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    } catch (Throwable geometryError) {
+        println "WARNING: could not write the grid geometry: ${geometryError.getMessage()}"
+    }
+}
+
 while (!gridApproved) {
+    writeGridGeometry()
     def gridForGate = imageData.getHierarchy().getTMAGrid()
     int gatePresent = gridForGate == null ? 0 :
         gridForGate.getTMACoreList().count { !it.isMissing() }
