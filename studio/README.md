@@ -28,10 +28,50 @@ Studio proxies instead:
 browser  ->  Studio (compute node, app port)  ->  CoreAlign bridge (127.0.0.1, same job)
 ```
 
-`REPORT.html` is reused as CoreAlign writes it, with the loopback URLs rewritten to Studio's own
-`/api/bridge/...` paths. Every control in the report keeps working, and the bridge token stays on
-the node: it is never sent to the browser. That makes this less exposed than the desktop
-arrangement, not more.
+The bridge token stays on the node and is never sent to the browser, which makes this less
+exposed than the desktop arrangement, not more.
+
+## The review screen is Studio's own
+
+The first version embedded `REPORT.html` in an iframe. That was wrong: the report carries its own
+sticky topbar and review bar, so on screen they stacked on top of Studio's and the page became
+hard to read and hard to click.
+
+The review screen is now drawn from `/api/review`, which reads the run's own JSON:
+`qc/02-orientation/run_report.json` for the cores and `qc/01-grid/*_grid_qc_latest.json` for the
+detected grid. One source of truth for the numbers, and the page can lay them out however reads
+best. `REPORT.html` is still written by CoreAlign and still served at `/project/REPORT.html` with
+its loopback URLs rewritten, so it stays a working artefact to keep or open elsewhere.
+
+Layout comes from shipped products rather than invention (patterns via Mobbin): a queue on the
+left with the item and its decisions on the right (Reddit mod queue), media on a dark stage with
+the decision rail beside it (ClassDojo), a run header with state and duration over an event log
+in a drawer (Databricks), filter chips and a count above the list (Frontify), a summary strip of
+counts above the detail (AWS upload status), and a numbered stage tracker across the top (Zoho
+CRM migration). One question per stage, one filled button per screen, the log collapsed by
+default, and status carried by colour plus icon plus words rather than colour alone.
+
+Picking a slide also attaches to whatever is already in that folder, so a finished run can be
+opened and read without running it again.
+
+## How fast a run is: workers come from the allocation
+
+Cores are independent of each other, so orientation processes them on a thread pool. That pool
+used to be a fixed 2 while the AppHub job held 8 CPUs, and the runner capped any request at 4.
+
+Measured on node3 on 23 Aug 2026, on the 117-core reference slide, steady state with warm-up
+excluded:
+
+| Workers | Per core | 117 cores |
+|---|---|---|
+| 2 | 21.0 s | 40.9 min |
+| 8 | 6.0 s | 11.8 min |
+
+The gain is real but sublinear, and what runs out first is memory: each worker holds its own
+full-resolution crop on top of QuPath's shared tile cache. `orientation_workers()` therefore takes
+the smaller of the CPU allocation less one, the memory allocation divided by 2 GB per worker after
+8 GB of JVM headroom, and a ceiling of 16. Research OME-TIFF output still runs one core at a time,
+because the Bio-Formats writer is not thread safe.
 
 ## Running it outside AppHub
 
@@ -89,6 +129,9 @@ node to save almost nothing.
 | `POST /api/run` | writes `corealign.config.json` and starts QuPath headless |
 | `GET /api/status` | run state plus the open gate, read from `work/state/<image>/gate.json` |
 | `GET /api/log` | tail of the run |
+| `POST /api/attach` | point at a project that already has results, without running anything |
+| `GET /api/review` | the cores, the grid and any saved corrections, for the review screen |
+| `POST /api/corrections` | angle changes; goes through the bridge when a run is waiting, straight to `corealign-review-corrections.json` when none is |
 | `POST /api/bridge/<action>` | forwards one control to CoreAlign's bridge |
 | `GET /project/REPORT.html` | the report, loopback URLs rewritten |
 | `GET /project/<path>` | QC images and tables, confined to the project folder |

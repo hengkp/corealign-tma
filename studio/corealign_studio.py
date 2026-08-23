@@ -147,14 +147,46 @@ def allocated_cpus() -> int:
     return os.cpu_count() or 1
 
 
-def orientation_workers() -> int:
-    """Cores are processed independently, so this is the whole allocation bar one CPU.
+def allocated_memory_mb() -> int:
+    """How much memory this Slurm job holds, in MB. 0 when nothing says."""
+    for name in ("SLURM_MEM_PER_NODE", "APPHUB_MEMORY_MB", "SLURM_MEM_PER_CPU"):
+        raw = os.environ.get(name, "") or ""
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if value <= 0:
+            continue
+        if name == "SLURM_MEM_PER_CPU":
+            value *= allocated_cpus()
+        return value
+    return 0
 
-    The spare CPU keeps this server answering the page while QuPath is saturating the
-    rest. Below 4 CPUs there is nothing to spare, so use them all.
+
+# Measured on node3, 23 Aug 2026, on the 117-core reference slide: 2 workers ran 21.0 s
+# per core and 8 ran 6.3 s, so 41 minutes became 12. The gain is real but sublinear, and
+# what actually runs out first is memory: each worker holds its own full-resolution crop
+# on top of QuPath's shared tile cache.
+WORKER_MEMORY_MB = 2048
+JVM_HEADROOM_MB = 8192
+# Scaling is sublinear, so there is little left to win past this and every extra worker
+# still costs memory. Raise it only with a measurement that says it helps.
+MAX_WORKERS = 16
+
+
+def orientation_workers() -> int:
+    """Cores are processed independently, so use the allocation, bounded by its memory.
+
+    One CPU is left over so this server keeps answering the page while QuPath saturates
+    the rest. Below 4 CPUs there is nothing to spare, so use them all.
     """
     cpus = allocated_cpus()
-    return max(1, cpus - 1) if cpus >= 4 else max(1, cpus)
+    by_cpu = max(1, cpus - 1) if cpus >= 4 else max(1, cpus)
+    memory = allocated_memory_mb()
+    if memory <= 0:
+        return by_cpu
+    by_memory = max(1, (memory - JVM_HEADROOM_MB) // WORKER_MEMORY_MB)
+    return max(1, min(by_cpu, by_memory, MAX_WORKERS))
 
 
 def build_config(tissue: str, output: str) -> dict:

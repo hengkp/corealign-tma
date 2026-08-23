@@ -584,7 +584,7 @@ kbd{
         </div>
         <div class="controls">
           <div class="controlsTop">
-            <span class="who" id="coreName">—</span>
+            <span class="who" id="coreName">–</span>
             <span class="facts" id="coreFacts"></span>
             <span class="spacer"></span>
             <span class="reasonTag" id="coreReason" hidden></span>
@@ -938,7 +938,7 @@ function drawQueue(){
     var dot = core.status === "ok" ? "ok"
       : (core.status === "review" ? "review"
       : (core.status === "missing" ? "missing" : "error"));
-    var confidence = core.confidence == null ? "—" : Math.round(core.confidence * 100) + "%";
+    var confidence = core.confidence == null ? "–" : Math.round(core.confidence * 100) + "%";
     b.innerHTML =
       '<img class="thumb" alt="" loading="lazy" decoding="async">' +
       '<span><span class="nm"></span><br>' +
@@ -973,7 +973,7 @@ function drawDetail(){
   var img = $("viewerImg");
   if (!core) {
     img.removeAttribute("src"); img.dataset.core = "";
-    $("coreName").textContent = "—";
+    $("coreName").textContent = "–";
     $("coreFacts").textContent = "";
     $("viewerTag").textContent = "";
     $("coreReason").hidden = true;
@@ -985,9 +985,9 @@ function drawDetail(){
     img.alt = "core " + core.core;
   }
   $("coreName").textContent = core.core;
-  var residual = core.residualDeg == null ? "—" : core.residualDeg.toFixed(1) + "°";
-  var confidence = core.confidence == null ? "—" : Math.round(core.confidence * 100) + "%";
-  var applied = core.rotateToTopDeg == null ? "—" : core.rotateToTopDeg.toFixed(1) + "°";
+  var residual = core.residualDeg == null ? "–" : core.residualDeg.toFixed(1) + "°";
+  var confidence = core.confidence == null ? "–" : Math.round(core.confidence * 100) + "%";
+  var applied = core.rotateToTopDeg == null ? "–" : core.rotateToTopDeg.toFixed(1) + "°";
   $("coreFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
     " · หมุนอัตโนมัติ " + applied + " · ความมั่นใจ " + confidence + " · เหลือเอียง " + residual;
   $("viewerTag").textContent = core.core + "  ·  " + (current + 1) + "/" + visible.length;
@@ -1185,8 +1185,8 @@ function drawGrid(){
   if (img.getAttribute("src") !== wanted) img.src = wanted;
   var grid = model.grid;
   $("gridStrip").innerHTML =
-    metric(grid.present == null ? "—" : grid.present, "core ที่พบ", "ok") +
-    metric(grid.missing == null ? "—" : grid.missing, "ตำแหน่งว่าง", "none") +
+    metric(grid.present == null ? "–" : grid.present, "core ที่พบ", "ok") +
+    metric(grid.missing == null ? "–" : grid.missing, "ตำแหน่งว่าง", "none") +
     metric((grid.rows || "?") + " × " + (grid.cols || "?"), "แถว × คอลัมน์", "") +
     metric(grid.humanCorrectedTotal || 0, "คนแก้ไว้", "");
   var box = $("gridWarnings"); box.textContent = "";
