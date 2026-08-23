@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>CoreAlign Studio</title>
+<style>
+:root{color-scheme:light;--bg:#fff;--surface:#f7f8fc;--fg:#171842;--muted:#5f6486;--line:#dfe3f2;
+--accent:#4262ff;--accent-ink:#fff;--warn:#ffd02f;--warn-bg:#fff8dd;--warn-ink:#7a5c00;
+--ok:#1aa998;--ok-bg:#e9f7f4;--bad:#ec6972;--bad-bg:#fdeef0;--radius:14px}
+@media(prefers-color-scheme:dark){:root{--bg:#070b21;--surface:#111834;--fg:#f2f4ff;--muted:#9aa2c8;
+--line:#2a3358;--warn-bg:#3a2f00;--warn-ink:#ffd94a;--ok-bg:#0f3b34;--bad-bg:#41161b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:14px clamp(16px,4vw,36px);
+border-bottom:1px solid var(--line);background:color-mix(in oklch,var(--bg) 92%,transparent);backdrop-filter:blur(14px)}
+header b{font-size:17px;letter-spacing:-.02em}
+header .spacer{margin-left:auto}
+main{width:min(100%,1180px);margin:auto;padding:clamp(20px,4vw,40px) clamp(16px,4vw,36px) 80px}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,1.3rem+1.6vw,2.4rem);letter-spacing:-.03em}
+.lede{margin:0 0 28px;color:var(--muted);max-width:62ch}
+.step{margin:0 0 20px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.step>summary,.stephead{display:flex;align-items:center;gap:12px;padding:16px 20px;font-weight:700;cursor:default}
+.num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:14px;font-weight:800;flex:0 0 auto}
+.step .body{padding:0 20px 20px}
+.crumb{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;font-size:13px;color:var(--muted)}
+.crumb button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+.list{max-height:330px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.row{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border:0;border-bottom:1px solid var(--line);
+background:transparent;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--surface)}
+.row.sel{background:color-mix(in oklch,var(--accent) 14%,transparent);font-weight:700}
+.row .ic{width:18px;text-align:center;opacity:.7}
+.row .meta{margin-left:auto;color:var(--muted);font-size:13px;font-weight:400}
+.seg{display:inline-grid;grid-auto-flow:column;padding:4px;border:1px solid var(--line);border-radius:999px;background:var(--bg)}
+.seg button{border:0;border-radius:999px;padding:9px 18px;background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.field{display:flex;align-items:center;gap:16px;margin:0 0 14px;flex-wrap:wrap}
+.field>span:first-child{min-width:76px;font-weight:700;font-size:14px}
+.hint{color:var(--muted);font-size:13px;margin:6px 0 0}
+.primary{border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);
+padding:13px 28px;font:inherit;font-weight:800;font-size:15px;cursor:pointer}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.ghost{border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);padding:9px 18px;font:inherit;font-weight:700;cursor:pointer}
+.gate{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 24px;align-items:center;
+padding:18px 20px;border:1px solid var(--warn);border-radius:var(--radius);background:var(--warn-bg);color:var(--warn-ink);margin:0 0 20px}
+.gate .k{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.gate strong{display:block;font-size:17px;color:var(--fg)}
+.gate p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+.gate .primary{min-height:48px}
+.state{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:800}
+.state.running{background:var(--warn-bg);color:var(--warn-ink)}
+.state.complete{background:var(--ok-bg);color:var(--ok)}
+.state.failed,.state.cancelled,.state.stopped{background:var(--bad-bg);color:var(--bad)}
+.state.idle{background:var(--surface);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.state.running .dot{animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+iframe{width:100%;height:min(78vh,900px);border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)}
+pre.log{max-height:280px;overflow:auto;margin:0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;
+background:var(--bg);font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.err{margin:0 0 16px;padding:12px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-bg);color:var(--bad);font-size:14px}
+.err[hidden],[hidden]{display:none!important}
+@media(max-width:720px){.gate{grid-template-columns:1fr}.gate .primary{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <b>CoreAlign Studio</b>
+  <span class="spacer"></span>
+  <span class="state idle" id="state" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="stateText">Ready</span></span>
+  <button class="ghost" id="newRun" hidden>New slide</button>
+</header>
+
+<main>
+  <div class="err" id="error" hidden></div>
+
+  <section id="setup">
+    <h1>Prepare a TMA slide.</h1>
+    <p class="lede">Pick a slide, answer two questions, press Start. CoreAlign runs on the cluster
+      and comes back here when it needs you. Nothing is exported until you approve it.</p>
+
+    <section class="step">
+      <div class="stephead"><span class="num">1</span> Choose the slide</div>
+      <div class="body">
+        <div class="crumb" id="crumb"></div>
+        <div class="list" id="browser" role="group" aria-label="Folders and slides"></div>
+        <p class="hint" id="pickHint">Results are written beside the slide, so the folder has to be yours to write to.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="stephead"><span class="num">2</span> Two choices</div>
+      <div class="body">
+        <div class="field"><span>Tissue</span>
+          <span class="seg" id="tissue">
+            <button data-v="skin" aria-pressed="true">Skin</button>
+            <button data-v="other" aria-pressed="false">Other tissue</button>
+          </span>
+          <span class="hint" id="tissueHint">Keeps the epidermis at the top of every core.</span>
+        </div>
+        <div class="field"><span>Results</span>
+          <span class="seg" id="output">
+            <button data-v="presentation" aria-pressed="true">Images</button>
+            <button data-v="research" aria-pressed="false">Images + research files</button>
+          </span>
+          <span class="hint" id="outputHint">Full resolution PNG, one per core.</span>
+        </div>
+        <p class="hint">Rows, columns, core size and array position are measured from the slide. You are never asked for them.</p>
+      </div>
+    </section>
+
+    <button class="primary" id="start" disabled>Start</button>
+  </section>
+
+  <section id="live" hidden>
+    <div class="gate" id="gate" hidden>
+      <div>
+        <span class="k">CoreAlign is waiting for you</span>
+        <strong id="gateTitle"></strong>
+        <p id="gateSummary"></p>
+      </div>
+      <button class="primary" id="gateGo"></button>
+    </div>
+
+    <h1 id="liveTitle">Working on it.</h1>
+    <p class="lede" id="liveText"></p>
+
+    <section class="step" id="reportStep" hidden>
+      <div class="stephead"><span class="num">3</span> Review</div>
+      <div class="body"><iframe id="report" title="CoreAlign report"></iframe></div>
+    </section>
+
+    <section class="step">
+      <div class="stephead"><span class="num">4</span> Progress log</div>
+      <div class="body"><pre class="log" id="log"></pre>
+        <p class="hint"><button class="ghost" id="stop">Stop this run</button></p>
+      </div>
+    </section>
+  </section>
+</main>
+
+<script>
+"use strict";
+var picked = null, tissue = "skin", output = "presentation", timer = null, lastGate = "", reportLoaded = false;
+var $ = function (id) { return document.getElementById(id); };
+
+function showError(text) { var box = $("error"); box.textContent = text || ""; box.hidden = !text; }
+
+async function api(path, options) {
+  var response = await fetch(path, options || {});
+  var data = {};
+  try { data = await response.json(); } catch (e) {}
+  if (!response.ok) throw new Error(data.error || ("request failed: " + response.status));
+  return data;
+}
+
+// ---- slide picker ----------------------------------------------------------
+async function browse(path) {
+  try {
+    var data = await api("/api/browse?path=" + encodeURIComponent(path || ""));
+    var list = $("browser"); list.innerHTML = "";
+    if (data.parent) list.appendChild(makeRow("↑", "Up one folder", "", function () { browse(data.parent); }, "Go up"));
+    data.folders.forEach(function (folder) {
+      list.appendChild(makeRow("\u{1F4C1}", folder.name, "", function () { browse(folder.path); }, "Folder"));
+    });
+    data.slides.forEach(function (slide) {
+      var note = slide.folderWritable ? slide.size : slide.size + " · folder is read only";
+      var row = makeRow("\u{1F52C}", slide.name, note, function () { choose(slide, row); }, "Slide");
+      if (!slide.folderWritable) row.style.opacity = ".55";
+      list.appendChild(row);
+    });
+    if (!data.folders.length && !data.slides.length) {
+      var empty = document.createElement("div");
+      empty.className = "row"; empty.style.cursor = "default";
+      empty.textContent = "Nothing to open in this folder.";
+      list.appendChild(empty);
+    }
+    var crumb = $("crumb"); crumb.innerHTML = "";
+    var label = document.createElement("span"); label.textContent = data.path; crumb.appendChild(label);
+    showError("");
+  } catch (error) { showError(error.message); }
+}
+
+function makeRow(icon, label, meta, onClick, kind) {
+  var row = document.createElement("button");
+  row.type = "button"; row.className = "row";
+  // The visible text sits in child spans, and the icon is decorative, so the button needs an
+  // explicit name or it is announced as nothing at all.
+  row.setAttribute("aria-label", (kind ? kind + ": " : "") + label + (meta ? ", " + meta : ""));
+  row.innerHTML = '<span class="ic" aria-hidden="true"></span><span class="name"></span><span class="meta"></span>';
+  row.querySelector(".ic").textContent = icon;
+  row.querySelector(".name").textContent = label;
+  row.querySelector(".meta").textContent = meta || "";
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+function choose(slide, row) {
+  if (!slide.folderWritable) {
+    showError("CoreAlign writes its results beside the slide, and that folder is read only. " +
+              "Copy the slide into your locker first.");
+    return;
+  }
+  picked = slide;
+  Array.prototype.forEach.call(document.querySelectorAll(".row.sel"), function (element) { element.classList.remove("sel"); });
+  row.classList.add("sel");
+  $("pickHint").textContent = "Selected: " + slide.name;
+  $("start").disabled = false;
+  showError("");
+}
+
+// ---- the two choices -------------------------------------------------------
+function wireSegment(id, onPick) {
+  $(id).addEventListener("click", function (event) {
+    var button = event.target.closest("button"); if (!button) return;
+    Array.prototype.forEach.call(this.querySelectorAll("button"), function (other) {
+      other.setAttribute("aria-pressed", String(other === button));
+    });
+    onPick(button.dataset.v);
+  });
+}
+wireSegment("tissue", function (value) {
+  tissue = value;
+  $("tissueHint").textContent = value === "skin"
+    ? "Keeps the epidermis at the top of every core."
+    : "Keeps the strongest outer tissue edge at the top.";
+});
+wireSegment("output", function (value) {
+  output = value;
+  $("outputHint").textContent = value === "presentation"
+    ? "Full resolution PNG, one per core."
+    : "PNG, multichannel OME-TIFF, and an ordered QuPath project.";
+});
+
+// ---- run -------------------------------------------------------------------
+$("start").addEventListener("click", async function () {
+  if (!picked) return;
+  this.disabled = true;
+  try {
+    await api("/api/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slide: picked.path, tissue: tissue, output: output })
+    });
+    $("setup").hidden = true; $("live").hidden = false; $("newRun").hidden = false;
+    poll();
+  } catch (error) { showError(error.message); this.disabled = false; }
+});
+
+$("stop").addEventListener("click", async function () {
+  if (!confirm("Stop this run? Finished cores are kept and it can be resumed later.")) return;
+  try { await api("/api/stop", { method: "POST" }); } catch (error) { showError(error.message); }
+});
+
+$("newRun").addEventListener("click", async function () {
+  try { await api("/api/reset", { method: "POST" }); } catch (error) {}
+  location.reload();
+});
+
+$("gateGo").addEventListener("click", async function () {
+  var gate = this.dataset.gate; if (!gate) return;
+  this.disabled = true;
+  try {
+    var result = await api("/api/bridge/gate", {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ gate: gate, decision: "continue" })
+    });
+    if (!result.ok) throw new Error(result.error || "CoreAlign did not accept that");
+    $("gate").hidden = true; lastGate = "";
+  } catch (error) { showError(error.message); this.disabled = false; }
+});
+
+// ---- status ----------------------------------------------------------------
+var TITLES = {
+  running: ["Working on it.", "CoreAlign is running on the cluster. You can leave this page open."],
+  complete: ["Finished.", "Your files are in results/ beside the slide."],
+  stopped: ["Stopped safely.", "Nothing was lost. The log below says where it stopped."],
+  failed: ["That run failed.", "The log below has the reason."],
+  cancelled: ["Stopped.", "Finished cores are kept. Starting again resumes from the last one."]
+};
+
+async function poll() {
+  try {
+    var status = await api("/api/status");
+    var badge = $("state");
+    badge.className = "state " + status.state;
+    $("stateText").textContent = status.state.charAt(0).toUpperCase() + status.state.slice(1);
+
+    var copy = TITLES[status.state] || TITLES.running;
+    $("liveTitle").textContent = copy[0];
+    $("liveText").textContent = status.message || copy[1];
+
+    if (status.gate && status.gate.gate) {
+      $("gate").hidden = false;
+      $("gateTitle").textContent = status.gate.title || "Check the result";
+      $("gateSummary").textContent = status.gate.summary || "";
+      var go = $("gateGo");
+      go.textContent = status.gate.primaryLabel || "Continue";
+      go.dataset.gate = status.gate.gate;
+      if (lastGate !== status.gate.gate) { go.disabled = false; lastGate = status.gate.gate; }
+    } else {
+      $("gate").hidden = true; lastGate = "";
+    }
+
+    if (status.hasReport) {
+      $("reportStep").hidden = false;
+      var frame = $("report");
+      // Reload the report whenever a gate opens or closes: CoreAlign rewrites it at both edges.
+      var wanted = "/project/REPORT.html?v=" + (status.gate ? status.gate.gate : status.state);
+      if (frame.dataset.src !== wanted) { frame.dataset.src = wanted; frame.src = wanted; }
+    }
+
+    var log = await api("/api/log");
+    var pre = $("log");
+    var atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+    pre.textContent = log.log || "";
+    if (atBottom) pre.scrollTop = pre.scrollHeight;
+
+    var done = ["complete", "failed", "cancelled", "stopped"].indexOf(status.state) >= 0;
+    $("stop").hidden = done;
+    timer = setTimeout(poll, done ? 5000 : 1500);
+  } catch (error) {
+    showError(error.message);
+    timer = setTimeout(poll, 4000);
+  }
+}
+
+// ---- boot ------------------------------------------------------------------
+(async function () {
+  try {
+    var status = await api("/api/status");
+    if (status.state !== "idle") {
+      $("setup").hidden = true; $("live").hidden = false; $("newRun").hidden = false;
+      poll(); return;
+    }
+  } catch (error) {}
+  try {
+    var roots = await api("/api/roots");
+    browse(roots.roots.length ? roots.roots[0].path : "");
+  } catch (error) { showError(error.message); }
+})();
+</script>
+</body>
+</html>
