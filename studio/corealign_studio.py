@@ -81,8 +81,14 @@ def allowed_roots() -> list[Path]:
             resolved = root.resolve()
         except OSError:
             continue
-        if resolved.is_dir() and resolved not in seen:
-            seen.append(resolved)
+        if not resolved.is_dir() or resolved in seen:
+            continue
+        # The runner binds every NAS share the node mounts, including administrative ones
+        # that have no business in a slide picker. Show only what this person can actually
+        # open: the filesystem already decides that, so ask it rather than keeping a list.
+        if not os.access(resolved, os.R_OK | os.X_OK):
+            continue
+        seen.append(resolved)
     return seen
 
 
