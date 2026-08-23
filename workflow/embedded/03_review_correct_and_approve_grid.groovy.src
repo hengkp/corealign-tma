@@ -464,6 +464,7 @@ def appliedCorrectionSignatures = cores.collect {
 // changes the hash, which is what stops the same file being applied twice: an insert
 // shifts later cores along, and doing that twice would silently corrupt the row labels.
 File studioGridFile = new File(resolveBaseDir(), 'corealign-grid-corrections.json')
+def studioGridErrors = []
 if (studioGridFile.isFile()) {
     try {
         def sent = json.fromJson(studioGridFile.getText('UTF-8'), Map.class) ?: [:]
@@ -502,7 +503,6 @@ if (studioGridFile.isFile()) {
                     ImagePlane.getDefaultPlane())
                 def ann = PathObjects.createAnnotationObject(roi)
                 ann.setName("${markMissing ? MARK_MISSING_CLASS : CORRECTION_CLASS} ${coreName}")
-                ann.putMetadataValue('Correction origin', 'corealign-studio')
                 hierarchy.addObject(ann)
                 made++
             }
@@ -512,7 +512,11 @@ if (studioGridFile.isFile()) {
             }
         }
     } catch (Throwable studioGridError) {
-        println "WARNING: could not read the Studio grid corrections: ${studioGridError.getMessage()}"
+        // Never continue quietly here. Somebody made these edits in the page and pressed a
+        // button that said they would be applied; approving the uncorrected grid instead
+        // would look like success and be wrong.
+        studioGridErrors << ("Could not apply the grid corrections from the Studio page: " +
+            (studioGridError.getMessage() ?: studioGridError.toString())).toString()
     }
 }
 
@@ -523,6 +527,7 @@ def corrections = hierarchy.getAnnotationObjects().findAll {
 def positionNames = cores.collect { it.getName() ?: '' }
 def correctionAudit = []
 def correctionErrors = []
+correctionErrors.addAll(studioGridErrors)
 corrections.each { ann ->
     def target = targetForAnnotation(ann)
     int targetIndex = target == null ? -1 : (int) target.index

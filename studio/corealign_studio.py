@@ -796,7 +796,9 @@ class Run:
         target = self.project / "corealign-grid-corrections.json"
         document = {
             "schemaVersion": 1,
-            "image": model.get("image") or grid.get("image") or "",
+            # The slide this belongs to. grid["image"] is the overlay's path, which is not
+            # the same thing and would be misleading in an audit file.
+            "image": model.get("image") or str(self.slide.name if self.slide else ""),
             "baseGridHash": grid["gridHash"],
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "corrections": clean,
@@ -899,9 +901,15 @@ class Run:
                 "hasReport": bool(self.project and (self.project / "REPORT.html").is_file()),
                 # What the page actually draws from. REPORT.html is only an artefact now,
                 # and a project can hold a finished run without one.
-                "hasResults": bool(self.project and
-                                   (self.project / "qc" / "02-orientation" /
-                                    "run_report.json").is_file()),
+                #
+                # A project sitting at the grid gate has a grid and no orientation report at
+                # all, so keying this on the report alone meant the page never fetched the
+                # model and the grid screen stayed empty. Either file is worth drawing.
+                "hasResults": bool(self.project and (
+                    (self.project / "qc" / "02-orientation" / "run_report.json").is_file()
+                    or any((self.project / "qc" / "01-grid").glob("*_grid_geometry.json"))
+                    or any((self.project / "qc" / "01-grid").glob("*_grid_qc_latest.json"))
+                )) if self.project else False,
                 "results": self.results(detail=False),
             }
 

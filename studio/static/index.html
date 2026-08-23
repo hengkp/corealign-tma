@@ -267,11 +267,14 @@ h2{font-size:17px;font-weight:750}
   background:var(--stage-bg);display:flex;align-items:center;justify-content:center;
   min-height:0;min-width:0;overflow:auto;padding:18px;border-right:1px solid var(--line);
 }
-.gridCanvas{position:relative;flex:0 1 auto;line-height:0}
-.gridStage img{max-width:100%;max-height:100%;display:block;object-fit:contain;border-radius:8px}
+/* The canvas is sized in script, not by percentages. A percentage max-height needs a
+   definite height to resolve against, and neither the flex line nor this wrapper has one,
+   which is how a 1055x2048 overlay ended up rendering at full size inside a 310px box. */
+/* The image carries the size and the wrapper follows it. Sizing the wrapper instead made
+   the image 100% of a box that was itself sized by the image, which collapses to nothing. */
+.gridCanvas{position:relative;flex:0 0 auto;display:inline-block;line-height:0}
+.gridStage img{display:block;max-width:none;max-height:none;border-radius:8px}
 .gridStage[data-zoom="true"]{align-items:flex-start;justify-content:flex-start}
-.gridStage[data-zoom="true"] .gridCanvas{flex:0 0 auto}
-.gridStage[data-zoom="true"] img{max-width:none;max-height:none;width:auto;height:auto}
 .gridOverlay{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .gridOverlay circle{
   fill:transparent;stroke-width:2;cursor:grab;
@@ -1369,6 +1372,14 @@ function gridScale(){
   var shown = img.getBoundingClientRect().width;
   return (slideW > 0 && shown > 0) ? shown / slideW : 0;
 }
+function nominalDiameter(){
+  // A position marked empty carries a placeholder ROI about a twentieth of a core wide, so
+  // reading a diameter off one describes nothing. Use the middle of the real ones.
+  var sizes = gridCores().filter(function(c){ return !c.missing && c.diameter > 0; })
+                         .map(function(c){ return Number(c.diameter); })
+                         .sort(function(a, b){ return a - b; });
+  return sizes.length ? sizes[Math.floor(sizes.length / 2)] : 0;
+}
 function coreNow(core){
   var edit = gridEdits[core.core];
   return {
@@ -1381,9 +1392,33 @@ function coreNow(core){
     confidence: core.confidence
   };
 }
+var fitRetry = 0;
+function fitGridCanvas(){
+  var stage = $("gridStage"), img = $("gridImg");
+  if (!img.naturalWidth) return 0;
+  var zoomed = stage.dataset.zoom === "true";
+  // Leave room for the padding the stage carries, so a fitted image never sits under its
+  // own scrollbars.
+  var room = 36;
+  var scale = zoomed ? 1 : Math.min(
+    (stage.clientWidth - room) / img.naturalWidth,
+    (stage.clientHeight - room) / img.naturalHeight);
+  if (!(scale > 0)) {
+    // The panel can still be display:none when this first runs, so the stage measures
+    // zero. Try again on the next frame rather than leaving a collapsed image on screen.
+    if (fitRetry < 20) { fitRetry++; requestAnimationFrame(drawGridOverlay); }
+    return 0;
+  }
+  fitRetry = 0;
+  img.style.width = Math.round(img.naturalWidth * scale) + "px";
+  img.style.height = Math.round(img.naturalHeight * scale) + "px";
+  return scale;
+}
+
 function drawGridOverlay(){
   var svg = $("gridOverlay"), img = $("gridImg");
   if (!svg || !img || !img.naturalWidth) return;
+  fitGridCanvas();
   var scale = gridScale();
   var cores = gridCores();
   svg.textContent = "";
@@ -1403,11 +1438,21 @@ function drawGridOverlay(){
     svg.appendChild(c);
   });
 }
+function markPicked(){
+  // Update the existing circles rather than rebuilding them. Selecting happens on
+  // pointerdown, and a rebuild there would destroy the very element being dragged: the
+  // drag would end before it started, and the pointer capture would go with it.
+  var circles = $("gridOverlay").querySelectorAll("circle");
+  for (var i = 0; i < circles.length; i++) {
+    if (circles[i].dataset.core === pickedCore) circles[i].setAttribute("data-picked", "true");
+    else circles[i].removeAttribute("data-picked");
+  }
+}
 function pickCore(name){
   pickedCore = name;
   var raw = gridCores().filter(function(c){ return c.core === name; })[0];
   var panel = $("gridPicked");
-  if (!raw) { panel.hidden = true; drawGridOverlay(); return; }
+  if (!raw) { panel.hidden = true; markPicked(); return; }
   var core = coreNow(raw);
   $("pickedName").textContent = core.core;
   var confidence = core.confidence ? Math.round(Number(core.confidence) * 100) + "%" : "–";
@@ -1418,19 +1463,25 @@ function pickCore(name){
   $("markPresent").hidden = !core.missing;
   $("undoCore").hidden = !core.edited;
   panel.hidden = false;
-  drawGridOverlay();
+  markPicked();
 }
 function editCore(name, action, x, y) {
   var raw = gridCores().filter(function(c){ return c.core === name; })[0];
   if (!raw) return;
   var base = coreNow(raw);
+  var nominal = nominalDiameter();
   gridEdits[name] = {
     action: action,
     centerX: x == null ? base.centerX : x,
     centerY: y == null ? base.centerY : y,
-    diameter: base.diameter
+    // Bringing a position back into use means a core-sized circle, whatever the placeholder
+    // it is replacing happened to be.
+    diameter: (action === "restore" || !(base.diameter > 0)) && nominal > 0
+      ? nominal : base.diameter
   };
   pickCore(name);
+  drawGridOverlay();
+  markPicked();
   drawActionBar();
 }
 $("gridOverlay").addEventListener("pointerdown", function(event){
@@ -1471,6 +1522,8 @@ $("markPresent").addEventListener("click", function(){ editCore(pickedCore, "res
 $("undoCore").addEventListener("click", function(){
   delete gridEdits[pickedCore];
   pickCore(pickedCore);
+  drawGridOverlay();
+  markPicked();
   drawActionBar();
 });
 $("saveGrid").addEventListener("click", function(){
@@ -1765,7 +1818,9 @@ function route(status, gateId){
 // The overlay is positioned against the image's rendered box, which moves with the window,
 // the log drawer and the zoom toggle. Redraw whenever it actually changes.
 if (window.ResizeObserver) {
-  new ResizeObserver(function(){ drawGridOverlay(); }).observe($("gridImg"));
+  // Watch the stage, not the image: the image's size is set by fitGridCanvas, so observing
+  // it would just re-trigger on its own writes.
+  new ResizeObserver(function(){ drawGridOverlay(); }).observe($("gridStage"));
 }
 window.addEventListener("resize", function(){ drawGridOverlay(); });
 
