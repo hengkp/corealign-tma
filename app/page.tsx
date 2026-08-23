@@ -6,19 +6,19 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const workflow = [
   {
-    icon: "ri-folder-open-line",
-    title: "Prepare one folder",
-    text: "Add your slide and CoreAlign.groovy. A config is optional.",
-  },
-  {
     icon: "ri-play-circle-line",
-    title: "Run in QuPath",
-    text: "CoreAlign finds the array, estimates core size, rotates each core, then crops it.",
+    title: "Run the script once",
+    text: "Pick tissue and results, press Start. Rows, columns, and core size are measured from the slide.",
   },
   {
-    icon: "ri-eye-line",
-    title: "Review and use",
-    text: "Open REPORT.html, check flagged cores, and continue with the saved results.",
+    icon: "ri-checkbox-circle-line",
+    title: "Answer twice",
+    text: "CoreAlign pauses to show you the grid, then the rotated cores. One button continues each time.",
+  },
+  {
+    icon: "ri-folder-check-line",
+    title: "Collect your files",
+    text: "Aligned images, tables, and an optional QuPath project, all beside the slide you opened.",
   },
 ];
 
@@ -32,12 +32,12 @@ export default function Home() {
         <div className="heroCopy">
           <p className="kicker"><i className="ri-microscope-line" /> TMA preparation for QuPath</p>
           <h1>Aligned TMA cores. Less repetitive work.</h1>
-          <p className="lead">Detect, rotate, and crop every core in QuPath. Review only the flagged results.</p>
+          <p className="lead">Detect, rotate, and crop every core in QuPath. One run, two questions, no settings to learn.</p>
           <div className="heroActions">
             <a className="button" href={release}><i className="ri-download-2-line" /> Download CoreAlign</a>
-            <a className="button secondary" href={`${basePath}/config-builder/`}><i className="ri-magic-line" /> Create a config</a>
+            <a className="button secondary" href={`${basePath}/guide/`}><i className="ri-guide-line" /> Read the manual</a>
           </div>
-          <div className="heroNote"><i className="ri-shield-check-line" /><span><b>Human checked.</b> Work is saved after each core, so you can correct and continue.</span></div>
+          <div className="heroNote"><i className="ri-shield-check-line" /><span><b>Human checked.</b> Nothing is exported until you have seen the result and approved it.</span></div>
         </div>
 
         <div className="heroArtwork" aria-label="Illustration of TMA core detection, rotation, and crop">
@@ -52,7 +52,7 @@ export default function Home() {
         <div className="sectionHeading">
           <p className="eyebrow">How it works</p>
           <h2>One script. Three clear steps.</h2>
-          <p>Start with the automatic settings. CoreAlign pauses only when your review is needed.</p>
+          <p>You never return to the script editor. Each pause is answered in REPORT.html or in QuPath, and the same run continues from your answer.</p>
         </div>
         <div className="workflowCards">
           {workflow.map((step, index) => (
@@ -91,7 +91,7 @@ export default function Home() {
       <footer>
         <a className="siteBrand" href={`${basePath}/`}><span className="brandIcon"><i className="ri-focus-3-line" /></span><span>CoreAlign <b>TMA</b></span></a>
         <p>Research software for TMA image preparation. Review results before clinical use.</p>
-        <div><a href={`${basePath}/docs/`}>Guide</a><a href={`${basePath}/config-builder/`}>Config</a><a href={repo}>GitHub</a></div>
+        <div><a href={`${basePath}/guide/`}>Manual</a><a href={`${basePath}/moodboard/`}>Moodboard</a><a href={`${basePath}/playbook/`}>Playbook</a><a href={`${basePath}/docs/`}>Reference</a><a href={repo}>GitHub</a></div>
       </footer>
     </main>
   );

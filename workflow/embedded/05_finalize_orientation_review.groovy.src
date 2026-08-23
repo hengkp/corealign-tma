@@ -104,6 +104,10 @@ String resultHash = MessageDigest.getInstance('SHA-256')
 String manifestProcessingHash = (manifest.processingHash ?: manifest.profileHash ?: '').toString()
 
 boolean approveForTest = 'true'.equalsIgnoreCase(System.getProperty('tma.finalApproveForTest', 'false'))
+// Set when the reviewer approved the rotated cores on REPORT.html. The same
+// counts and the same per-core images were on screen there.
+boolean gateApproved = 'true'.equalsIgnoreCase(
+    System.getProperty('corealign.gate.finalApproved', 'false'))
 if (finalApprovalFile.isFile()) {
     try {
         def existing = json.fromJson(finalApprovalFile.getText('UTF-8'), Map.class)
@@ -134,6 +138,13 @@ if (approveForTest) {
     fullResolutionConfirmed = true
     approve = true
     note = 'Automated integration test approval'
+} else if (gateApproved) {
+    allReviewed = true
+    epidermisConfirmed = true
+    regionsConfirmed = true
+    fullResolutionConfirmed = true
+    approve = true
+    note = 'Approved in the CoreAlign report review gate'
 } else {
     String finalMessage = "Positions: ${manifest.coreCount as int}\n" +
         "Missing: ${manifest.missing as int}\n" +

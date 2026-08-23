@@ -17,6 +17,24 @@
 
 import com.google.gson.Gson
 import javafx.application.Platform
+import javafx.geometry.Insets
+import javafx.geometry.Pos
+import javafx.scene.Scene
+import javafx.scene.control.Button
+import javafx.scene.control.ButtonBar
+import javafx.scene.control.ButtonType
+import javafx.scene.control.Dialog
+import javafx.scene.control.Label
+import javafx.scene.control.ToggleButton
+import javafx.scene.control.ToggleGroup
+import javafx.scene.layout.HBox
+import javafx.scene.layout.Priority
+import javafx.scene.layout.Region
+import javafx.scene.layout.VBox
+import javafx.scene.text.TextAlignment
+import javafx.stage.Stage
+import java.util.concurrent.Callable
+import java.util.concurrent.FutureTask
 import qupath.lib.gui.QuPathGUI
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -88,7 +106,8 @@ class CoreAlignCorrectionBridge {
             return [available: true,
                 endpoint: "${root}/save?token=${token}",
                 openEndpoint: "${root}/open?token=${token}",
-                outputEndpoint: "${root}/output?token=${token}"]
+                outputEndpoint: "${root}/output?token=${token}",
+                gateEndpoint: "${root}/gate?token=${token}"]
         } catch (Throwable startError) {
             stop()
             println "WARNING: CoreAlign correction auto-save is unavailable: ${startError.getMessage()}"
@@ -100,6 +119,40 @@ class CoreAlignCorrectionBridge {
         try { activeSocket?.close() } catch (Throwable ignored) {}
         activeSocket = null
         activeThread = null
+    }
+
+    // ---------------------------------------------------------------------
+    // Review gates.
+    //
+    // The dashboard's primary button posts a decision here, so the reviewer
+    // finishes in the browser and the SAME QuPath run continues. Gate state is
+    // static on purpose: REPORT.html is rewritten (which restarts the socket
+    // through start(), and start() calls stop() first) immediately before a
+    // gate opens, so gate state must not be tied to the socket lifecycle.
+    // ---------------------------------------------------------------------
+    private static volatile String openGateId = ''
+    private static volatile String gateDecision = ''
+
+    /** Arm a gate. Any decision left over from an earlier gate is discarded. */
+    static void openGate(String gateId) {
+        gateDecision = ''
+        openGateId = gateId == null ? '' : gateId.trim()
+    }
+
+    /** The gate currently accepting a decision, or an empty string. */
+    static String currentGate() { return openGateId }
+
+    /** Consume a pending decision ('continue', 'cancel') or return ''. */
+    static String takeGateDecision() {
+        String decision = gateDecision
+        if (!decision.isEmpty()) gateDecision = ''
+        return decision
+    }
+
+    /** Disarm the gate so a stale report tab cannot advance a later run. */
+    static void closeGate() {
+        openGateId = ''
+        gateDecision = ''
     }
 
     static void runSelfTest() {
@@ -180,6 +233,25 @@ class CoreAlignCorrectionBridge {
             if (presentationConfig.customValue != 'keep' ||
                     presentationConfig.profiles.automatic.orientation.saveRotatedMultichannelOmeTiff != false)
                 throw new IOException('Presentation output mode was not saved')
+            openGate('grid')
+            if (currentGate() != 'grid') throw new IOException('Gate did not arm')
+            byte[] gateBody = new Gson().toJson([gate: 'grid', decision: 'continue'])
+                .getBytes(StandardCharsets.UTF_8)
+            def gateConnection = new URL(bridge.gateEndpoint.toString()).openConnection()
+            gateConnection.setRequestMethod('POST')
+            gateConnection.setDoOutput(true)
+            gateConnection.setConnectTimeout(3000)
+            gateConnection.setReadTimeout(3000)
+            gateConnection.setRequestProperty('Content-Type', 'text/plain;charset=UTF-8')
+            gateConnection.getOutputStream().withCloseable { it.write(gateBody) }
+            if (gateConnection.getResponseCode() != 200)
+                throw new IOException("Gate returned HTTP ${gateConnection.getResponseCode()}")
+            gateConnection.getInputStream().withCloseable { it.readAllBytes() }
+            if (takeGateDecision() != 'continue')
+                throw new IOException('Gate decision was not delivered')
+            if (!takeGateDecision().isEmpty())
+                throw new IOException('Gate decision was delivered twice')
+            closeGate()
             println 'COREALIGN_AUTOSAVE_SELF_TEST_PASSED'
         } finally {
             stop()
@@ -223,7 +295,9 @@ class CoreAlignCorrectionBridge {
             String saveTarget = "/corealign/save?token=${token}"
             String openTarget = "/corealign/open?token=${token}"
             String outputTarget = "/corealign/output?token=${token}"
-            if (target != saveTarget && target != openTarget && target != outputTarget) {
+            String gateTarget = "/corealign/gate?token=${token}"
+            if (target != saveTarget && target != openTarget &&
+                    target != outputTarget && target != gateTarget) {
                 respond(client, 403, 'Forbidden', [ok: false, error: 'Invalid save token'])
                 return
             }
@@ -263,6 +337,25 @@ class CoreAlignCorrectionBridge {
             } catch (Throwable ignored) {
                 respond(client, 400, 'Bad Request',
                     [ok: false, error: 'Invalid correction data'])
+                return
+            }
+            if (target == gateTarget) {
+                String gate = payload.gate?.toString()?.trim() ?: ''
+                String decision = payload.decision?.toString()?.trim()
+                    ?.toLowerCase(Locale.ROOT) ?: ''
+                if (!(decision in ['continue', 'cancel'])) {
+                    respond(client, 400, 'Bad Request',
+                        [ok: false, error: 'Invalid review decision'])
+                    return
+                }
+                if (openGateId.isEmpty() || gate != openGateId) {
+                    respond(client, 409, 'Conflict', [ok: false,
+                        error: 'CoreAlign is not waiting for this review step'])
+                    return
+                }
+                gateDecision = decision
+                respond(client, 200, 'OK',
+                    [ok: true, gate: gate, decision: decision])
                 return
             }
             if (target == outputTarget) {
@@ -409,6 +502,231 @@ class CoreAlignCorrectionBridge {
         output.write(headers.getBytes(StandardCharsets.US_ASCII))
         if (body.length > 0) output.write(body)
         output.flush()
+    }
+}
+
+
+/**
+ * The whole setup surface: two choices and one Start button.
+ *
+ * Everything CoreAlign can infer, it infers. Rows, columns, core diameter and
+ * array position are measured from the slide, so the only questions left are
+ * the two a person actually has to answer: what tissue this is, and which files
+ * they want at the end. The dialog is shown once per run and is the only place
+ * a decision is asked for before processing starts.
+ */
+class CoreAlignSetup {
+
+    static final String ACCENT = '#4262ff'
+
+    /**
+     * @param state headline/detail/primary label plus the current tissue and
+     *              output choice.
+     * @return the same map with 'start' set, and the chosen tissue/output.
+     */
+    static Map show(Map state) {
+        Callable<Map> body = { -> build(state) } as Callable<Map>
+        FutureTask<Map> task = new FutureTask<Map>(body)
+        if (Platform.isFxApplicationThread()) task.run()
+        else Platform.runLater(task)
+        try {
+            return task.get()
+        } catch (Throwable dialogError) {
+            println "WARNING: CoreAlign setup dialog failed: ${dialogError.getMessage()}"
+            return [start: true, tissue: state.tissue, output: state.output,
+                fallback: true]
+        }
+    }
+
+    private static Map build(Map state) {
+        Dialog<ButtonType> dialog = new Dialog<ButtonType>()
+        dialog.setTitle('CoreAlign')
+        dialog.setHeaderText(null)
+        dialog.setGraphic(null)
+        dialog.initOwner(ownerWindow())
+
+        Label eyebrow = new Label('CoreAlign')
+        eyebrow.setStyle("-fx-font-size:11px;-fx-font-weight:800;-fx-text-fill:${ACCENT};")
+        Label headline = new Label(state.headline?.toString() ?: 'Prepare this TMA slide')
+        headline.setStyle('-fx-font-size:21px;-fx-font-weight:800;')
+        headline.setWrapText(true)
+        Label detail = new Label(state.detail?.toString() ?: '')
+        detail.setWrapText(true)
+        detail.setStyle('-fx-opacity:0.74;')
+        detail.setMaxWidth(430)
+
+        def tissue = segmented('tissue', state.tissue?.toString() ?: 'skin',
+            [['skin', 'Skin', 'Epidermis kept at the top'],
+             ['other', 'Other tissue', 'Strongest outer edge kept at the top']])
+        def output = segmented('output', state.output?.toString() ?: 'presentation',
+            [['presentation', 'Images', 'Full-resolution PNG'],
+             ['research', 'Images + research files', 'PNG, OME-TIFF, QuPath project']])
+
+        Label footnote = new Label(
+            'Nothing is exported until you have seen the result and approved it.')
+        footnote.setWrapText(true)
+        footnote.setStyle('-fx-opacity:0.62;-fx-font-size:12px;')
+        footnote.setMaxWidth(430)
+
+        VBox content = new VBox(6d, eyebrow, headline, detail,
+            spacer(10), row('Tissue', tissue.node), row('Results', output.node),
+            spacer(6), footnote)
+        content.setPadding(new Insets(4, 4, 4, 4))
+        content.setPrefWidth(460)
+
+        ButtonType startType = new ButtonType(
+            state.primaryLabel?.toString() ?: 'Start', ButtonBar.ButtonData.OK_DONE)
+        dialog.getDialogPane().getButtonTypes().setAll(ButtonType.CANCEL, startType)
+        dialog.getDialogPane().setContent(content)
+        Button startButton = (Button) dialog.getDialogPane().lookupButton(startType)
+        startButton.setDefaultButton(true)
+        startButton.setStyle(
+            "-fx-background-color:${ACCENT};-fx-text-fill:white;-fx-font-weight:800;" +
+            '-fx-background-radius:999;-fx-padding:8 22 8 22;')
+
+        def result = dialog.showAndWait()
+        boolean started = result.isPresent() && result.get() == startType
+        return [start: started, tissue: tissue.value(), output: output.value()]
+    }
+
+    private static Object ownerWindow() {
+        try { return QuPathGUI.getInstance()?.getStage() } catch (Throwable ignored) { return null }
+    }
+
+    private static Region spacer(double height) {
+        Region region = new Region()
+        region.setMinHeight(height)
+        return region
+    }
+
+    private static HBox row(String label, javafx.scene.Node control) {
+        Label name = new Label(label)
+        name.setMinWidth(72d)
+        name.setStyle('-fx-font-weight:700;-fx-opacity:0.86;')
+        HBox box = new HBox(12d, name, control)
+        box.setAlignment(Pos.CENTER_LEFT)
+        box.setPadding(new Insets(2, 0, 2, 0))
+        return box
+    }
+
+    /** A two-option segmented control. One option is always selected. */
+    private static def segmented(String id, String selected, List<List<String>> options) {
+        ToggleGroup group = new ToggleGroup()
+        HBox box = new HBox(0d)
+        box.setStyle('-fx-border-color:#c9cede;-fx-border-radius:999;-fx-background-radius:999;')
+        box.setPadding(new Insets(3, 3, 3, 3))
+        options.eachWithIndex { option, index ->
+            ToggleButton button = new ToggleButton(option[1])
+            button.setUserData(option[0])
+            button.setToggleGroup(group)
+            button.setTooltip(new javafx.scene.control.Tooltip(option[2]))
+            button.setFocusTraversable(false)
+            if (option[0] == selected) button.setSelected(true)
+            HBox.setHgrow(button, Priority.ALWAYS)
+            box.getChildren().add(button)
+        }
+        def paint = {
+            group.getToggles().each { toggle ->
+                ToggleButton button = (ToggleButton) toggle
+                button.setStyle(button.isSelected() ?
+                    "-fx-background-color:${ACCENT};-fx-text-fill:white;-fx-font-weight:700;" +
+                        '-fx-background-radius:999;-fx-padding:7 16 7 16;' :
+                    '-fx-background-color:transparent;-fx-font-weight:600;' +
+                        '-fx-background-radius:999;-fx-padding:7 16 7 16;')
+            }
+        }
+        paint()
+        group.selectedToggleProperty().addListener({ observable, was, now ->
+            // A segmented control must never end up with nothing selected.
+            if (now == null && was != null) { group.selectToggle(was); return }
+            paint()
+        })
+        return [node: box, value: { ->
+            def toggle = group.getSelectedToggle()
+            return toggle == null ? selected : toggle.getUserData().toString()
+        }]
+    }
+}
+
+/**
+ * The small window shown while CoreAlign waits at a review gate.
+ *
+ * It is deliberately not modal: the reviewer has to be able to pan the slide,
+ * draw a correction annotation, and use the report in the browser while it is
+ * open. It carries the same two actions as the report, so a reviewer who never
+ * leaves QuPath still finishes the run in one click and never has to find the
+ * script editor again.
+ */
+class CoreAlignGateWindow {
+
+    private static Stage stage
+    private static volatile String decision = ''
+
+    static void open(String gateId, String title, String summary, String detail,
+            String primaryLabel, Closure openReport) {
+        decision = ''
+        Platform.runLater({
+            try {
+                close()
+                Label heading = new Label(title)
+                heading.setStyle('-fx-font-size:16px;-fx-font-weight:800;')
+                Label counts = new Label(summary)
+                counts.setStyle("-fx-font-size:12px;-fx-font-weight:700;-fx-text-fill:${CoreAlignSetup.ACCENT};")
+                Label body = new Label(detail)
+                body.setWrapText(true)
+                body.setMaxWidth(340)
+                body.setStyle('-fx-opacity:0.74;-fx-font-size:12px;')
+
+                Button reportButton = new Button('Open report')
+                reportButton.setOnAction({ if (openReport != null) openReport.call() })
+                Button stopButton = new Button('Stop here')
+                stopButton.setOnAction({ decision = 'cancel' })
+                Button continueButton = new Button(primaryLabel)
+                continueButton.setDefaultButton(true)
+                continueButton.setStyle(
+                    "-fx-background-color:${CoreAlignSetup.ACCENT};-fx-text-fill:white;" +
+                    '-fx-font-weight:800;-fx-background-radius:999;-fx-padding:7 18 7 18;')
+                continueButton.setOnAction({ decision = 'continue' })
+
+                Region push = new Region()
+                HBox.setHgrow(push, Priority.ALWAYS)
+                HBox actions = new HBox(8d, reportButton, push, stopButton, continueButton)
+                actions.setAlignment(Pos.CENTER_LEFT)
+
+                VBox root = new VBox(8d, counts, heading, body, actions)
+                root.setPadding(new Insets(18, 18, 18, 18))
+                root.setStyle('-fx-background-color:-fx-background;')
+
+                Stage window = new Stage()
+                window.setTitle('CoreAlign')
+                window.setScene(new Scene(root))
+                window.setAlwaysOnTop(true)
+                window.setResizable(false)
+                window.setOnCloseRequest({ event -> event.consume() })
+                try { window.initOwner(QuPathGUI.getInstance()?.getStage()) }
+                catch (Throwable ignored) {}
+                stage = window
+                window.show()
+            } catch (Throwable windowError) {
+                println "WARNING: CoreAlign review window failed: ${windowError.getMessage()}"
+            }
+        })
+    }
+
+    /** Consume a decision made in this window, or return ''. */
+    static String take() {
+        String value = decision
+        if (!value.isEmpty()) decision = ''
+        return value
+    }
+
+    static void close() {
+        Stage window = stage
+        stage = null
+        decision = ''
+        if (window == null) return
+        if (Platform.isFxApplicationThread()) { try { window.hide() } catch (Throwable ignored) {} }
+        else Platform.runLater({ try { window.hide() } catch (Throwable ignored) {} })
     }
 }
 
@@ -789,7 +1107,7 @@ class EmbeddedWorkflowScript {
                 source = source
                     .replace('Inspect before Step 2.', 'Inspect before continuing.')
                     .replace('Run 02_auto_orient_epidermis.groovy next.',
-                        'Review the grid, then run CoreAlign.groovy again.')
+                        'Review the grid in REPORT.html, then continue there.')
             }
             return source
         } finally { input.close() }
@@ -950,6 +1268,104 @@ if (!configFile.isFile()) {
     starterConfig.profiles.automatic.grid.coreDiameterMM = automaticSeedCoreMM
     configFile.setText(configJson.toJson(starterConfig) + '\n', 'UTF-8')
     println "Created automatic config: ${configFile.getAbsolutePath()}"
+}
+
+
+// -------------------------------------------------------------------------
+// The one setup step.
+//
+// Two choices and one button, shown once per run. Everything the slide can
+// answer for itself (rows, columns, core diameter, array position) is measured
+// rather than asked for, so this is the only prompt before processing starts.
+// The Config Builder website remains available for unusual channel names, but
+// no one needs it for a normal slide any more.
+// -------------------------------------------------------------------------
+boolean reportOnlyLaunch = Boolean.parseBoolean(
+    System.getProperty('corealign.reportOnly', 'false'))
+boolean headlessLaunch = ALL_IN_ONE_INTEGRATION_TEST || STOP_AFTER_DETECTION ||
+    reportOnlyLaunch ||
+    'true'.equalsIgnoreCase(System.getProperty('tma.configValidateOnly', 'false')) ||
+    'true'.equalsIgnoreCase(System.getProperty('corealign.skipSetupDialog', 'false'))
+if (!headlessLaunch) {
+    Map launchRoot
+    try { launchRoot = configJson.fromJson(configFile.getText('UTF-8'), Map.class) ?: [:] }
+    catch (Throwable ignored) { launchRoot = [:] }
+    String launchProfileName = launchRoot.activeProfile?.toString() ?: 'automatic'
+    Map launchProfile = (launchRoot.profiles instanceof Map &&
+        launchRoot.profiles[launchProfileName] instanceof Map) ?
+        launchRoot.profiles[launchProfileName] as Map : null
+    if (launchProfile != null) {
+        if (!(launchProfile.orientation instanceof Map)) launchProfile.orientation = [:]
+        Map launchOrientation = launchProfile.orientation as Map
+        String launchAlgorithm = launchOrientation.algorithmVersion?.toString() ?: ''
+        String currentTissue = launchAlgorithm.startsWith('skin-epidermis') ? 'skin' : 'other'
+        String currentOutput = launchOrientation.saveRotatedMultichannelOmeTiff == true ?
+            'research' : 'presentation'
+
+        boolean hasApprovedGridForLaunch = new File(stateDir, 'approved_grid.json').isFile()
+        boolean hasOrientationForLaunch =
+            new File(orientationQcDir, 'run_report.json').isFile()
+        boolean hasFinalApprovalForLaunch =
+            new File(stateDir, 'final_orientation_approval.json').isFile()
+        def liveGridForLaunch = imageData.getHierarchy().getTMAGrid()
+        boolean hasLiveGridForLaunch = liveGridForLaunch != null &&
+            liveGridForLaunch.getTMACoreList().any { !it.isMissing() }
+
+        String launchHeadline
+        String launchDetail
+        String launchPrimary
+        if (!hasApprovedGridForLaunch && !hasLiveGridForLaunch) {
+            launchHeadline = 'Find the cores on this slide'
+            launchDetail = 'CoreAlign measures the array, the core size, and every core ' +
+                'position, then shows you the result to check.'
+            launchPrimary = 'Start'
+        } else if (!hasApprovedGridForLaunch) {
+            launchHeadline = 'Check the grid, then rotate and crop'
+            launchDetail = 'The detected grid is ready. Approve it and CoreAlign rotates ' +
+                'each core before cropping it.'
+            launchPrimary = 'Continue'
+        } else if (!hasOrientationForLaunch) {
+            launchHeadline = 'Rotate and crop each core'
+            launchDetail = 'The approved grid is reused. Progress is saved after every ' +
+                'core, so an interrupted run picks up where it stopped.'
+            launchPrimary = 'Continue'
+        } else if (!hasFinalApprovalForLaunch) {
+            launchHeadline = 'Finish the review'
+            launchDetail = 'Accepted cores are reused. Only cores you changed are ' +
+                'processed again.'
+            launchPrimary = 'Continue'
+        } else {
+            launchHeadline = 'Update the result files'
+            launchDetail = 'The approved grid and accepted rotations are reused. Only ' +
+                'missing files are created.'
+            launchPrimary = 'Continue'
+        }
+
+        Map launchChoice = CoreAlignSetup.show([headline: launchHeadline,
+            detail: launchDetail, primaryLabel: launchPrimary,
+            tissue: currentTissue, output: currentOutput])
+        if (launchChoice.start != true) {
+            println 'RUN_CANCELLED: no image processing was started.'
+            return
+        }
+        String chosenTissue = launchChoice.tissue?.toString() ?: currentTissue
+        String chosenOutput = launchChoice.output?.toString() ?: currentOutput
+        if (chosenTissue != currentTissue || chosenOutput != currentOutput) {
+            launchOrientation.algorithmVersion = chosenTissue == 'skin' ?
+                'skin-epidermis-orient-3.7-rotated-multichannel' :
+                'generic-peripheral-orient-3.7-rotated-multichannel'
+            launchOrientation.overrideClassName = chosenTissue == 'skin' ?
+                'Epidermis override' : 'Orientation override'
+            launchOrientation.saveFullResolutionPng = true
+            launchOrientation.saveNativeOmeTiff = false
+            launchOrientation.saveRotatedMultichannelOmeTiff = chosenOutput == 'research'
+            launchProfile.description = chosenTissue == 'skin' ?
+                'Automatic skin TMA with the epidermis at the top' :
+                'Automatic TMA with a consistent tissue edge at the top'
+            configFile.setText(configJson.toJson(launchRoot) + '\n', 'UTF-8')
+            println "CoreAlign setup: tissue ${chosenTissue}, output ${chosenOutput}"
+        }
+    }
 }
 
 def pipelineConfig
@@ -1209,74 +1625,9 @@ def existingGridForPreflight = imageData.getHierarchy().getTMAGrid()
 boolean needsDetectionPreflight = existingGridForPreflight == null ||
     existingGridForPreflight.getTMACoreList().isEmpty() ||
     !existingGridForPreflight.getTMACoreList().any { !it.isMissing() }
-if (!reportOnly && !ALL_IN_ONE_INTEGRATION_TEST && !STOP_AFTER_DETECTION) {
-    File runSummaryGridApproval = new File(stateDir, 'approved_grid.json')
-    File runSummaryOrientationReport = new File(orientationQcDir, 'run_report.json')
-    File runSummaryFinalApproval = new File(stateDir, 'final_orientation_approval.json')
-    File runSummaryCorrections = new File(workflowDir, 'corealign-review-corrections.json')
-    boolean hasApprovedGrid = runSummaryGridApproval.isFile()
-    boolean hasOrientationResult = runSummaryOrientationReport.isFile()
-    boolean hasFinalApproval = runSummaryFinalApproval.isFile()
-    boolean hasSavedCorrections = runSummaryCorrections.isFile() &&
-        runSummaryCorrections.length() > 20L
-    boolean researchOutput = orientationConfig.saveRotatedMultichannelOmeTiff == true
-
-    String runType
-    String runWork
-    String runResult
-    if (needsDetectionPreflight && !hasApprovedGrid) {
-        runType = 'First run: detect the TMA grid'
-        runWork = '1. Find the array, rows, columns, core size, and core positions automatically.\n' +
-            '2. Create a whole-slide Grid QC image.\n' +
-            '3. Pause so you can check the detected circles.'
-        runResult = 'REPORT.html and qc/01-grid/. No rotation starts until the grid is checked.'
-    } else if (!hasApprovedGrid) {
-        runType = 'Grid review: check and approve the circles'
-        runWork = '1. Keep the current TMA grid.\n' +
-            '2. Apply any TMA correction or missing annotations.\n' +
-            '3. Refresh Grid QC and ask you to approve the exact grid.'
-        runResult = 'If approved, CoreAlign starts rotate then crop. If cancelled, the grid stays editable.'
-    } else if (!hasOrientationResult) {
-        runType = 'Core processing: rotate, then crop'
-        runWork = '1. Reuse the approved grid.\n' +
-            '2. Rotate each individual core before cropping it.\n' +
-            '3. Save progress after every core so the run can resume safely.'
-        runResult = 'Per-core previews, QC tables, and the selected image package.'
-    } else if (!hasFinalApproval || hasSavedCorrections) {
-        runType = hasSavedCorrections ?
-            'Resume: apply saved review changes' :
-            'Orientation review: confirm the rotated cores'
-        runWork = '1. Reuse accepted detection, rotation, and crop checkpoints.\n' +
-            '2. Recalculate only unfinished or changed cores.\n' +
-            '3. Refresh REPORT.html and ask for final approval.'
-        runResult = 'Accepted cores are not processed again.'
-    } else {
-        runType = researchOutput ?
-            'Update results: create the research package' :
-            'Update results: refresh presentation files'
-        runWork = '1. Reuse the approved grid and accepted core transforms.\n' +
-            '2. Create only missing files for the selected output.\n' +
-            '3. Refresh REPORT.html and the ordered QuPath project when requested.'
-        runResult = 'No redetection or reorientation unless the slide or a saved correction changed.'
-    }
-
-    String outputSummary = researchOutput ?
-        'Research: full-resolution PNG, rotated multichannel OME-TIFF, and QuPath project.' :
-        'Presentation: full-resolution PNG images. You can switch to Research later.'
-    String geometrySummary = autoDetectGeometry ?
-        'Automatic. No row count, column count, or core diameter is required.' :
-        "From config: ${configuredRows} rows, ${configuredColumns} columns, ${configuredCoreMM} mm cores."
-    String runSummaryMessage = "${runType}\n\n" +
-        "What CoreAlign will do\n${runWork}\n\n" +
-        "What you will get\n${runResult}\n\n" +
-        "Output\n${outputSummary}\n\n" +
-        "Geometry\n${geometrySummary}\n\n" +
-        'Click OK to start this run. Click Cancel to change nothing.'
-    if (!Dialogs.showConfirmDialog('CoreAlign | Run summary', runSummaryMessage)) {
-        println 'RUN_CANCELLED: no image processing was started.'
-        return
-    }
-}
+// The two review gates below are the only stops in a run. Everything the old
+// multi-run flow explained in a summary dialog before each pass is now either
+// automatic or shown in context on REPORT.html, next to the image it describes.
 
 def step1 = new EmbeddedWorkflowScript(name: '01_build_tma_grid.groovy', payload: '''
 H4sIAAAAAAACE+29bXIbSZIo+J+nyKLVNAAJgEhWqbqaEiWDSFCiNb8aoKrEp+bSEkCSyCKARGUm
@@ -2319,218 +2670,222 @@ yuEgy/yF6iPVKSa4SlGeRgLiUDKuJ4IL7qTYH6Ocb6QA5GNtzUbzlx4oRsEPVSmhty1C4sEsjwZx
 bTG2nf8CoPsPon8CAgA=
 ''')
 def step3 = new EmbeddedWorkflowScript(name: '03_review_correct_and_approve_grid.groovy', payload: '''
-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
-gNcolq/h4dxxHKz6K/8PtkIPRYKpAAA=
+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
+/wObeeMn3qsAAA==
 ''')
 def step4 = new EmbeddedWorkflowScript(name: '04_restore_approved_grid.groovy', payload: '''
 H4sIAAAAAAACE61Xe3PUNhD//z6FkqHYDjkFaJkBhpQJd7w6BNI86ANoRmevzyK2ZSQ5IYR8964k
@@ -2564,63 +2919,64 @@ o/4tvyxT8Vrgg4DHtkCsny06SDeuFoLw2l6/Woj03uixAna/uKl6ptwaZ4g7d+089zeJYv0lOREA
 AA==
 ''')
 def step5 = new EmbeddedWorkflowScript(name: '05_finalize_orientation_review.groovy', payload: '''
-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
-Szk+/B+feAKgDCUAAA==
+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
 ''')
 def step6 = new EmbeddedWorkflowScript(name: '06_export_presentation_package.groovy', payload: '''
 H4sIAAAAAAACE7087XbbNrL//RSImy6pWKIlN0lTxY6P/JFEW3+olpM01/XVoUVIYk2RKklZ9np1
@@ -2976,6 +3332,39 @@ def writeProjectIndex = { File runDir = null ->
         println 'Orientation correction auto-save is ready beside REPORT.html.'
     int dashboardPositionCount = positionCount > 0 ? positionCount :
         (gridWidthForPage > 0 && gridHeightForPage > 0 ? gridWidthForPage * gridHeightForPage : 0)
+    // A gate is open only while the run is actually blocked on this reviewer.
+    // Everything the gate bar claims is recomputed here, so a stale tab left
+    // open from an earlier run shows no button at all.
+    String gateEndpointUrl = correctionBridge.gateEndpoint?.toString() ?: ''
+    String openGateId = System.getProperty('corealign.dashboard.gate', '').trim()
+    if (gateEndpointUrl.isEmpty()) openGateId = ''
+    int gatePresentCount = 0
+    int gateMissingCount = 0
+    try {
+        gatePresentCount = Integer.parseInt(
+            System.getProperty('corealign.dashboard.gatePresent', '0'))
+        gateMissingCount = Integer.parseInt(
+            System.getProperty('corealign.dashboard.gateMissing', '0'))
+    } catch (Throwable ignored) {}
+    String gateTitle = ''
+    String gateSummary = ''
+    String gateButtonLabel = ''
+    String gatePanel = ''
+    if (openGateId == 'grid') {
+        gateTitle = 'Check the detected cores'
+        gateSummary = "${gatePresentCount} cores found, ${gateMissingCount} positions empty. " +
+            'Missed a core? Draw an ellipse over it in QuPath and name it "TMA correction".'
+        gateButtonLabel = 'Grid is correct'
+        gatePanel = 'grid'
+    } else if (openGateId == 'orientation') {
+        gateTitle = 'Check the rotated cores'
+        gateSummary = "${okCountForPage} passed automatic QC, ${reviewCountForPage} need a look. " +
+            'Use Edit to change an angle. Approving creates the result files.'
+        gateButtonLabel = 'Approve and finish'
+        gatePanel = 'orientation'
+    }
+    boolean gateOpen = !openGateId.isEmpty() && !gateTitle.isEmpty()
+
     String currentStage = hasCompletion ? 'Complete and human approved' :
         gridReviewPending ? 'Grid ready for review' :
         hasOrientation ? 'Orientation ready for review' :
@@ -2991,13 +3380,11 @@ def writeProjectIndex = { File runDir = null ->
         'Review flagged cores' : hasGridQc ? 'Review grid QC' : 'How to run'
     String nextAction = hasCompletion ?
         'Use the prepared images or open the ordered QuPath project for analysis.' :
-        gridReviewPending ?
-            'Check every detected circle and missing position in QuPath, then run the same script again.' :
+        gridReviewPending || hasGridQc && !hasOrientation ?
+            'Check every detected circle and missing position, then use the button at the top of this page.' :
         hasOrientation ?
             'Check the flagged cores below. Confirm correct cores and edit only the wrong angles.' :
-        hasGridQc ?
-            'Check every detected circle and missing position in QuPath, then run the same script again.' :
-            'Open the slide in QuPath and run CoreAlign.groovy. No configuration is required for automatic mode.'
+            'Open the slide in QuPath and run CoreAlign.groovy. No configuration is required.'
 
     StringBuilder html = new StringBuilder(64000)
     html.append('''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><title>CoreAlign | Report</title><script>try{var savedTheme=localStorage.getItem("corealign-theme");if(savedTheme){document.documentElement.dataset.theme=savedTheme;}}catch(e){}</script><style>
@@ -3017,6 +3404,7 @@ body{background:var(--bg);background-image:none}.topbar{position:sticky;border-b
 @media(max-width:980px){.topbar{align-items:flex-start;flex-wrap:wrap;gap:8px}.nav{order:3;width:100%}.header-actions{margin-left:auto}.help-button span{display:none}.hero{grid-template-columns:1fr}.hero-side{max-width:none}.section-head{align-items:flex-start;flex-direction:column}}
 @media(max-width:600px){:root{--header:116px}.brand-name{display:none}.shell{padding-top:24px}.topbar{padding-inline:12px}.nav button{padding-inline:12px}.hero{padding:24px;border-radius:16px}.metric-grid,.grid-summary{grid-template-columns:repeat(2,1fr)}.metric{padding:16px}.media-caption,.filter-tools,.change-bar{align-items:stretch;flex-direction:column}.filter-actions,.core-search,.change-actions,.change-actions button{width:100%}.output-mode-control{grid-template-columns:1fr}.mode-toggle{min-width:0;width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+.gatebar{position:sticky;top:var(--header);z-index:35;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px 24px;padding:16px clamp(16px,4vw,48px);border-bottom:1px solid var(--border);background:var(--warning-bg);color:var(--fg)}.gatebar[data-state="sent"]{background:var(--success-bg)}.gatebar[data-state="error"]{background:var(--danger-bg)}.gate-copy{display:grid;gap:2px;min-width:0}.gate-kicker{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--warning-text)}.gatebar[data-state="sent"] .gate-kicker{color:var(--success-text)}.gatebar[data-state="error"] .gate-kicker{color:var(--danger-text)}.gate-kicker .icon{width:16px;height:16px}.gate-copy strong{font-size:17px;letter-spacing:-.01em}.gate-copy span{color:var(--muted);font-size:14px}.gate-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.gate-actions .primary{min-height:48px;padding:12px 24px;font-size:15px}.gate-actions .primary:disabled{opacity:.55;cursor:default}@media(max-width:720px){.gatebar{grid-template-columns:1fr}.gate-actions{width:100%}.gate-actions .primary{flex:1}}
 </style></head><body><a class="skip" href="#main">Skip to content</a><header class="topbar"><div class="brand"><span class="brand-mark">''')
     html.append(projectIcon('microscope')).append('</span><span class="brand-name">CoreAlign</span></div>')
     html.append('''<nav class="nav" aria-label="Project sections"><button type="button" data-nav="overview" aria-current="page">Overview</button><span class="crumb-separator" aria-hidden="true">''')
@@ -3025,6 +3413,22 @@ body{background:var(--bg);background-image:none}.topbar{position:sticky;border-b
     html.append(projectIcon('forward')).append('</span><button type="button" data-nav="results">Results</button></nav><div class="header-actions"><button class="help-button" type="button" data-nav="help">')
     html.append(projectIcon('help')).append('<span>Help</span></button><button class="icon-button" type="button" id="themeToggle" aria-label="Switch color theme" title="Switch color theme"><span class="moon-icon">')
     html.append(projectIcon('moon')).append('</span><span class="sun-icon">').append(projectIcon('sun')).append('</span></button></div></header>')
+    if (gateOpen) {
+        html.append('<div class="gatebar" id="gateBar" data-gate="')
+            .append(projectHtmlEscape(openGateId)).append('" data-panel-target="')
+            .append(projectHtmlEscape(gatePanel))
+            .append('" data-state="waiting" role="status"><div class="gate-copy"><span class="gate-kicker">')
+            .append(projectIcon('warning'))
+            .append('QuPath is waiting for you</span><strong id="gateTitle">')
+            .append(projectHtmlEscape(gateTitle)).append('</strong><span id="gateSummary">')
+            .append(projectHtmlEscape(gateSummary))
+            .append('</span></div><div class="gate-actions"><button class="secondary" type="button" data-nav="')
+            .append(projectHtmlEscape(gatePanel)).append('">Look at the images</button>')
+            .append('<button class="primary" type="button" id="gateContinue" data-endpoint="')
+            .append(projectHtmlEscape(gateEndpointUrl)).append('">')
+            .append(projectHtmlEscape(gateButtonLabel)).append(projectIcon('forward'))
+            .append('</button></div></div>')
+    }
     html.append('<main class="shell" id="main" tabindex="-1"><section class="panel is-active" id="overview" data-panel><div class="hero"><div><div class="status-badge ')
         .append(stageTone).append('">').append(stageIcon).append(projectHtmlEscape(currentStage)).append('</div><h1>CoreAlign quality-control report</h1><p class="lede">')
         .append(projectHtmlEscape(imageName)).append(' has one comprehensive view of detection, orientation changes, and available results.</p></div><aside class="hero-side"><div class="eyebrow">Current action</div><p>')
@@ -3060,7 +3464,7 @@ body{background:var(--bg);background-image:none}.topbar{position:sticky;border-b
     } else {
         html.append('<div class="empty">').append(projectIcon('image')).append('<h3>No grid QC yet</h3><p>Run CoreAlign.groovy in QuPath to create the first detection overview.</p></div>')
     }
-    html.append('<div class="section-block notice">').append(projectIcon('warning')).append('<div><strong>After correcting circles</strong><p>Draw or adjust TMA correction annotations in QuPath, then run the same script again. CoreAlign refreshes this overview and keeps the accepted grid state.</p></div></div>')
+    html.append('<div class="section-block notice">').append(projectIcon('warning')).append('<div><strong>After correcting circles</strong><p>Draw or adjust TMA correction annotations in QuPath, then use the button at the top of this page. CoreAlign applies them, refreshes this overview, and asks you to look once more.</p></div></div>')
     html.append('</section>')
 
     html.append('<section class="panel" id="orientation" data-panel data-review-key="').append(projectHtmlEscape(orientationReviewKey)).append('" data-image-name="').append(projectHtmlEscape(imageName)).append('" data-profile-name="').append(projectHtmlEscape(profileName)).append('" data-auto-save-url="').append(projectHtmlEscape(correctionAutoSaveUrl)).append('" data-open-qupath-url="').append(projectHtmlEscape(correctionOpenQuPathUrl)).append('"><div class="section-head"><div><div class="eyebrow">Rotation report</div><h2>Orientation QC</h2><p>Confirm correct rotations. Edit only the wrong ones.</p></div>')
@@ -3134,7 +3538,7 @@ body{background:var(--bg);background-image:none}.topbar{position:sticky;border-b
         .append(currentOutputMode).append('" data-profile-name="')
         .append(projectHtmlEscape(profileName)).append('" data-output-mode-url="')
         .append(projectHtmlEscape(outputModeUrl)).append('"><div class="section-head"><div><div class="eyebrow">Output report</div><h2>Results</h2><p>Choose files by purpose. PNG is for presentation. Multichannel OME-TIFF and the QuPath project are for research analysis.</p></div></div>')
-    html.append('<div class="output-mode-control"><div class="output-mode-copy"><strong>Output package</strong><span>Switch to Research, then run CoreAlign again to create multichannel OME-TIFF files.</span></div><div class="mode-toggle" role="group" aria-label="Output package"><button type="button" data-output-mode-choice="presentation" aria-pressed="')
+    html.append('<div class="output-mode-control"><div class="output-mode-copy"><strong>Output package</strong><span>Research adds multichannel OME-TIFF files and a QuPath project. Switching after a finished run reuses every accepted core.</span></div><div class="mode-toggle" role="group" aria-label="Output package"><button type="button" data-output-mode-choice="presentation" aria-pressed="')
         .append(currentOutputMode == 'presentation' ? 'true' : 'false')
         .append('">Presentation</button><button type="button" data-output-mode-choice="research" aria-pressed="')
         .append(currentOutputMode == 'research' ? 'true' : 'false')
@@ -3162,7 +3566,7 @@ body{background:var(--bg);background-image:none}.topbar{position:sticky;border-b
     }
     html.append('<div class="section-block notice">').append(projectIcon('folder')).append('<div><strong>Keep the work folder</strong><p>It contains resumable checkpoints. Do not delete it when changing from a presentation package to a research package.</p></div></div></section>')
 
-    html.append('<section class="panel" id="help" data-panel><div class="section-head"><div><div class="eyebrow">Quick guide</div><h2>Run, review, continue</h2><p>The workflow always uses the same script and the same REPORT.html dashboard.</p></div></div><div class="help-list"><article class="help-item"><h3>Open the slide</h3><p>Keep the slide, CoreAlign.groovy, and optional corealign.config.json in this project folder. Open the slide in QuPath.</p></article><article class="help-item"><h3>Run CoreAlign.groovy</h3><p>Detection, rotation, cropping, exports, and safe resume are handled automatically. Stop points are intentional human review gates.</p></article><article class="help-item"><h3>Use this dashboard</h3><p>Open REPORT.html after every run. Use the menu at the top. Images open in a new tab, so this report stays available.</p></article><article class="help-item"><h3>Correct only what changed</h3><p>Use Edit for rotation. Use QuPath annotations for detection or crop corrections. Then run the same script again. Accepted cores are reused.</p></article></div><div class="section-block notice">').append(projectIcon('check')).append('<div><strong>No report filenames to remember</strong><p>REPORT.html is the only workflow HTML. Machine-readable audit files stay in JSON and CSV format.</p></div></div></section>')
+    html.append('<section class="panel" id="help" data-panel><div class="section-head"><div><div class="eyebrow">Quick guide</div><h2>Four things to know</h2><p>One run from start to finish. CoreAlign waits for you twice and continues from your answer.</p></div></div><div class="help-list"><article class="help-item"><h3>Run the script once</h3><p>Put the slide and CoreAlign.groovy in one folder, open the slide in QuPath, and run the script. Pick tissue and results, then press Start.</p></article><article class="help-item"><h3>Answer where you are</h3><p>When CoreAlign needs you, a bar appears at the top of this page and a small window appears in QuPath. Either one continues the run.</p></article><article class="help-item"><h3>Fix only what is wrong</h3><p>For a missed core, draw an ellipse in QuPath and name it TMA correction. For a wrong angle, use Edit on the core card. Everything you already accepted is kept.</p></article><article class="help-item"><h3>Nothing is lost</h3><p>Progress is saved after every core. If QuPath closes, run the script again and it picks up from the last saved core.</p></article></div><div class="section-block notice">').append(projectIcon('check')).append('<div><strong>No report filenames to remember</strong><p>REPORT.html is the only page you need. Machine-readable audit files stay in JSON and CSV beside it.</p></div></div></section>')
     html.append('<dialog class="saved-modal" id="savedModal" aria-labelledby="savedModalTitle"><div class="saved-modal-body"><div class="saved-modal-mark">').append(projectIcon('check')).append('</div><h3 id="savedModalTitle">Saved</h3><p id="savedModalText">Your changes are saved beside REPORT.html.</p><button class="primary" type="button" id="savedModalClose">Continue</button></div></dialog>')
     html.append('<dialog class="saved-modal action-modal" id="actionModal" aria-labelledby="actionModalTitle"><div class="saved-modal-body"><div class="saved-modal-mark">').append(projectIcon('warning')).append('</div><h3 id="actionModalTitle">Confirm change</h3><p id="actionModalText">Save this change?</p><div class="action-modal-actions"><button class="secondary" type="button" id="actionModalCancel">Cancel</button><button class="primary" type="button" id="actionModalConfirm">Continue</button></div></div></dialog>')
     html.append('<footer class="footer"><p>Project folder: <span class="path">').append(projectHtmlEscape(workflowDir.getAbsolutePath())).append('</span></p>')
@@ -3197,7 +3601,7 @@ function confirmAction(title,message,confirmLabel){if(!actionModal){return Promi
 if(actionModalCancel){actionModalCancel.addEventListener("click",function(){closeActionModal(false);});}if(actionModalConfirm){actionModalConfirm.addEventListener("click",function(){closeActionModal(true);});}if(actionModal){actionModal.addEventListener("cancel",function(event){event.preventDefault();closeActionModal(false);});}
 function updateReviewHelp(){if(!reviewHelpText){return;}if(saveFallbackRequired){reviewHelpText.textContent=window.showDirectoryPicker?"Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. Use Choose project folder above to save.":"Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. Use Download changes above when finished.";}else if(corealignAppHub){reviewHelpText.textContent="Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. AppHub saves angle changes in this project.";}else if(correctionAutoSaveUrl){reviewHelpText.textContent="Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. Angle changes save through QuPath.";}else if(window.showDirectoryPicker){reviewHelpText.textContent="Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. Choose this project folder once when asked to save.";}else{reviewHelpText.textContent="Correct? Click Confirm. Wrong? Click Edit, adjust the angle, then Update. Download one correction file when you finish.";}}
 function setAutoSaveStatus(message,state,showFallback){var actualState=state||"ready",bar=document.getElementById("changeBar");if(autoSaveStatus){autoSaveStatus.textContent=message;autoSaveStatus.dataset.state=actualState;}if(bar){bar.dataset.state=actualState;}if(downloadChanges){downloadChanges.hidden=!showFallback;downloadChanges.textContent=window.showDirectoryPicker?"Choose project folder":"Download changes";}}
-function updateChangeBar(){var count=document.querySelectorAll('.core-card[data-has-change="true"]').length,bar=document.getElementById("changeBar"),label=document.getElementById("changeCount"),saving=autoSaveStatus&&autoSaveStatus.dataset.state==="saving";if(!bar){return;}bar.hidden=false;if(label){label.textContent=count>0?count+" angle change"+(count===1?"":"s"):correctionsDirty?"Rotation reset":"No angle changes";}if(openQuPath){openQuPath.hidden=correctionsDirty||count===0||!correctionOpenQuPathUrl;}if(saving){return;}if(!correctionsDirty){setAutoSaveStatus(count>0?"Saved. Run CoreAlign again when you finish reviewing.":"No rerun is needed unless you change an angle.","ready",false);return;}if(!saveFallbackRequired&&(corealignAppHub||correctionBridgeReady||projectFolderHandle||correctionAutoSaveUrl)){setAutoSaveStatus("Saving angle changes to this project...","saving",false);return;}setAutoSaveStatus(window.showDirectoryPicker?"Select the folder that contains REPORT.html once.":"Download one correction file when you finish reviewing.","action",true);}
+function updateChangeBar(){var count=document.querySelectorAll('.core-card[data-has-change="true"]').length,bar=document.getElementById("changeBar"),label=document.getElementById("changeCount"),saving=autoSaveStatus&&autoSaveStatus.dataset.state==="saving";if(!bar){return;}bar.hidden=false;if(label){label.textContent=count>0?count+" angle change"+(count===1?"":"s"):correctionsDirty?"Rotation reset":"No angle changes";}if(openQuPath){openQuPath.hidden=correctionsDirty||count===0||!correctionOpenQuPathUrl;}if(saving){return;}if(!correctionsDirty){setAutoSaveStatus(count>0?"Saved. Approve at the top of this page when you finish reviewing.":"Nothing to reprocess unless you change an angle.","ready",false);return;}if(!saveFallbackRequired&&(corealignAppHub||correctionBridgeReady||projectFolderHandle||correctionAutoSaveUrl)){setAutoSaveStatus("Saving angle changes to this project...","saving",false);return;}setAutoSaveStatus(window.showDirectoryPicker?"Select the folder that contains REPORT.html once.":"Download one correction file when you finish reviewing.","action",true);}
 function refreshCardStatus(card){var status=card.querySelector(".core-status");if(status){status.textContent=card.dataset.hasChange==="true"?"Changes":card.dataset.confirmed==="true"?"QC pass":card.dataset.originalStatus||"Unknown";}}
 function updateCardChange(card){var applied=Number(card.dataset.appliedAdjustment||0),committed=Number(card.dataset.manualRotation||0),changed=Math.abs(committed-applied)>=.05;card.dataset.hasChange=changed?"true":"false";refreshCardStatus(card);updateChangeBar();}
 function setCardConfirmed(card,confirmed){var button=card.querySelector("[data-card-confirm]");card.dataset.confirmed=confirmed?"true":"false";if(button){button.textContent=confirmed?"Undo":"Confirm";button.setAttribute("aria-pressed",confirmed?"true":"false");button.setAttribute("aria-label",confirmed?"Undo confirmation":"Confirm this core");}refreshCardStatus(card);}
@@ -3206,17 +3610,18 @@ function undoCard(card,key){var applied=Number(card.dataset.appliedAdjustment||0
 document.querySelectorAll(".core-card").forEach(function(card){var key=card.dataset.coreName||"",applied=Number(card.dataset.appliedAdjustment||0),savedAngle=Number(reviewState.angles[key]),committed=Number.isFinite(savedAngle)?savedAngle:applied;card.dataset.manualRotation=String(committed);showRotationPreview(card,committed);updateCardChange(card);setCardConfirmed(card,reviewState.confirmed[key]===true);var cardConfirm=card.querySelector("[data-card-confirm]"),edit=card.querySelector("[data-edit]"),slider=card.querySelector("[data-rotation-adjust]"),reset=card.querySelector("[data-edit-reset]"),cancel=card.querySelector("[data-edit-cancel]"),confirm=card.querySelector("[data-edit-confirm]");if(cardConfirm){cardConfirm.addEventListener("click",function(){if(card.dataset.confirmed==="true"){undoCard(card,key);return;}reviewState.confirmed[key]=true;setCardConfirmed(card,true);saveReviewState();updateConfirmAllPass();updateChangeBar();applyCoreFilters();showSavedModal("Checked","This core is confirmed. You only need to rerun CoreAlign after changing an angle.");});}if(edit){edit.addEventListener("click",function(){card.dataset.editStart=card.dataset.manualRotation;showRotationPreview(card,card.dataset.manualRotation);card.classList.add("is-editing");});}if(slider){slider.addEventListener("input",function(){showRotationPreview(card,slider.value);});}if(reset){reset.addEventListener("click",function(){showRotationPreview(card,applied);});}if(cancel){cancel.addEventListener("click",function(){showRotationPreview(card,card.dataset.editStart||card.dataset.manualRotation);card.classList.remove("is-editing");});}if(confirm){confirm.addEventListener("click",function(){var angle=Number(card.dataset.draftRotation||0);card.dataset.manualRotation=String(angle);if(Math.abs(angle-applied)>=.05){reviewState.angles[key]=angle;}else{delete reviewState.angles[key];}reviewState.confirmed[key]=true;correctionsDirty=true;setCardConfirmed(card,true);saveReviewState();updateCardChange(card);updateConfirmAllPass();applyCoreFilters();card.classList.remove("is-editing");autoSaveCorrections(false);});}});correctionsDirty=document.querySelector('.core-card[data-has-change="true"]')!==null;updateReviewHelp();updateChangeBar();updateConfirmAllPass();applyCoreFilters();
 if(confirmAllPass){confirmAllPass.addEventListener("click",function(){document.querySelectorAll('.core-card[data-filter-status="ok"]').forEach(function(card){var key=card.dataset.coreName||"";reviewState.confirmed[key]=true;setCardConfirmed(card,true);});saveReviewState();updateConfirmAllPass();updateChangeBar();applyCoreFilters();showSavedModal("Saved","All QC pass cores are confirmed in this report.");});}
 function reviewCorrectionsPayload(){var corrections=[];document.querySelectorAll(".core-card").forEach(function(card){var title=card.querySelector(".core-title strong"),angle=Number(card.dataset.manualRotation||0);if(Math.abs(angle)>=.05){corrections.push({core:title?title.textContent:"",rotationAdjustmentDeg:angle});}});return {schemaVersion:1,image:orientationSection?orientationSection.dataset.imageName:"",baseRun:orientationSection?orientationSection.dataset.reviewKey:"",createdAt:new Date().toISOString(),corrections:corrections};}
-async function autoSaveCorrections(requestFolder){saveFallbackRequired=false;setAutoSaveStatus("Saving angle changes...","saving",false);var text=JSON.stringify(reviewCorrectionsPayload(),null,2)+String.fromCharCode(10),saved=false;try{if(corealignAppHub){saved=await writeProjectText("corealign-review-corrections.json",text,false);}}catch(error){}if(!saved&&correctionAutoSaveUrl){try{var response=await fetch(correctionAutoSaveUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:text,cache:"no-store"});if(response.ok){saved=true;correctionBridgeReady=true;}}catch(error){correctionBridgeReady=false;}}if(!saved&&projectFolderHandle){try{saved=await writeProjectText("corealign-review-corrections.json",text,false);}catch(error){projectFolderHandle=null;}}if(!saved&&requestFolder===true&&window.showDirectoryPicker){try{saved=await writeProjectText("corealign-review-corrections.json",text,true);}catch(error){if(error&&error.name!=="AbortError"){showSavedModal("Choose your CoreAlign project folder","Select the folder that contains REPORT.html, CoreAlign.groovy, and corealign.config.json.");}}}if(saved){correctionsDirty=false;saveFallbackRequired=false;updateReviewHelp();setAutoSaveStatus("Saved. Run CoreAlign again when you finish reviewing.","ready",false);updateChangeBar();if(requestFolder===true){showSavedModal("Angle changes saved","Continue reviewing, or go to QuPath and run CoreAlign again when you are finished.");}return true;}saveFallbackRequired=true;updateReviewHelp();setAutoSaveStatus(window.showDirectoryPicker?"Select the folder that contains REPORT.html once.":"Download one correction file when you finish reviewing.","action",true);updateChangeBar();return false;}
+async function autoSaveCorrections(requestFolder){saveFallbackRequired=false;setAutoSaveStatus("Saving angle changes...","saving",false);var text=JSON.stringify(reviewCorrectionsPayload(),null,2)+String.fromCharCode(10),saved=false;try{if(corealignAppHub){saved=await writeProjectText("corealign-review-corrections.json",text,false);}}catch(error){}if(!saved&&correctionAutoSaveUrl){try{var response=await fetch(correctionAutoSaveUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:text,cache:"no-store"});if(response.ok){saved=true;correctionBridgeReady=true;}}catch(error){correctionBridgeReady=false;}}if(!saved&&projectFolderHandle){try{saved=await writeProjectText("corealign-review-corrections.json",text,false);}catch(error){projectFolderHandle=null;}}if(!saved&&requestFolder===true&&window.showDirectoryPicker){try{saved=await writeProjectText("corealign-review-corrections.json",text,true);}catch(error){if(error&&error.name!=="AbortError"){showSavedModal("Choose your CoreAlign project folder","Select the folder that contains REPORT.html, CoreAlign.groovy, and corealign.config.json.");}}}if(saved){correctionsDirty=false;saveFallbackRequired=false;updateReviewHelp();setAutoSaveStatus("Saved. Approve at the top of this page when you finish reviewing.","ready",false);updateChangeBar();if(requestFolder===true){showSavedModal("Angle changes saved","Keep reviewing. Approve at the top of this page when you are finished and CoreAlign reprocesses only these cores.");}return true;}saveFallbackRequired=true;updateReviewHelp();setAutoSaveStatus(window.showDirectoryPicker?"Select the folder that contains REPORT.html once.":"Download one correction file when you finish reviewing.","action",true);updateChangeBar();return false;}
 function queueAutoSaveCorrections(showModal){autoSaveModalPending=autoSaveModalPending||showModal===true;if(autoSaveTimer){clearTimeout(autoSaveTimer);}autoSaveTimer=setTimeout(function(){var shouldShow=autoSaveModalPending;autoSaveModalPending=false;autoSaveCorrections(shouldShow);},80);}
-async function saveCorrectionFile(){if(await autoSaveCorrections(true)){return;}if(window.showDirectoryPicker){return;}var text=JSON.stringify(reviewCorrectionsPayload(),null,2)+String.fromCharCode(10),blob=new Blob([text],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="corealign-review-corrections.json";link.click();setTimeout(function(){URL.revokeObjectURL(url);},0);setAutoSaveStatus("Downloaded. Put the file beside REPORT.html, then run CoreAlign again.","action",true);showSavedModal("Correction file downloaded","Move corealign-review-corrections.json into the folder that contains REPORT.html. Replace the older file, then run CoreAlign again.");}
-async function focusQuPath(){if(!correctionOpenQuPathUrl){setAutoSaveStatus("Open QuPath from your applications.","error",true);return;}try{var response=await fetch(correctionOpenQuPathUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:"focus",cache:"no-store"});if(!response.ok){throw new Error("Open failed");}setAutoSaveStatus("QuPath is open. Run CoreAlign again.","ready",false);}catch(error){setAutoSaveStatus("Open QuPath from your applications.","error",true);}}
+async function saveCorrectionFile(){if(await autoSaveCorrections(true)){return;}if(window.showDirectoryPicker){return;}var text=JSON.stringify(reviewCorrectionsPayload(),null,2)+String.fromCharCode(10),blob=new Blob([text],{type:"application/json"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="corealign-review-corrections.json";link.click();setTimeout(function(){URL.revokeObjectURL(url);},0);setAutoSaveStatus("Downloaded. Put the file beside REPORT.html, then approve at the top of this page.","action",true);showSavedModal("Correction file downloaded","Move corealign-review-corrections.json into the folder that contains REPORT.html, replace the older file, then approve at the top of this page.");}
+async function focusQuPath(){if(!correctionOpenQuPathUrl){setAutoSaveStatus("Open QuPath from your applications.","error",true);return;}try{var response=await fetch(correctionOpenQuPathUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:"focus",cache:"no-store"});if(!response.ok){throw new Error("Open failed");}setAutoSaveStatus("QuPath is in front. Draw your correction there, then continue here.","ready",false);}catch(error){setAutoSaveStatus("Open QuPath from your applications.","error",true);}}
 var resultsSection=document.getElementById("results"),outputModeUrl=resultsSection?resultsSection.dataset.outputModeUrl||"":"",outputModeStatus=document.getElementById("outputModeStatus"),outputModeButtons=Array.from(document.querySelectorAll("[data-output-mode-choice]"));
 async function saveOutputModeToProject(mode,requestAccess){var text=await readProjectText("corealign.config.json",requestAccess),root=JSON.parse(text),profileName=resultsSection?resultsSection.dataset.profileName||root.activeProfile||"automatic":"automatic";if(!root.profiles||!root.profiles[profileName]){throw new Error("The current config profile is invalid");}var profile=root.profiles[profileName];if(!profile.orientation){profile.orientation={};}profile.orientation.saveFullResolutionPng=true;profile.orientation.saveNativeOmeTiff=false;profile.orientation.saveRotatedMultichannelOmeTiff=mode==="research";return await writeProjectText("corealign.config.json",JSON.stringify(root,null,2)+String.fromCharCode(10),requestAccess);}
-async function setOutputMode(mode){if(!resultsSection||mode===resultsSection.dataset.outputMode){return;}outputModeButtons.forEach(function(button){button.disabled=true;});if(outputModeStatus){outputModeStatus.textContent="Saving output mode...";}var saved=false;if(corealignAppHub){try{saved=await saveOutputModeToProject(mode,false);}catch(error){saved=false;}}if(!saved&&outputModeUrl){try{var response=await fetch(outputModeUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({mode:mode}),cache:"no-store"});saved=response.ok;}catch(error){saved=false;}}if(!saved&&(projectFolderHandle||window.showDirectoryPicker)){try{saved=await saveOutputModeToProject(mode,true);}catch(error){saved=false;}}if(saved){resultsSection.dataset.outputMode=mode;outputModeButtons.forEach(function(button){button.setAttribute("aria-pressed",button.dataset.outputModeChoice===mode?"true":"false");});if(outputModeStatus){outputModeStatus.textContent=mode==="research"?"Research saved. Run CoreAlign again to create OME-TIFF files.":"Presentation saved. Run CoreAlign again to update the package.";}showSavedModal(mode==="research"?"Research selected":"Presentation selected",mode==="research"?"The config is saved. Go to QuPath and run CoreAlign again to create multichannel OME-TIFF files.":"The config is saved. Go to QuPath and run CoreAlign again to update the presentation package.");}else{if(outputModeStatus){outputModeStatus.textContent=window.showDirectoryPicker?"Choose the folder that contains REPORT.html and try again.":"Open this report from AppHub, or keep QuPath open while changing the package.";}showSavedModal("Output mode was not saved",window.showDirectoryPicker?"Select the CoreAlign project folder that contains REPORT.html and corealign.config.json.":"Safari and Firefox save directly while QuPath is open or when this report is opened in AppHub. Return to QuPath, run CoreAlign once, then try again.");}outputModeButtons.forEach(function(button){button.disabled=false;});}
+async function setOutputMode(mode){if(!resultsSection||mode===resultsSection.dataset.outputMode){return;}outputModeButtons.forEach(function(button){button.disabled=true;});if(outputModeStatus){outputModeStatus.textContent="Saving output mode...";}var saved=false;if(corealignAppHub){try{saved=await saveOutputModeToProject(mode,false);}catch(error){saved=false;}}if(!saved&&outputModeUrl){try{var response=await fetch(outputModeUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({mode:mode}),cache:"no-store"});saved=response.ok;}catch(error){saved=false;}}if(!saved&&(projectFolderHandle||window.showDirectoryPicker)){try{saved=await saveOutputModeToProject(mode,true);}catch(error){saved=false;}}if(saved){resultsSection.dataset.outputMode=mode;outputModeButtons.forEach(function(button){button.setAttribute("aria-pressed",button.dataset.outputModeChoice===mode?"true":"false");});if(outputModeStatus){outputModeStatus.textContent=mode==="research"?"Research saved. It applies to this run and every run after it.":"Presentation saved. It applies to this run and every run after it.";}showSavedModal(mode==="research"?"Research selected":"Presentation selected",mode==="research"?"Saved. Multichannel OME-TIFF files and a QuPath project are created when this run finishes.":"Saved. Full-resolution PNG images are created when this run finishes.");}else{if(outputModeStatus){outputModeStatus.textContent=window.showDirectoryPicker?"Choose the folder that contains REPORT.html and try again.":"Open this report from AppHub, or keep QuPath open while changing the package.";}showSavedModal("Output mode was not saved",window.showDirectoryPicker?"Select the CoreAlign project folder that contains REPORT.html and corealign.config.json.":"This saves directly while QuPath is open, or when the report is opened in AppHub. Keep QuPath open and try again.");}outputModeButtons.forEach(function(button){button.disabled=false;});}
 async function requestOutputMode(mode){if(!resultsSection||mode===resultsSection.dataset.outputMode){return;}var research=mode==="research",accepted=await confirmAction(research?"Switch to Research?":"Switch to Presentation?",research?"This saves Research in corealign.config.json. After saving, return to QuPath and run CoreAlign.groovy again to create multichannel OME-TIFF files.":"This saves Presentation in corealign.config.json. After saving, return to QuPath and run CoreAlign.groovy again to update the PNG package.",research?"Save Research":"Save Presentation");if(accepted){setOutputMode(mode);}}
 outputModeButtons.forEach(function(button){button.addEventListener("click",function(){requestOutputMode(button.dataset.outputModeChoice);});});
 if(downloadChanges){downloadChanges.addEventListener("click",saveCorrectionFile);}if(openQuPath){openQuPath.addEventListener("click",focusQuPath);}restoreProjectFolder().then(function(handle){projectFolderHandle=handle;updateChangeBar();if((handle||correctionAutoSaveUrl)&&document.querySelector('.core-card[data-has-change="true"]')){queueAutoSaveCorrections(false);}});if(corealignAppHub&&document.querySelector('.core-card[data-has-change="true"]')){queueAutoSaveCorrections(false);}
 var gridImage=document.getElementById("gridImage"),gridViewport=document.getElementById("gridViewport"),gridZoomValue=document.getElementById("gridZoomValue"),gridZoom=1;function fitGridImage(){if(!gridImage||!gridViewport||!gridImage.naturalWidth||!gridImage.naturalHeight){return;}var fit=Math.min(gridViewport.clientWidth/gridImage.naturalWidth,gridViewport.clientHeight/gridImage.naturalHeight);gridImage.style.width=Math.max(1,Math.floor(gridImage.naturalWidth*fit*gridZoom))+"px";gridImage.style.height="auto";if(gridZoomValue){gridZoomValue.textContent=gridZoom===1?"Fit":Math.round(gridZoom*100)+"%";}}function setGridZoom(value,resetScroll){gridZoom=Math.max(1,Math.min(4,value));fitGridImage();if(resetScroll&&gridViewport){gridViewport.scrollTo(0,0);}}var zoomIn=document.getElementById("gridZoomIn"),zoomOut=document.getElementById("gridZoomOut"),zoomReset=document.getElementById("gridZoomReset");if(zoomIn){zoomIn.addEventListener("click",function(){setGridZoom(gridZoom+.25,false);});}if(zoomOut){zoomOut.addEventListener("click",function(){setGridZoom(gridZoom-.25,false);});}if(zoomReset){zoomReset.addEventListener("click",function(){setGridZoom(1,true);});}if(gridImage){gridImage.addEventListener("load",function(){setGridZoom(1,true);});}window.addEventListener("resize",function(){if(gridZoom===1){fitGridImage();}});if(gridViewport){var panning=false,startX=0,startY=0,startLeft=0,startTop=0;gridViewport.addEventListener("pointerdown",function(event){if(event.button!==0){return;}panning=true;startX=event.clientX;startY=event.clientY;startLeft=gridViewport.scrollLeft;startTop=gridViewport.scrollTop;gridViewport.classList.add("is-panning");gridViewport.setPointerCapture(event.pointerId);});gridViewport.addEventListener("pointermove",function(event){if(!panning){return;}gridViewport.scrollLeft=startLeft-(event.clientX-startX);gridViewport.scrollTop=startTop-(event.clientY-startY);});function stopPan(){panning=false;gridViewport.classList.remove("is-panning");}gridViewport.addEventListener("pointerup",stopPan);gridViewport.addEventListener("pointercancel",stopPan);}
+var gateBar=document.getElementById("gateBar"),gateContinue=document.getElementById("gateContinue");function setGateState(state,title,summary){if(!gateBar){return;}gateBar.dataset.state=state;var t=document.getElementById("gateTitle"),su=document.getElementById("gateSummary");if(t&&title){t.textContent=title;}if(su&&summary){su.textContent=summary;}}if(gateBar&&gateContinue){var gatePanel=gateBar.dataset.panelTarget;if(gatePanel&&!location.hash){showPanel(gatePanel,true);}gateContinue.addEventListener("click",async function(){var endpoint=gateContinue.dataset.endpoint,gate=gateBar.dataset.gate;if(!endpoint){setGateState("error","Continue in QuPath","This report is not connected to a running CoreAlign. Use the Continue button in the CoreAlign window.");return;}gateContinue.disabled=true;setGateState("waiting","Sending your decision...","");try{var response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({gate:gate,decision:"continue"}),cache:"no-store"});if(response.ok){setGateState("sent","CoreAlign is working on it","You can leave this tab open. It refreshes the next time CoreAlign writes the report.");gateContinue.textContent="Sent";return;}setGateState("error","That step is no longer waiting","CoreAlign has already moved on, or this report belongs to an earlier run. Reload this page.");}catch(error){setGateState("error","Could not reach QuPath","Keep QuPath open and try again, or use the Continue button in the CoreAlign window.");}gateContinue.disabled=false;});}
 var themeToggle=document.getElementById("themeToggle");function updateThemeControl(){var current=document.documentElement.dataset.theme==="dark"?"dark":"light";themeToggle.setAttribute("aria-label","Current theme: "+(current==="dark"?"Dark":"Light"));themeToggle.setAttribute("title","Current theme: "+(current==="dark"?"Dark":"Light")+". Click to switch.");}updateThemeControl();themeToggle.addEventListener("click",function(){var current=document.documentElement.dataset.theme;var next=current==="dark"?"light":"dark";document.documentElement.dataset.theme=next;try{localStorage.setItem("corealign-theme",next);}catch(e){}updateThemeControl();});
 })();</script></body></html>''')
     new File(workflowDir, 'REPORT.html').setText(html.toString(), 'UTF-8')
@@ -3261,6 +3666,77 @@ def publishCurrentRun = {
     writeProjectIndex(runDir)
     println "Published ${published} easy-to-find project file(s) under qc/ and results/."
 }
+
+// -------------------------------------------------------------------------
+// Review gates.
+//
+// A gate is the only place a run stops. It opens REPORT.html, arms the
+// loopback bridge, and waits. The reviewer answers either in the browser or in
+// the small CoreAlign window, and the SAME run continues from that answer, so
+// nobody has to return to the script editor and press Run again.
+// -------------------------------------------------------------------------
+Set<String> reportTabsOpened = [] as Set<String>
+def openReportInBrowser = { boolean force ->
+    File report = new File(workflowDir, 'REPORT.html')
+    if (!report.isFile()) return false
+    if (!force && !reportTabsOpened.add(report.getAbsolutePath())) return true
+    String os = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+    List<List<String>> attempts = []
+    if (os.contains('mac')) {
+        attempts << ['open', report.getAbsolutePath()]
+    } else if (os.contains('win')) {
+        attempts << ['rundll32', 'url.dll,FileProtocolHandler', report.getAbsolutePath()]
+    } else {
+        // The AppHub image ships a browser; a bare QuPath container may not.
+        attempts << ['xdg-open', report.getAbsolutePath()]
+        attempts << ['firefox', report.toURI().toString()]
+        attempts << ['chromium', report.toURI().toString()]
+    }
+    for (List<String> command : attempts) {
+        try {
+            new ProcessBuilder(command).redirectErrorStream(true).start()
+            return true
+        } catch (Throwable ignored) {}
+    }
+    println "Open this file to review: ${report.getAbsolutePath()}"
+    return false
+}
+
+def awaitReviewGate = { String gateId, String title, String summary, String detail,
+        String primaryLabel ->
+    if (ALL_IN_ONE_INTEGRATION_TEST) return 'continue'
+    File report = new File(workflowDir, 'REPORT.html')
+    openReportInBrowser(false)
+    CoreAlignCorrectionBridge.openGate(gateId)
+    CoreAlignGateWindow.open(gateId, title, summary, detail, primaryLabel,
+        { -> openReportInBrowser(true) })
+    println "=== WAITING FOR REVIEW: ${title} ==="
+    println "Answer in REPORT.html or in the CoreAlign window: ${report.getAbsolutePath()}"
+    long deadline = System.currentTimeMillis() + (12L * 60L * 60L * 1000L)
+    String decision = ''
+    try {
+        while (decision.isEmpty()) {
+            decision = CoreAlignCorrectionBridge.takeGateDecision()
+            if (decision.isEmpty()) decision = CoreAlignGateWindow.take()
+            if (!decision.isEmpty()) break
+            if (System.currentTimeMillis() > deadline) {
+                println 'REVIEW_TIMEOUT: no decision was made within 12 hours.'
+                decision = 'cancel'
+                break
+            }
+            Thread.sleep(350L)
+        }
+    } catch (InterruptedException stopped) {
+        Thread.currentThread().interrupt()
+        decision = 'cancel'
+    } finally {
+        CoreAlignCorrectionBridge.closeGate()
+        CoreAlignGateWindow.close()
+    }
+    println "REVIEW_DECISION: ${gateId} -> ${decision}"
+    return decision
+}
+
 removeLegacyWorkflowHtml()
 writeProjectIndex(null)
 if (reportOnly) {
@@ -3446,9 +3922,7 @@ if (staleTestCheckpoint) {
     if (!usableGrid()) return
     if (!validateGridStructure('detector_version_refresh')) return
     if (!validateDetectionAgainstTechnicalReference('detector_version_refresh')) return
-    Dialogs.showInfoNotification('CoreAlign detector updated',
-        'A newer detector rebuilt the grid. Inspect the new QC, then run this script again for human approval.')
-    if (!ALL_IN_ONE_INTEGRATION_TEST) return
+    println 'A newer detector rebuilt the grid; the refreshed QC is ready for review.'
 }
 
 if (!usableGrid()) {
@@ -3473,25 +3947,55 @@ if (!usableGrid()) {
             println 'COREALIGN_DETECTION_TEST_OK'
             return
         }
-        println '=== PAUSED AT HUMAN REVIEW GATE ==='
-        println 'Inspect the live grid and qc/01-grid output. Add TMA correction / TMA mark missing annotations where needed, then run this one-click script again.'
-        Dialogs.showInfoNotification('CoreAlign review required',
-            'Detection is complete. Inspect/correct the grid, then run this script again to approve and start/resume orientation.')
-        if (!ALL_IN_ONE_INTEGRATION_TEST) return
     }
 }
 
 if (!validateGridStructure('before_grid_approval')) return
 if (!validateDetectionAgainstTechnicalReference('before_grid_approval')) return
 
-System.clearProperty('tma.review.status')
-System.setProperty('corealign.dashboard.gridReviewPending', 'true')
-writeProjectIndex(null)
-runWorkflowScript(step3)
-if (System.getProperty('tma.review.status', '') != 'APPROVED') {
+// Gate 1: the grid.
+//
+// The loop exists because CoreAlign deliberately refuses to approve a grid in
+// the same pass that changed it: after corrections are applied the reviewer has
+// to see the updated circles first. That used to mean another manual run. Now
+// the QC image is refreshed and the same gate simply opens again.
+boolean gridApproved = false
+while (!gridApproved) {
+    def gridForGate = imageData.getHierarchy().getTMAGrid()
+    int gatePresent = gridForGate == null ? 0 :
+        gridForGate.getTMACoreList().count { !it.isMissing() }
+    int gateMissing = gridForGate == null ? 0 :
+        gridForGate.getTMACoreList().size() - gatePresent
+    System.setProperty('corealign.dashboard.gridReviewPending', 'true')
+    System.setProperty('corealign.dashboard.gate', 'grid')
+    System.setProperty('corealign.dashboard.gatePresent', gatePresent.toString())
+    System.setProperty('corealign.dashboard.gateMissing', gateMissing.toString())
     writeProjectIndex(null)
-    println 'Pipeline stopped safely: the current grid was not approved.'
-    return
+    String gridDecision = awaitReviewGate('grid', 'Check the detected cores',
+        "${gatePresent} cores found, ${gateMissing} positions empty",
+        'Look at the grid image in the report. If a core was missed, draw an ' +
+        'ellipse over it in QuPath and name it "TMA correction", then continue.',
+        'Grid is correct')
+    System.clearProperty('corealign.dashboard.gate')
+    if (gridDecision != 'continue') {
+        writeProjectIndex(null)
+        println 'Pipeline stopped safely: the grid review was not completed.'
+        return
+    }
+    System.clearProperty('tma.review.status')
+    System.setProperty('corealign.gate.gridApproved', 'true')
+    try { runWorkflowScript(step3) }
+    finally { System.clearProperty('corealign.gate.gridApproved') }
+    String reviewStatus = System.getProperty('tma.review.status', '')
+    if (reviewStatus == 'APPROVED') {
+        gridApproved = true
+    } else if (reviewStatus == 'CORRECTION_REVIEW_REQUIRED') {
+        println 'Corrections applied; showing the refreshed grid for a second look.'
+    } else {
+        writeProjectIndex(null)
+        println "Pipeline stopped safely: the current grid was not approved (${reviewStatus})."
+        return
+    }
 }
 System.clearProperty('corealign.dashboard.gridReviewPending')
 writeProjectIndex(null)
@@ -3506,23 +4010,48 @@ if (System.getProperty('tma.orientation.status', '') != 'COMPLETE') return
 publishCurrentRun()
 int processedThisRun = System.getProperty('tma.orientation.processedThisRun', '0') as int
 int exportOnlyThisRun = System.getProperty('tma.orientation.exportOnlyThisRun', '0') as int
+File reviewCorrectionsFile = new File(workflowDir, 'corealign-review-corrections.json')
+// Gate 2: the rotated cores.
+//
+// The loop lets a reviewer fix angles and see the corrected crops without
+// leaving the browser. Saving an angle writes the corrections file through the
+// same loopback bridge; CoreAlign notices the newer file, reprocesses only the
+// cores that changed, and opens the gate again on the updated result.
 if (processedThisRun > 0) {
-    println "=== PAUSED AT FINAL ORIENTATION REVIEW GATE (${processedThisRun} cores changed) ==="
-    String reportPath = System.getProperty('tma.orientation.reportPath', '')
-    String elapsed = System.getProperty('tma.orientation.elapsed', 'unknown')
-    String total = System.getProperty('tma.orientation.totalCount', '0')
-    String ok = System.getProperty('tma.orientation.okCount', '0')
-    String review = System.getProperty('tma.orientation.reviewCount', '0')
-    String missing = System.getProperty('tma.orientation.missingCount', '0')
-    Dialogs.showMessageDialog('CoreAlign run finished: review required',
-        "Orientation processing finished successfully.\n" +
-        "This is a planned review pause, not an error.\n\n" +
-        "Positions: ${total}\nAutomatic QC pass: ${ok}\n" +
-        "Needs review: ${review}\nMissing: ${missing}\nDuration: ${elapsed}\n\n" +
-        "Project dashboard:\n${reportPath}\n\n" +
-        'Inspect the flagged cores, make any corrections in QuPath, then run CoreAlign.groovy again. ' +
-        'Accepted checkpoints are preserved, so completed cores will not be processed again.')
-    if (!ALL_IN_ONE_INTEGRATION_TEST) return
+    long correctionsStamp = reviewCorrectionsFile.isFile() ?
+        reviewCorrectionsFile.lastModified() : 0L
+    while (true) {
+        String total = System.getProperty('tma.orientation.totalCount', '0')
+        String ok = System.getProperty('tma.orientation.okCount', '0')
+        String review = System.getProperty('tma.orientation.reviewCount', '0')
+        String missing = System.getProperty('tma.orientation.missingCount', '0')
+        String elapsed = System.getProperty('tma.orientation.elapsed', 'unknown')
+        println "=== ORIENTATION REVIEW: ${total} positions, ${ok} passed automatic QC, " +
+            "${review} flagged, ${missing} missing, ${elapsed} ==="
+        System.setProperty('corealign.dashboard.gate', 'orientation')
+        writeProjectIndex(new File(System.getProperty('tma.orientation.runDir', '')))
+        String orientationDecision = awaitReviewGate('orientation',
+            'Check the rotated cores',
+            "${ok} passed automatic QC, ${review} need a look",
+            'Confirm the cores that look right. For a wrong one use Edit, set the ' +
+            'angle, and Update. Then approve to create the result files.',
+            'Approve and finish')
+        System.clearProperty('corealign.dashboard.gate')
+        if (orientationDecision != 'continue') {
+            println 'Pipeline stopped safely: the orientation review was not completed.'
+            return
+        }
+        long updatedStamp = reviewCorrectionsFile.isFile() ?
+            reviewCorrectionsFile.lastModified() : 0L
+        if (updatedStamp <= correctionsStamp) break
+        correctionsStamp = updatedStamp
+        println 'Angle corrections were saved; reprocessing only the cores that changed.'
+        System.clearProperty('tma.orientation.processedThisRun')
+        System.clearProperty('tma.orientation.exportOnlyThisRun')
+        runWorkflowScript(step2)
+        if (System.getProperty('tma.orientation.status', '') != 'COMPLETE') return
+        publishCurrentRun()
+    }
 }
 if (processedThisRun == 0 && exportOnlyThisRun > 0) {
     println "Research-package upgrade reused all accepted core transforms; ${exportOnlyThisRun} core export(s) were added without redetection or reorientation."
@@ -3531,7 +4060,9 @@ if (processedThisRun == 0 && exportOnlyThisRun > 0) {
 }
 
 System.clearProperty('tma.final.status')
-runWorkflowScript(step5)
+if (processedThisRun > 0) System.setProperty('corealign.gate.finalApproved', 'true')
+try { runWorkflowScript(step5) }
+finally { System.clearProperty('corealign.gate.finalApproved') }
 if (System.getProperty('tma.final.status', '') != 'APPROVED') {
     println 'Pipeline stopped safely: final orientation result was not approved.'
     return
@@ -3586,16 +4117,16 @@ else
     println '=== CoreAlign COMPLETE; grid and orientation are human-approved ==='
 
 if (!ALL_IN_ONE_INTEGRATION_TEST) {
-    String reportPath = completionDashboardFile.getAbsolutePath()
-    String projectMessage = analysisProjectStatus == 'READY' ?
-        "Analysis-ready QuPath project:\n${analysisProjectPath}\n\n" +
-            'Open it with File > Project > Open project. Core entries are ordered by row and column and include QC metadata.' :
-        analysisProjectStatus == 'RESEARCH_OUTPUT_REQUIRED' ?
-            'Analysis project: not created yet because this run contains presentation images only.\n' +
-            'Choose Research package in the Config Builder and run this same script again. ' +
-            'Detection, rotation, and crop checkpoints will be reused.' :
-            "Analysis project status: ${analysisProjectStatus}"
-    Dialogs.showMessageDialog('CoreAlign complete',
-        "The approved workflow finished successfully.\n\n" +
-        "Project dashboard:\n${reportPath}\n\n${projectMessage}")
+    // The report is the result. Open it and say one thing, rather than
+    // restating the run in a dialog the reviewer has to read and dismiss.
+    openReportInBrowser(true)
+    String finishedLine = analysisProjectStatus == 'READY' ?
+        'Images, tables, and an ordered QuPath project are ready. Open the project ' +
+            'with File > Project > Open project.' :
+        'Your images and tables are ready. To add multichannel OME-TIFF files and a ' +
+            'QuPath project later, switch Results to Research in the report and run ' +
+            'CoreAlign once more. Nothing is processed twice.'
+    Dialogs.showInfoNotification('CoreAlign finished',
+        "${finishedLine} The report is open in your browser.")
+    println "Results: ${completionDashboardFile.getAbsolutePath()}"
 }

@@ -13,8 +13,9 @@ export default function SiteHeader() {
       </a>
       <nav aria-label="Main navigation">
         <a href={`${basePath}/`}>Home</a>
-        <a href={`${basePath}/docs/`}>Guide</a>
-        <a href={`${basePath}/config-builder/`}>Config</a>
+        <a href={`${basePath}/guide/`}>Manual</a>
+        <a href={`${basePath}/moodboard/`}>Moodboard</a>
+        <a href={`${basePath}/playbook/`}>Playbook</a>
         <a href={repo}>GitHub</a>
       </nav>
       <div className="headerActions">

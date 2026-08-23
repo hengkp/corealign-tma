@@ -5,10 +5,30 @@ import { gunzipSync } from "node:zlib";
 
 const root = new URL("../", import.meta.url);
 
-test("exports the home page, config builder, and documentation", async () => {
+test("exports every published page", async () => {
   await access(new URL("out/index.html", root));
   await access(new URL("out/config-builder/index.html", root));
   await access(new URL("out/docs/index.html", root));
+  await access(new URL("out/guide/index.html", root));
+  await access(new URL("out/moodboard/index.html", root));
+  await access(new URL("out/playbook/index.html", root));
+});
+
+test("the manual describes the one-run workflow", async () => {
+  const html = await readFile(new URL("out/guide/index.html", root), "utf8");
+  assert.match(html, /Run once\. Answer twice\. Collect your files/);
+  assert.match(html, /You never return to the script editor/);
+  assert.match(html, /TMA correction/);
+  assert.doesNotMatch(html, /run the script again to approve/i);
+});
+
+test("the design pages stay English and em dash free", async () => {
+  for (const page of ["moodboard", "playbook", "guide"]) {
+    const html = await readFile(new URL(`out/${page}/index.html`, root), "utf8");
+    assert.doesNotMatch(html, /[\u0e00-\u0e7f]/, `${page} must stay English`);
+    const body = html.replace(/<script[\s\S]*?<\/script>/g, "");
+    assert.doesNotMatch(body, /\u2014/, `${page} must not use an em dash`);
+  }
 });
 
 test("keeps the public website concise and English only", async () => {
@@ -17,6 +37,7 @@ test("keeps the public website concise and English only", async () => {
   assert.match(html, /One script\. Three clear steps/);
   assert.match(html, /REPORT\.html/);
   assert.match(html, /Detect, rotate, and crop every core in QuPath/);
+  assert.match(html, /One run, two questions, no settings to learn/);
   assert.doesNotMatch(html, /<video|\.mp4|Watch or download|Video tutorial/);
   assert.doesNotMatch(html, /[ก-๙]/);
   assert.doesNotMatch(html, /[—–×·…°]/);
@@ -133,9 +154,9 @@ test("ships one guarded production workflow", async () => {
     readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"),
     readFile(new URL("workflow/corealign.config.json", root), "utf8"),
     readFile(new URL("workflow/embedded/01_build_tma_grid.groovy.src", root), "utf8"),
-    readFile(new URL("_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy", root), "utf8"),
-    readFile(new URL("_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy", root), "utf8"),
-    readFile(new URL("_archieved/legacy-multi-file-workflow/05_finalize_orientation_review.groovy", root), "utf8"),
+    readFile(new URL("workflow/embedded/02_auto_orient_epidermis.groovy.src", root), "utf8"),
+    readFile(new URL("workflow/embedded/03_review_correct_and_approve_grid.groovy.src", root), "utf8"),
+    readFile(new URL("workflow/embedded/05_finalize_orientation_review.groovy.src", root), "utf8"),
     readFile(new URL("workflow/assets/no-core-placeholder.jpg", root)),
   ]);
   const config = JSON.parse(configText);
@@ -156,15 +177,40 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /presentationRendererVersion: 'slide-color-2\.0'/);
   assert.match(groovy, /compatibleLegacyProfileHashes/);
   assert.match(groovy, /Research-package upgrade reused all accepted core transforms/);
-  assert.match(groovy, /CoreAlign run finished: review required/);
   assert.doesNotMatch(groovy, /new Date\(\)\.format\(/);
-  assert.match(groovy, /This is a planned review pause, not an error/);
-  assert.match(groovy, /CoreAlign \| Run summary/);
-  assert.match(groovy, /What CoreAlign will do/);
-  assert.match(groovy, /Click OK to start this run\. Click Cancel to change nothing/);
+
+  // v2: one run, two gates. The wall-of-text summary dialog and the
+  // run-again instructions it depended on are gone for good.
+  assert.doesNotMatch(groovy, /CoreAlign \| Run summary/);
+  assert.doesNotMatch(groovy, /Click OK to start this run/);
+  assert.doesNotMatch(groovy, /run this script again/i);
+  assert.doesNotMatch(groovy, /run CoreAlign again/i);
+  assert.match(groovy, /class CoreAlignSetup/);
+  assert.match(groovy, /class CoreAlignGateWindow/);
+  assert.match(groovy, /static void openGate\(String gateId\)/);
+  assert.match(groovy, /def awaitReviewGate = \{/);
+  assert.match(groovy, /awaitReviewGate\('grid'/);
+  assert.match(groovy, /awaitReviewGate\('orientation'/);
+  assert.match(groovy, /corealign\.gate\.gridApproved/);
+  assert.match(groovy, /corealign\.gate\.finalApproved/);
+  assert.match(groovy, /QuPath is waiting for you/);
+  assert.match(groovy, /id="gateContinue"/);
+
+  // The embedded approval steps must accept a gate decision as human approval,
+  // and must still be able to ask directly when no gate is open.
+  assert.match(gridReviewSource, /corealign\.gate\.gridApproved/);
+  assert.match(gridReviewSource, /Approved in the CoreAlign report review gate/);
   assert.match(gridReviewSource, /CoreAlign \| Confirm missing positions/);
   assert.match(gridReviewSource, /CoreAlign \| Approve grid and continue/);
+  assert.match(finalReviewSource, /corealign\.gate\.finalApproved/);
   assert.match(finalReviewSource, /CoreAlign \| Approve rotated cores/);
+
+  // JavaFX silently drops a font weight that is not a multiple of 100.
+  const badWeights = groovy.match(/-fx-font-weight:\s*(\d+)/g) ?? [];
+  for (const declaration of badWeights) {
+    const weight = Number(declaration.match(/(\d+)/)[1]);
+    assert.equal(weight % 100, 0, `JavaFX rejects ${declaration}`);
+  }
   assert.doesNotMatch(gridReviewSource, /I inspected and confirm all positions marked missing/);
   assert.doesNotMatch(gridReviewSource, /APPROVE this exact grid for epidermis orientation/);
   assert.match(groovy, /tma\.analysisProject\.status/);
@@ -239,13 +285,13 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /data-output-mode-choice="research"/);
   assert.match(groovy, /Switch to Research\?/);
   assert.match(groovy, /Save Research/);
-  assert.match(groovy, /Go to QuPath and run CoreAlign again to create multichannel OME-TIFF files/);
+  assert.match(groovy, /Multichannel OME-TIFF files and a QuPath project are created when this run finishes/);
   assert.match(groovy, /Angle changes saved/);
   assert.match(groovy, /The selected folder does not contain REPORT\.html/);
   assert.match(groovy, /def projectPathString/);
   assert.match(groovy, /value\.strings instanceof List/);
   assert.match(groovy, /corealign\.reportOnly/);
-  assert.match(groovy, /Research saved\. Run CoreAlign again to create OME-TIFF files/);
+  assert.match(groovy, /Research saved\. It applies to this run and every run after it/);
   assert.match(groovy, /orientation\.saveRotatedMultichannelOmeTiff = mode == 'research'/);
   assert.match(groovy, /bringQuPathToFront/);
   assert.match(groovy, /QuPathGUI\.getInstance/);
@@ -255,7 +301,7 @@ test("ships one guarded production workflow", async () => {
   assert.match(groovy, /window\.showDirectoryPicker/);
   assert.match(groovy, /window\.corealignAppHub/);
   assert.match(groovy, /indexedDB\.open\("corealign-report",1\)/);
-  assert.match(groovy, /Saved\. Run CoreAlign again when you finish reviewing/);
+  assert.match(groovy, /Saved\. Approve at the top of this page when you finish reviewing/);
   assert.match(groovy, /Download one correction file when you finish reviewing/);
   assert.doesNotMatch(groovy, /showAutoSaveErrorBriefly/);
   assert.match(groovy, /top:calc\(var\(--header\) \+ 12px\)/);
@@ -403,18 +449,18 @@ test("ships one guarded production workflow", async () => {
   assert.doesNotMatch(embeddedOrient, /ann\.setName\("\$\{coreName\} epidermis"\)/);
   assert.doesNotMatch(embeddedOrient.match(/String coreSignature = sha256\(\[[\s\S]*?\]\s*\.join\('\|'\)\)/)?.[0] ?? "", /SAVE_ROTATED_MULTICHANNEL_OME_TIFF/);
 
-  const reviewSource = await readFile(new URL("_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy", root), "utf8");
-  const restoreSource = await readFile(new URL("_archieved/legacy-multi-file-workflow/04_restore_approved_grid.groovy", root), "utf8");
+  const reviewSource = await readFile(new URL("workflow/embedded/03_review_correct_and_approve_grid.groovy.src", root), "utf8");
+  const restoreSource = await readFile(new URL("workflow/embedded/04_restore_approved_grid.groovy.src", root), "utf8");
   assert.match(reviewSource, /cropPaddingFactor: desiredCropPaddingFactor/);
   assert.match(restoreSource, /CoreAlign crop padding factor/);
 
   for (const [step, name, sourcePath] of [
-    ["2", "02_auto_orient_epidermis.groovy", "_archieved/legacy-multi-file-workflow/02_auto_orient_epidermis.groovy"],
-    ["3", "03_review_correct_and_approve_grid.groovy", "_archieved/legacy-multi-file-workflow/03_review_correct_and_approve_grid.groovy"],
-    ["4", "04_restore_approved_grid.groovy", "_archieved/legacy-multi-file-workflow/04_restore_approved_grid.groovy"],
-    ["5", "05_finalize_orientation_review.groovy", "_archieved/legacy-multi-file-workflow/05_finalize_orientation_review.groovy"],
-    ["6", "06_export_presentation_package.groovy", "_archieved/legacy-multi-file-workflow/06_export_presentation_package.groovy"],
-    ["7", "07_build_qupath_analysis_project.groovy", "_archieved/legacy-multi-file-workflow/07_build_qupath_analysis_project.groovy"],
+    ["2", "02_auto_orient_epidermis.groovy", "workflow/embedded/02_auto_orient_epidermis.groovy.src"],
+    ["3", "03_review_correct_and_approve_grid.groovy", "workflow/embedded/03_review_correct_and_approve_grid.groovy.src"],
+    ["4", "04_restore_approved_grid.groovy", "workflow/embedded/04_restore_approved_grid.groovy.src"],
+    ["5", "05_finalize_orientation_review.groovy", "workflow/embedded/05_finalize_orientation_review.groovy.src"],
+    ["6", "06_export_presentation_package.groovy", "workflow/embedded/06_export_presentation_package.groovy.src"],
+    ["7", "07_build_qupath_analysis_project.groovy", "workflow/embedded/07_build_qupath_analysis_project.groovy.src"],
   ]) {
     const match = groovy.match(new RegExp(`def step${step} = new EmbeddedWorkflowScript\\(name: '${name.replaceAll(".", "\\.")}', payload: '''\\n([\\s\\S]*?)\\n'''\\)`));
     assert.ok(match, `Step ${step} payload should be embedded`);

@@ -795,6 +795,13 @@ if (!correctionAudit.isEmpty()) {
     return
 }
 
+// A gate approval is a human approval. The reviewer saw the grid image, the
+// present/missing counts, and this exact set of circles on REPORT.html, and
+// pressed the primary button. Asking the same question again in a modal adds a
+// click and no information, so the dialogs below are the fallback for a run
+// that reached this step without an open gate.
+boolean gateApproved = 'true'.equalsIgnoreCase(
+    System.getProperty('corealign.gate.gridApproved', 'false'))
 boolean approved = false
 boolean missingConfirmed = missingCount == 0
 String note = ''
@@ -802,6 +809,10 @@ if (approveForTest) {
     approved = true
     missingConfirmed = true
     note = 'Automated integration test approval'
+} else if (gateApproved) {
+    approved = true
+    missingConfirmed = true
+    note = 'Approved in the CoreAlign report review gate'
 } else {
     if (missingCount > 0) {
         String missingMessage = "The grid marks ${missingCount} position(s) as missing.\n\n" +

@@ -4,19 +4,38 @@ Rotate first. Crop second. Review what matters.
 
 CoreAlign TMA is a configurable and resumable QuPath workflow for detecting TMA grids, orienting each skin core with the epidermis at the top, and exporting presentation ready PNG files plus rotated multichannel OME TIFF files.
 
-## Current workflow: v1.9.10
+## Current workflow: v2.0.0
 
-Version 1.9.10 gives dark mode a more saturated blue, yellow, red, green, purple, and cyan palette across the website and REPORT.html. Light mode remains unchanged.
+**One run. Two questions. No re-runs.**
 
-[Open the optional Config Builder](https://hengkp.github.io/corealign-tma/config-builder/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
+Up to v1.9 a slide took three or four separate presses of Run, eight modal dialogs, and a visit
+to a separate website to produce a config file. v2.0.0 replaces all of that with one setup
+dialog and two review gates:
+
+| | v1.9 | v2.0 |
+|---|---:|---:|
+| Times you press Run per slide | 3 to 4 | **1** |
+| Modal dialogs to read and dismiss | 8 | **1** |
+| Clicks to configure a normal slide | 6 plus a website visit and a file move | **0 to 2** |
+| Places a review can be answered | QuPath script editor only | **REPORT.html or QuPath** |
+
+When CoreAlign needs a person it opens REPORT.html, shows the evidence, and waits. Answering
+in the browser continues the same run. Nobody returns to the script editor.
+
+[Read the manual](https://hengkp.github.io/corealign-tma/guide/) | [Download the latest release](https://github.com/hengkp/corealign-tma/releases/latest)
 
 Website: [hengkp.github.io/corealign-tma](https://hengkp.github.io/corealign-tma/)
 
-Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/)
+Manual: [hengkp.github.io/corealign-tma/guide](https://hengkp.github.io/corealign-tma/guide/) ·
+Thai: [docs/USER_GUIDE.th.md](docs/USER_GUIDE.th.md)
 
-Documentation: [hengkp.github.io/corealign-tma/docs](https://hengkp.github.io/corealign-tma/docs/)
+Design: [Moodboard](https://hengkp.github.io/corealign-tma/moodboard/) ·
+[Playbook](https://hengkp.github.io/corealign-tma/playbook/)
 
-Tutorial: [validated written guide](tutorial/README.md). The previous video has been removed from the website while a privacy-safe v1.4 recording is produced.
+Config Builder: [hengkp.github.io/corealign-tma/config-builder](https://hengkp.github.io/corealign-tma/config-builder/) ·
+optional, and only for unusual channel names.
+
+Reference: [hengkp.github.io/corealign-tma/docs](https://hengkp.github.io/corealign-tma/docs/)
 
 ## What it does
 
@@ -44,21 +63,45 @@ Tutorial: [validated written guide](tutorial/README.md). The previous video has 
 
 ## Quick start
 
-1. Download the latest release and create a new empty working folder.
-2. Put the slide and `workflow/CoreAlign.groovy` in that folder. A config is optional.
-3. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
-4. Open `Automate`, then `Show script editor`.
-5. Open `CoreAlign.groovy` and press `Run`.
-6. CoreAlign creates a config if needed, detects the array and core size, and writes the QC result without asking for geometry.
-7. Open `REPORT.html`, review the detected grid, and run the same file again.
-8. Review uncertain orientations. Click Confirm if correct. If wrong, click Edit, set the angle, and Update. Angle changes save automatically while QuPath is open or through AppHub. If QuPath is closed, Chrome and Edge can connect to the project folder once. Safari and Firefox offer one correction file to place beside REPORT.html.
-9. Approve the final reviewed result. Research mode then creates an ordered QuPath core project automatically.
+1. Download the latest release. Put the slide and `workflow/CoreAlign.groovy` in one empty folder.
+2. Open that copy of the slide in QuPath. Do not open a different copy from Downloads.
+3. `Automate`, then `Show script editor`, then open `CoreAlign.groovy` and press `Run`.
+4. Pick **Tissue** and **Results**, press **Start**. Rows, columns, core size, and array
+   position are measured from the slide, so they are never asked for.
+5. CoreAlign detects the array, then opens `REPORT.html` and waits. Check the circles and press
+   **Grid is correct**. To fix a missed core, draw an ellipse over it in QuPath, name it
+   `TMA correction`, and press the same button.
+6. Cores are rotated and cropped one at a time, with a checkpoint after each one.
+7. CoreAlign opens the report again. Confirm the cores that look right, use **Edit** on any
+   wrong angle, then press **Approve and finish**.
+8. Files are in `results/`. Research runs also produce `results/ome-tiff/` and an ordered
+   QuPath project.
+
+The small CoreAlign window in QuPath carries the same two buttons as the report, so a reviewer
+who prefers to stay in QuPath never has to open a browser at all.
 
 ## Validated tutorial
 
 Follow [the current tutorial](tutorial/README.md). It includes the one-folder rule, the exact preflight checks, expected results for the example slide, review gates, resume behavior, and realistic PNG and OME-TIFF timing.
 
 Use [the production prompt](tutorial/VIDEO_SCRIPT.md) for the next screen recording. It locks the real click sequence, English narration, privacy setup, captions, and acceptance checks to the v1.4 workflow.
+
+## How the review gates work
+
+Both pauses run through a loopback HTTP bridge on `127.0.0.1` that only the local machine can
+reach. The bridge is armed for exactly one gate at a time and delivers a decision exactly once,
+so a report tab left open from an earlier run cannot advance a later one.
+
+- The button in `REPORT.html` posts the decision to the bridge.
+- The button in the CoreAlign window sets the same decision directly.
+- Either way the run continues in place, with the approval recorded as human approval and a
+  note saying it came from the report review gate.
+- Closing QuPath during a gate is safe. Run the script again and it resumes from the last
+  checkpoint.
+
+Run `node scripts/ui-harness.mjs` to render both dialogs and assert that a gate decision is
+delivered once and only once. Run `npm run workflow:verify` to prove that every embedded step
+still matches its source in `workflow/embedded/`.
 
 ## Optional config choices
 
@@ -68,7 +111,8 @@ Use [the production prompt](tutorial/VIDEO_SCRIPT.md) for the next screen record
 | Output | Create presentation PNG only or PNG plus multichannel OME-TIFF |
 | Marker channels | Optional channel names for presentation PNG files |
 
-Rows, columns, punch size, and layout are automatic. Use the Config Builder only when tissue type, output format, or unusual channel names need to change.
+Rows, columns, punch size, and layout are automatic. Tissue and output are asked in the setup
+dialog when you press Run. The Config Builder is only needed for unusual channel names.
 
 ### Upgrade PNG results to a research package later
 
