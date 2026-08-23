@@ -54,6 +54,48 @@ default, and status carried by colour plus icon plus words rather than colour al
 Picking a slide also attaches to whatever is already in that folder, so a finished run can be
 opened and read without running it again.
 
+## Correcting the grid without QuPath
+
+The grid gate used to say: draw an ellipse over the missed core in QuPath and name it
+`TMA correction`. For somebody driving Studio that is a dead end, because the whole point of the
+app is that there is no desktop to draw in.
+
+The QC overlay is interactive instead. The circles are drawn as SVG over the overlay image, and:
+
+| To do this | Do that | It becomes |
+|---|---|---|
+| move a circle onto the tissue | drag it | `TMA correction <core>` |
+| say a position is empty | select it, press the button in the rail | `TMA mark missing <core>` |
+| say a position marked empty has tissue | drag its circle onto the tissue | `TMA correction <core>` |
+
+Saving writes `corealign-grid-corrections.json` beside the slide. Step 3 turns each entry into
+the annotation a person would have drawn, so corrections take one code path whether they were
+drawn by hand in QuPath or clicked in a browser. Answering the gate then applies them and reopens
+it on the corrected grid for a second look.
+
+**The file names the grid hash it was made against**, and applying it changes that hash. That is
+what stops the same file being applied twice: inserting a core shifts the later ones along, and
+doing that a second time would quietly corrupt the row labels. A file made against a grid that
+has since moved on is skipped with a line saying so.
+
+**A correction that cannot be applied stops the run.** It joins `correctionErrors`, which is a
+hard error and blocks approval. Approving a grid while discarding edits somebody just made and
+pressed a button to apply would look like success and be wrong: that is exactly what happened
+when the first version called `putMetadataValue` on an annotation, which QuPath 0.7 does not
+have, and lost three corrections to a caught exception.
+
+### Where the numbers come from
+
+`*_grid_qc_latest.json` is written by step 3, which runs **after** the grid gate is answered. On
+a slide that has never been through CoreAlign the first gate therefore had nothing to draw: no
+image, no circles, no counts. It was invisible in testing because a project that has been run
+before still holds the file from last time.
+
+The runner now writes `*_grid_geometry.json` every time the grid gate opens, from the grid that
+is on screen: the circles, the counts, `overviewWidth`/`overviewHeight` and
+`slideWidth`/`slideHeight` for the mapping, and the grid hash. Studio takes positions from that
+and the QC commentary from step 3's file when it exists.
+
 ## How fast a run is: workers come from the allocation
 
 Cores are independent of each other, so orientation processes them on a thread pool. That pool

@@ -125,3 +125,15 @@ test("grid corrections are tied to the grid they were made against", () => {
   assert.ok(page.includes("model.grid.gridHash !== gridKey"),
     "the page must drop edits when CoreAlign moves to a different grid");
 });
+
+// The bridge opens ServerSocket(0), so it takes a new random port every time CoreAlign
+// rewrites the report. Caching the address meant one gate answered and the next failed with
+// "Connection refused" against a port nothing was listening on.
+test("the bridge address is never cached across steps", () => {
+  const body = server.slice(server.indexOf("    def bridge_url"),
+                            server.indexOf("    # -- results"));
+  assert.match(body, /self\.discover_bridge\(\)/,
+    "bridge_url must resolve the address again on every call");
+  assert.ok(!/self\.bridge_tokens\.update/.test(server),
+    "discovery must replace the tokens, not merge a stale port into them");
+});

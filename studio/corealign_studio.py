@@ -459,7 +459,9 @@ class Run:
         with self.lock:
             if base:
                 self.bridge_base = base
-                self.bridge_tokens.update(found)
+                # Replace, so a port from an earlier step cannot outlive the report it
+                # came from.
+                self.bridge_tokens = found
         return text
 
     def discover_bridge(self) -> None:
@@ -486,24 +488,30 @@ class Run:
             return
         with self.lock:
             self.bridge_base = base
-            self.bridge_tokens.update(found)
+            # Replace, do not merge: a stale port for one action would otherwise survive
+            # every rediscovery.
+            self.bridge_tokens = found
 
     def bridge_url(self, action: str) -> str | None:
-        with self.lock:
-            base, token = self.bridge_base, self.bridge_tokens.get(action)
-        if not (base and token):
-            self.discover_bridge()
-            with self.lock:
-                base, token = self.bridge_base, self.bridge_tokens.get(action)
-        if base and token:
-            return f"{base}/corealign/{action}?token={token}"
-        # A gate can open before the browser has loaded the refreshed report, so fall back to
-        # the endpoint CoreAlign itself wrote into gate.json.
+        """Where to send one control, worked out fresh every time.
+
+        The bridge opens ServerSocket(0), so it takes a new random port every time CoreAlign
+        rewrites the report, which it does at each step. Caching the port meant the first
+        gate answered fine and the next one failed with a bare "Connection refused" against
+        a port nothing was listening on any more. These are rare, deliberate clicks, so
+        reading the current answer costs nothing worth saving.
+        """
+        # gate.json is written by the gate that is open right now, so for a gate decision it
+        # is the most current thing on disk.
         if action == "gate":
-            gate = self.gate() or {}
-            endpoint = str(gate.get("endpoint") or "")
+            endpoint = str((self.gate() or {}).get("endpoint") or "")
             if endpoint.startswith("http://127.0.0.1:"):
                 return endpoint
+        self.discover_bridge()
+        with self.lock:
+            base, token = self.bridge_base, self.bridge_tokens.get(action)
+        if base and token:
+            return f"{base}/corealign/{action}?token={token}"
         return None
 
     # -- results ------------------------------------------------------------
