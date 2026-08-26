@@ -165,6 +165,21 @@ first IFD: **0.155 s on the 28 GB reference slide**, and the names came back ide
 QuPath's. A `.qptiff` falls back to its `ScanColorTable` entries. A slide whose header says
 nothing hides the question, and that run behaves exactly as it did before this feature existed.
 
+🔴 **The channel view reports FLOAT32 even when the slide is UINT16**, and that broke the one
+output mode this feature exists to control. The OME writer asked the view what the pixel type
+was and refused every core of a research run with *"supports UINT8/UINT16; found FLOAT32"* ·
+117 cores, zero files. The samples were never wrong: checked on 4.86 million of them across six
+channels, every value bit-exact against the full UINT16 read and every one exactly integral.
+The view relabels the type, it does not rescale. The guard asks `sourceServer` now, so a
+genuinely floating-point slide is still refused. Fixed in v2.6.5.
+
+A note for whoever revisits this. The subset buys nothing in speed, and it has now cost three
+separate bugs · the approval check, the pixel type, and the identity hashes · all of them from
+the same root, which is that a transformed server is a different thing wearing the slide's
+clothes. Reading the full server and selecting channels only where output is produced would
+avoid the whole class. It is a bigger change than there was room for, and worth doing if this
+area is touched again.
+
 The setup screen asks it collapsed to one line, with every channel checked. Selecting every
 channel sends nothing at all: the selection is part of both identity hashes, and a list saying
 "all of them" would invalidate every core a previous run had already computed.
