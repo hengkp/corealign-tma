@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="th" data-theme="auto">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -119,6 +119,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   color:var(--muted);
 }
 .iconBtn:hover{background:var(--surface-2);color:var(--text)}
+.langBtn{width:auto;min-width:34px;padding:0 8px;font-size:12.5px;font-weight:800}
 
 /* stage tracker */
 .stages{
@@ -430,7 +431,7 @@ h2{font-size:17px;font-weight:750}
 }
 .coreRow[data-checked="true"] .tick{background:var(--ok);border-color:var(--ok);color:#fff}
 .coreRow[data-edited="true"] .nm::after{
-  content:"ปรับแล้ว";margin-left:7px;padding:1px 7px;border-radius:999px;
+  content:attr(data-edited-label);margin-left:7px;padding:1px 7px;border-radius:999px;
   background:var(--accent-soft);color:var(--accent-dark);font-size:10.5px;font-weight:800;vertical-align:middle;
 }
 .detail{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0}
@@ -652,142 +653,143 @@ kbd{
       <span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2v3.06a7 7 0 0 1 5.94 5.94H22v2h-3.06A7 7 0 0 1 13 18.94V22h-2v-3.06A7 7 0 0 1 5.06 13H2v-2h3.06A7 7 0 0 1 11 5.06V2h2zm-1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg></span>
       CoreAlign Studio
     </div>
-    <div class="slideName" id="slideName">ยังไม่ได้เลือกสไลด์</div>
-    <div class="pill" id="statePill" data-tone="idle"><i class="dot"></i><span id="stateText">พร้อมใช้งาน</span></div>
+    <div class="slideName" id="slideName" data-i18n="noSlide"></div>
+    <div class="pill" id="statePill" data-tone="idle"><i class="dot"></i><span id="stateText" data-i18n="stateIdle"></span></div>
     <div class="clock" id="clock" hidden>0:00</div>
-    <button class="iconBtn" id="themeBtn" title="สลับโหมดสว่างและมืด" aria-label="สลับโหมดสว่างและมืด">
+    <button class="iconBtn langBtn" id="langBtn" type="button"></button>
+    <button class="iconBtn" id="themeBtn" data-i18n-title="themeSwitch" data-i18n-aria-label="themeSwitch">
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.51 4.93l1.42-1.42 2.12 2.12-1.41 1.42-2.13-2.12zm12.44 12.44l1.41-1.41 2.12 2.12-1.41 1.41-2.12-2.12zM19.07 3.5l1.42 1.42-2.12 2.12-1.42-1.41 2.12-2.13zM6.64 15.95l1.41 1.41-2.12 2.12-1.41-1.41 2.12-2.12zM23 11v2h-3v-2h3zM4 11v2H1v-2h3z"/></svg>
     </button>
   </header>
 
-  <nav class="stages" id="stages" aria-label="ขั้นตอนการทำงาน"></nav>
+  <nav class="stages" id="stages" data-i18n-aria-label="workflowStages"></nav>
 
   <main class="stageBody">
 
     <!-- 1 ---------------------------------------------------------- pick a slide -->
-    <section class="panel picker" data-panel="slide" aria-label="เลือกสไลด์">
+    <section class="panel picker" data-panel="slide" data-i18n-aria-label="stageSlide">
       <div class="pickerHead">
-        <h1>เลือกสไลด์ที่จะจัดเรียง</h1>
-        <p class="lede">ไฟล์ <code>.ome.tif</code> หรือ <code>.tif</code> ในโฟลเดอร์ที่คุณเข้าถึงได้</p>
+        <h1 data-i18n="pickTitle"></h1>
+        <p class="lede" data-i18n="pickHint"></p>
         <div class="crumbs" id="crumbs"></div>
       </div>
       <div class="pickerBody"><div class="fileList" id="fileList"></div></div>
     </section>
 
     <!-- 2 ------------------------------------------------------------ three choices -->
-    <section class="panel center" data-panel="setup" aria-label="ตั้งค่าก่อนเริ่ม">
+    <section class="panel center" data-panel="setup" data-i18n-aria-label="setupPanel">
       <div class="card rowGap">
         <div class="cardBody">
         <div>
-          <h1>ตอบสามข้อ แล้วกดเริ่ม</h1>
+          <h1 data-i18n="setupTitle"></h1>
           <p class="lede" id="setupSlide"></p>
         </div>
 
         <div class="choice">
-          <span class="label">1 · เนื้อเยื่อชนิดไหน</span>
-          <div class="segmented" id="tissueChoice" role="group" aria-label="ชนิดเนื้อเยื่อ">
+          <span class="label" data-i18n="setupTissue"></span>
+          <div class="segmented" id="tissueChoice" role="group" data-i18n-aria-label="tissueType">
             <button type="button" data-value="skin" aria-pressed="true">
-              <span class="t">ผิวหนัง</span>
-              <span class="d">หมุนให้ชั้นหนังกำพร้าอยู่ด้านบน</span>
+              <span class="t" data-i18n="skin"></span>
+              <span class="d" data-i18n="skinHint"></span>
             </button>
             <button type="button" data-value="other" aria-pressed="false">
-              <span class="t">เนื้อเยื่ออื่น</span>
-              <span class="d">หมุนให้ขอบเนื้อเยื่อที่เด่นที่สุดอยู่ด้านบน</span>
+              <span class="t" data-i18n="otherTissue"></span>
+              <span class="d" data-i18n="otherTissueHint"></span>
             </button>
           </div>
         </div>
 
         <div class="choice">
-          <span class="label">2 · ต้องการไฟล์แบบไหน</span>
-          <div class="segmented" id="outputChoice" role="group" aria-label="ชนิดไฟล์ผลลัพธ์">
+          <span class="label" data-i18n="setupFiles"></span>
+          <div class="segmented" id="outputChoice" role="group" data-i18n-aria-label="outputType">
             <button type="button" data-value="presentation" aria-pressed="true">
-              <span class="t">ภาพสำหรับนำเสนอ</span>
-              <span class="d">PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core · เร็วกว่ามาก</span>
+              <span class="t" data-i18n="presentationFiles"></span>
+              <span class="d" data-i18n="presentationFilesHint"></span>
             </button>
             <button type="button" data-value="research" aria-pressed="false">
-              <span class="t">ไฟล์สำหรับวิเคราะห์ต่อ</span>
-              <span class="d">OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า</span>
+              <span class="t" data-i18n="researchFiles"></span>
+              <span class="d" data-i18n="researchFilesHint"></span>
             </button>
           </div>
         </div>
 
         <div class="choice" id="channelChoice" hidden>
-          <span class="label">3 · ใช้แชนเนลไหน</span>
-          <p class="channelHint">แชนเนลที่เลือกคือแชนเนลที่จะอยู่ในภาพและในไฟล์ที่ส่งออก · เลือกน้อยลงไม่ได้ทำให้เร็วขึ้น</p>
+          <span class="label" data-i18n="setupChannels"></span>
+          <p class="channelHint" data-i18n="channelHint"></p>
           <!-- Collapsed by default. Nineteen checkboxes opened on arrival pushed the Start
                button off a 900 px screen, and most runs never need to touch this. The one
                line says what will happen; the panel opens for the run that wants less. -->
           <button class="channelBrief" type="button" id="channelToggle" aria-expanded="false">
             <span class="channelSummary" id="channelSummary" aria-live="polite"></span>
-            <span class="chev" id="channelToggleWord">เปลี่ยน</span>
+            <span class="chev" id="channelToggleWord" data-i18n="change"></span>
           </button>
           <div class="channelPanel" id="channelPanel" hidden>
             <div class="channelList" id="channelList"></div>
             <div class="controlsRow channelActions">
-              <button class="btn quiet" type="button" id="suggestedChannels">เฉพาะนิวเคลียส</button>
-              <button class="btn quiet" type="button" id="allChannels">ทุกแชนเนล</button>
+              <button class="btn quiet" type="button" id="suggestedChannels" data-i18n="nucleiOnly"></button>
+              <button class="btn quiet" type="button" id="allChannels" data-i18n="allChannels"></button>
             </div>
           </div>
         </div>
 
         <div class="priorRun warn" id="abandonedRun" hidden>
           <div class="txt">
-            <b>การรันครั้งก่อนหยุดไปกลางคัน</b>
+            <b data-i18n="abandonedTitle"></b>
             <span id="abandonedNote"></span>
           </div>
         </div>
 
         <div class="priorRun" id="priorRun" hidden>
           <div class="txt">
-            <b>โฟลเดอร์นี้เคยผ่าน CoreAlign มาแล้ว</b>
+            <b data-i18n="priorTitle"></b>
             <span id="priorRunNote"></span>
           </div>
-          <button class="btn" id="openPrior">ดูผลเดิม</button>
+          <button class="btn" id="openPrior" data-i18n="viewPrior"></button>
         </div>
 
         </div>
 
         <div class="controlsRow">
-          <button class="btn quiet" id="backToPicker">เปลี่ยนสไลด์</button>
+          <button class="btn quiet" id="backToPicker" data-i18n="changeSlide"></button>
           <span class="spacer"></span>
           <button class="btn primary big" id="startBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.376 12.416L8.777 19.482A.5.5 0 0 1 8 19.066V4.934a.5.5 0 0 1 .777-.416l10.599 7.066a.5.5 0 0 1 0 .832z"/></svg>
-            เริ่มประมวลผล
+            <span data-i18n="start"></span>
           </button>
         </div>
       </div>
     </section>
 
     <!-- 3 ------------------------------------------------------------------ running -->
-    <section class="panel running" data-panel="run" aria-label="กำลังประมวลผล">
+    <section class="panel running" data-panel="run" data-i18n-aria-label="processing">
       <div class="runCard">
-        <h1>กำลังประมวลผล</h1>
+        <h1 data-i18n="processing"></h1>
         <div class="bar indeterminate" id="runBar"><i style="width:100%"></i></div>
-        <div class="runStep" id="runStep">กำลังเปิดสไลด์</div>
+        <div class="runStep" id="runStep" data-i18n="openingSlide"></div>
         <div class="runCounts" id="runCounts" hidden></div>
-        <ul class="activity" id="activity" aria-label="สิ่งที่เพิ่งเกิดขึ้น"></ul>
+        <ul class="activity" id="activity" data-i18n-aria-label="recentActivity"></ul>
         <div class="controlsRow" style="justify-content:center;margin-top:20px">
-          <button class="btn danger" id="stopBtn">หยุดการทำงาน</button>
+          <button class="btn danger" id="stopBtn" data-i18n="stop"></button>
         </div>
       </div>
     </section>
 
     <!-- 4a ---------------------------------------------------------------- grid gate -->
-    <section class="panel gridGate" data-panel="grid" aria-label="ตรวจกริด">
+    <section class="panel gridGate" data-panel="grid" data-i18n-aria-label="reviewGrid">
       <div class="gridStage" id="gridStage" style="position:relative">
         <div class="gridCanvas" id="gridCanvas">
-          <img id="gridImg" alt="ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ">
+          <img id="gridImg" data-i18n-alt="gridImageAlt">
           <svg class="gridOverlay" id="gridOverlay" aria-hidden="true"></svg>
         </div>
         <div class="gridTools">
-          <button class="nudge" id="zoomToggle">ขยายเต็มขนาด</button>
-          <span class="zoomHint" id="zoomHint">ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก</span>
+          <button class="nudge" id="zoomToggle" data-i18n="zoomFull"></button>
+          <span class="zoomHint" id="zoomHint" data-i18n="gridEditHint"></span>
         </div>
       </div>
       <aside class="sideRail">
         <div>
-          <h2>ตรวจว่าวงกลมตรงกับเนื้อเยื่อไหม</h2>
-          <p class="lede">ถ้าตรงแล้วกดปุ่มด้านล่างเพื่อไปต่อ · ถ้ามี core ที่ระบบมองไม่เห็น ให้วาดวงรีทับใน QuPath แล้วตั้งชื่อว่า <code>TMA correction</code></p>
+          <h2 data-i18n="gridQuestion"></h2>
+          <p class="lede" data-i18n="gridQuestionHint"></p>
         </div>
         <div class="strip" id="gridStrip"></div>
 
@@ -797,11 +799,11 @@ kbd{
             <span id="pickedFacts"></span>
           </div>
           <div class="pickedActions">
-            <button class="btn" id="markMissing">ตำแหน่งนี้ไม่มีเนื้อเยื่อ</button>
-            <button class="btn" id="markPresent">ตำแหน่งนี้มีเนื้อเยื่อ</button>
-            <button class="btn quiet" id="undoCore">คืนค่าเดิม</button>
+            <button class="btn" id="markMissing" data-i18n="markMissing"></button>
+            <button class="btn" id="markPresent" data-i18n="markPresent"></button>
+            <button class="btn quiet" id="undoCore" data-i18n="reset"></button>
           </div>
-          <p class="pickedHint">ลากวงกลมบนภาพเพื่อย้ายให้ตรงเนื้อเยื่อ</p>
+          <p class="pickedHint" data-i18n="moveCircleHint"></p>
         </div>
 
         <ul class="warnList" id="gridWarnings"></ul>
@@ -809,7 +811,7 @@ kbd{
     </section>
 
     <!-- 4b --------------------------------------------------------------- core review -->
-    <section class="panel review" data-panel="review" aria-label="ตรวจ core ที่หมุนแล้ว">
+    <section class="panel review" data-panel="review" data-i18n-aria-label="reviewRotatedCores">
       <div class="queue">
         <div class="queueHead">
           <div class="verdicts" id="filterChips"></div>
@@ -818,8 +820,8 @@ kbd{
         <div class="queueList" id="queueList"></div>
         <button class="queueBulk" id="bulkStraight" type="button" hidden>
           <span class="copy">
-            <b id="bulkStraightLabel">ผ่านทั้งหมดที่ตรงแล้ว (0)</b>
-            <span>เอียงน้อยกว่า 5°</span>
+            <b id="bulkStraightLabel"></b>
+            <span data-i18n="bulkStraightRule"></span>
           </span>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg>
         </button>
@@ -828,14 +830,14 @@ kbd{
         <div class="viewer">
           <span class="topMark">
             <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414L13 7.828z"/></svg>
-            ด้านบน
+            <span data-i18n="top"></span>
           </span>
           <img id="viewerImg" alt="">
           <span class="viewerTag" id="viewerTag"></span>
-          <button class="viewerNav prev" id="prevCore" aria-label="core ก่อนหน้า">
+          <button class="viewerNav prev" id="prevCore" data-i18n-aria-label="previousCore">
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.828 12l4.95 4.95-1.414 1.414L8 12l6.364-6.364 1.414 1.414z"/></svg>
           </button>
-          <button class="viewerNav next" id="nextCore" aria-label="core ถัดไป">
+          <button class="viewerNav next" id="nextCore" data-i18n-aria-label="nextCore">
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>
           </button>
         </div>
@@ -852,7 +854,7 @@ kbd{
               <button class="nudge" data-nudge="-5">−5°</button>
               <button class="nudge" data-nudge="-1">−1°</button>
             </div>
-            <input type="range" id="angle" min="-180" max="180" step="0.5" value="0" aria-label="ปรับมุมหมุนเพิ่มเติม">
+            <input type="range" id="angle" min="-180" max="180" step="0.5" value="0" data-i18n-aria-label="adjustAngle">
             <div class="nudges">
               <button class="nudge" data-nudge="1">+1°</button>
               <button class="nudge" data-nudge="5">+5°</button>
@@ -860,14 +862,14 @@ kbd{
             </div>
           </div>
           <div class="controlsRow">
-            <span class="angleBox"><input type="number" id="angleNum" step="0.5" min="-180" max="180" value="0" aria-label="มุมที่ปรับ">°</span>
-            <button class="nudge" data-nudge="180" style="min-width:86px">กลับหัว 180°</button>
-            <button class="btn quiet" id="resetAngle">คืนค่าเดิม</button>
+            <span class="angleBox"><input type="number" id="angleNum" step="0.5" min="-180" max="180" value="0" data-i18n-aria-label="adjustedAngle">°</span>
+            <button class="nudge" data-nudge="180" style="min-width:86px" data-i18n="flip180"></button>
+            <button class="btn quiet" id="resetAngle" data-i18n="reset"></button>
             <span class="spacer"></span>
-            <span class="hint"><kbd>←</kbd><kbd>→</kbd> เปลี่ยน core · <kbd>space</kbd> ผ่าน · <kbd>0</kbd> คืนค่า</span>
+            <span class="hint"><kbd>←</kbd><kbd>→</kbd> <span data-i18n="shortcutChangeCore"></span> · <kbd data-i18n="shortcutSpace"></kbd> <span data-i18n="shortcutAccept"></span> · <kbd>0</kbd> <span data-i18n="shortcutReset"></span></span>
             <button class="btn confirm" id="confirmCore">
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg>
-              <span id="confirmLabel">ถูกต้อง</span>
+              <span id="confirmLabel" data-i18n="correct"></span>
             </button>
           </div>
         </div>
@@ -875,25 +877,25 @@ kbd{
     </section>
 
     <!-- 5 ------------------------------------------------------------------- export -->
-    <section class="panel export" data-panel="export" aria-label="ผลลัพธ์">
+    <section class="panel export" data-panel="export" data-i18n-aria-label="results">
       <div class="exportInner">
         <div>
-          <h1 id="exportTitle">ผลลัพธ์</h1>
+          <h1 id="exportTitle" data-i18n="results"></h1>
           <p class="lede" id="exportPath"></p>
         </div>
         <div class="strip" id="exportStrip"></div>
-        <p class="exportQuiet" id="exportUnavailable" hidden>รายงานราย core ไม่มีสำหรับการรันครั้งนี้</p>
+        <p class="exportQuiet" id="exportUnavailable" hidden data-i18n="reportUnavailable"></p>
 
         <div class="exportReport" id="exportReport">
-          <div class="chips exportChips" id="exportChips" aria-label="กรองผลลัพธ์"></div>
+          <div class="chips exportChips" id="exportChips" data-i18n-aria-label="filterResults"></div>
           <div class="resultGallery" id="exportGallery"></div>
-          <p class="exportQuiet" id="exportGalleryEmpty" hidden>ไม่มี core ในตัวกรองนี้</p>
+          <p class="exportQuiet" id="exportGalleryEmpty" hidden data-i18n="filterEmpty"></p>
         </div>
 
         <details class="resultSection" id="resultTableSection">
-          <summary>ตารางผลลัพธ์</summary>
+          <summary data-i18n="resultTable"></summary>
           <div class="resultSectionBody">
-            <p class="exportQuiet" id="resultTableState">เปิดส่วนนี้เพื่ออ่านตารางผลลัพธ์</p>
+            <p class="exportQuiet" id="resultTableState" data-i18n="openResultTable"></p>
             <div class="resultTableWrap" id="resultTableWrap" hidden>
               <table class="resultTable" id="resultTable"></table>
             </div>
@@ -901,62 +903,62 @@ kbd{
         </details>
 
         <details class="resultSection" id="downloadSection">
-          <summary>ดาวน์โหลดไฟล์</summary>
+          <summary data-i18n="downloadFiles"></summary>
           <div class="resultSectionBody">
             <div class="groupList" id="groupList"></div>
             <div class="controlsRow downloadAll">
               <button class="btn primary big" id="zipAll">
                 <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
-                ดาวน์โหลดทั้งหมดเป็น zip
+                <span data-i18n="downloadAllZip"></span>
               </button>
             </div>
           </div>
         </details>
 
         <div class="controlsRow newRunRow">
-          <button class="btn quiet" id="newRun">เริ่มสไลด์ใหม่</button>
+          <button class="btn quiet" id="newRun" data-i18n="newSlide"></button>
         </div>
       </div>
 
       <dialog class="resultDialog" id="exportDialog" aria-labelledby="exportDialogTitle">
         <div class="resultDialogLayout">
           <header class="resultDialogHead">
-            <h2 id="exportDialogTitle">รายละเอียด core</h2>
-            <button class="iconBtn" id="closeExportDialog" aria-label="ปิดรายละเอียด">
+            <h2 id="exportDialogTitle" data-i18n="coreDetails"></h2>
+            <button class="iconBtn" id="closeExportDialog" data-i18n-aria-label="closeDetails">
               <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
             </button>
           </header>
           <div class="resultCompare">
             <figure>
-              <figcaption>ก่อนหมุน</figcaption>
+              <figcaption data-i18n="beforeRotation"></figcaption>
               <div class="resultCompareFrame">
                 <img id="beforeResultImg" alt="" loading="eager" fetchpriority="high" decoding="async" width="900" height="900" hidden>
-                <span class="resultPlaceholder" id="beforeResultPlaceholder">ไม่มีภาพตัวอย่าง</span>
+                <span class="resultPlaceholder" id="beforeResultPlaceholder" data-i18n="noPreview"></span>
               </div>
             </figure>
             <figure>
-              <figcaption>หลังหมุน</figcaption>
+              <figcaption data-i18n="afterRotation"></figcaption>
               <div class="resultCompareFrame">
                 <img id="afterResultImg" alt="" loading="eager" fetchpriority="high" decoding="async" width="900" height="900" hidden>
-                <span class="resultPlaceholder" id="afterResultPlaceholder">ไม่มีภาพตัวอย่าง</span>
+                <span class="resultPlaceholder" id="afterResultPlaceholder" data-i18n="noPreview"></span>
               </div>
             </figure>
             <div class="resultDialogInfo">
               <dl class="resultFacts">
-                <div><dt>มุมที่หมุน</dt><dd id="resultRotation">–</dd></div>
-                <div><dt>ความมั่นใจ</dt><dd id="resultConfidence">–</dd></div>
-                <div><dt>มุมที่เหลือ</dt><dd id="resultResidual">–</dd></div>
+                <div><dt data-i18n="rotation"></dt><dd id="resultRotation">–</dd></div>
+                <div><dt data-i18n="confidence"></dt><dd id="resultConfidence">–</dd></div>
+                <div><dt data-i18n="residual"></dt><dd id="resultResidual">–</dd></div>
               </dl>
               <div id="resultReasonsBox" hidden>
-                <b>เหตุผลที่ต้องดู</b>
+                <b data-i18n="reviewReasons"></b>
                 <ul class="resultReasons" id="resultReasons"></ul>
               </div>
-              <a class="resultDownload" id="resultDownload" href="#" download>ดาวน์โหลด PNG ความละเอียดเต็มของ core นี้</a>
+              <a class="resultDownload" id="resultDownload" href="#" download data-i18n="downloadCorePng"></a>
             </div>
           </div>
           <footer class="resultDialogFoot">
-            <button class="btn" id="exportPrev">← ก่อนหน้า</button>
-            <button class="btn" id="exportNext">ถัดไป →</button>
+            <button class="btn" id="exportPrev" data-i18n="previous"></button>
+            <button class="btn" id="exportNext" data-i18n="next"></button>
             <span class="spacer"></span>
             <span class="resultDialogPosition" id="exportDialogPosition"></span>
           </footer>
@@ -972,15 +974,15 @@ kbd{
       <span id="askSummary"></span>
     </div>
     <span class="saveState" id="saveState"></span>
-    <button class="btn" id="saveGrid" hidden>บันทึกการแก้กริด</button>
-    <button class="btn" id="saveEdits" hidden>บันทึกมุมที่ปรับ</button>
+    <button class="btn" id="saveGrid" hidden data-i18n="saveGridEdits"></button>
+    <button class="btn" id="saveEdits" hidden data-i18n="saveAngleEdits"></button>
     <button class="btn primary big" id="gateGo"></button>
   </div>
 
   <div class="logDrawer" id="logDrawer" data-open="false">
     <button class="logToggle" id="logToggle" aria-expanded="false">
       <svg class="caret" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>
-      บันทึกการทำงาน
+      <span data-i18n="runLog"></span>
       <span class="tail" id="logTail"></span>
     </button>
     <div class="logBody"><pre id="logText"></pre></div>
@@ -992,6 +994,526 @@ kbd{
 <script>
 "use strict";
 var $ = function(id){ return document.getElementById(id); };
+var EN = {
+  noSlide:"No slide selected",
+  stateIdle:"Ready",
+  themeSwitch:"Switch light and dark mode",
+  languageSwitch:"Switch to Thai",
+  languageThai:"Thai",
+  languageEnglish:"EN",
+  workflowStages:"Workflow stages",
+  stageSlide:"Choose slide",
+  stageSetup:"Set up",
+  stageRun:"Processing",
+  stageReview:"Review",
+  stageExport:"Results",
+  pickTitle:"Choose a slide to align",
+  pickHint:"Choose an .ome.tif or .tif file from a folder you can access.",
+  setupPanel:"Set up the run",
+  setupTitle:"Answer three questions, then start",
+  setupTissue:"1 · Which tissue",
+  tissueType:"Tissue type",
+  skin:"Skin",
+  skinHint:"Place the epidermis at the top",
+  otherTissue:"Other tissue",
+  otherTissueHint:"Place the clearest tissue edge at the top",
+  setupFiles:"2 · Which files do you need",
+  outputType:"Result file type",
+  presentationFiles:"Images for presentation",
+  presentationFilesHint:"Full-resolution PNG, one per core · much faster",
+  researchFiles:"Files for further analysis",
+  researchFilesHint:"Multichannel OME-TIFF at the original bit depth · slower because each core is written separately",
+  setupChannels:"3 · Which channels",
+  channelHint:"Selected channels appear in the images and exported files · selecting fewer channels does not make the run faster.",
+  change:"Change",
+  close:"Close",
+  nucleiOnly:"Nuclei only",
+  allChannels:"All channels",
+  abandonedTitle:"The last run stopped partway through",
+  priorTitle:"CoreAlign results already exist in this folder",
+  viewPrior:"View existing results",
+  changeSlide:"Change slide",
+  start:"Start",
+  processing:"Processing",
+  openingSlide:"Opening slide",
+  recentActivity:"Recent activity",
+  stop:"Stop",
+  reviewGrid:"Review grid",
+  gridImageAlt:"Whole-slide image with detected circles",
+  zoomFull:"View full size",
+  zoomFit:"Fit to screen",
+  gridEditHint:"Drag a circle to move it · click a circle to select it",
+  gridEditUnavailable:"Run once more to edit the grid on this page",
+  gridQuestion:"Do the circles match the tissue?",
+  gridQuestionHint:"If they do, use the button below to continue. If CoreAlign missed a core, draw an ellipse over it in QuPath and name it TMA correction.",
+  markMissing:"No tissue at this position",
+  markPresent:"Tissue is present at this position",
+  reset:"Reset",
+  moveCircleHint:"Drag the circle over the tissue to move it",
+  reviewRotatedCores:"Review rotated cores",
+  bulkStraight:"Accept all the straight ones ({0})",
+  bulkStraightRule:"less than 5° off",
+  top:"Top",
+  previousCore:"Previous core",
+  nextCore:"Next core",
+  adjustAngle:"Adjust the rotation angle",
+  adjustedAngle:"Adjusted angle",
+  flip180:"Flip 180°",
+  shortcutChangeCore:"change core",
+  shortcutSpace:"space",
+  shortcutAccept:"accept",
+  shortcutReset:"reset",
+  correct:"Correct",
+  undoAccept:"Undo accept",
+  results:"Results",
+  reportUnavailable:"A per-core report is not available for this run.",
+  filterResults:"Filter results",
+  filterEmpty:"No cores match this filter.",
+  resultTable:"Result table",
+  openResultTable:"Open this section to load the result table.",
+  loadingResultTable:"Loading the result table...",
+  resultTableMissing:"No result table was found for this run.",
+  resultTableFailed:"Could not open the result table.",
+  downloadFiles:"Download files",
+  downloadAllZip:"Download all as a zip",
+  newSlide:"Start a new slide",
+  coreDetails:"Core details",
+  closeDetails:"Close details",
+  beforeRotation:"Before rotation",
+  afterRotation:"After rotation",
+  noPreview:"No preview available",
+  rotation:"Rotation",
+  confidence:"Confidence",
+  residual:"Remaining offset",
+  reviewReasons:"Why this needs review",
+  downloadCorePng:"Download the full-resolution PNG for this core",
+  previous:"← Previous",
+  next:"Next →",
+  saveGridEdits:"Save grid edits",
+  saveAngleEdits:"Save angle edits",
+  runLog:"Run log",
+  browseFailed:"Could not open this folder",
+  upOneLevel:"↑ Up one level",
+  outsideAllowedArea:"Outside the allowed area",
+  folderNotWritable:"{0} · Cannot write files in this folder",
+  emptyFolder:"This folder has no slides or subfolders.",
+  channelAll:"All {0} channels",
+  channelSelected:"{0} of {1} channels · exported files will contain only the selected channels",
+  roleNuclear:"Nuclear",
+  roleAutofluorescence:"Autofluorescence",
+  roleMarker:"Marker",
+  reasonResidual:"Still {0}° off after rotation",
+  reasonOrientation:"Rotation is uncertain",
+  reasonCrop:"Crop region is uncertain",
+  chooseOneChannel:"Select at least one channel",
+  chooseSlideFirst:"Choose a slide first",
+  startFailed:"Could not start",
+  stopped:"Stopped",
+  bandFlipped:"Upside down",
+  bandWrong:"Badly off",
+  bandSlight:"Slightly off",
+  bandStraight:"Straight",
+  bandMissing:"No tissue",
+  verdictStraightLabel:"Straight",
+  verdictStraightAria:"Summary of straight cores",
+  verdictReviewLabel:"To check",
+  verdictReviewAria:"Summary of cores to check",
+  verdictPercentage:"{0}% of cores with results",
+  queueRemaining:"{0} cores still need a decision",
+  queueEmpty:"No cores need a decision",
+  residualUnknown:"Offset unknown",
+  residualKnown:"{0}° off",
+  accepted:"Accepted",
+  edited:"Edited",
+  coreFacts:"Row {0}, column {1} · automatic rotation {2} · confidence {3} · {4} remaining",
+  acceptedStraight:"Accepted {0} straight cores",
+  saving:"Saving...",
+  saveFailed:"Could not save",
+  savedAngles:"Saved angle edits for {0} cores",
+  savedPositions:"Saved {0} positions",
+  unsavedPositions:"{0} positions not saved",
+  editedPositions:"Edited {0} positions",
+  waitingGridReview:"Waiting for CoreAlign to open grid review",
+  saveGridFirstSummary:"Save first, then confirm. CoreAlign will apply the edits and show the grid again.",
+  waiting:"Waiting...",
+  saveBeforeContinue:"Save before continuing",
+  applyGridEdits:"Apply edits and review the grid again",
+  continue:"Continue",
+  savedCores:"Saved {0} cores",
+  unsavedCores:"{0} cores not saved",
+  reviewRemaining:"{0} cores have not been checked",
+  reviewComplete:"All flagged cores have been checked",
+  angleEditsSummary:"Adjusted {0} cores · save before approval to reprocess only those cores",
+  approveSummary:"Approve to create the result files",
+  saveBeforeApprove:"Save before approval",
+  gateGridTitle:"Check the detected cores",
+  gateGridSummary:"{0} cores found, {1} positions empty",
+  gateGridButton:"Grid is correct",
+  gateOrientationTitle:"Check the rotated cores",
+  gateOrientationSummary:"{0} passed automatic QC, {1} need a look",
+  gateOrientationButton:"Approve and finish",
+  approvedTitle:"This run is approved and all files are ready",
+  approvedSummary:"Review any core at any time · adjust an angle if you want to run it again",
+  goToResults:"Go to results",
+  approvedWithEditsTitle:"This run was approved, but it has new angle edits",
+  finishedTitle:"This run has finished",
+  rerunEditedSummary:"Adjusted {0} cores · save first, then run again to process only those cores",
+  rerunSummary:"Review the results at any time · run again to approve · completed cores will not be repeated",
+  saveBeforeRun:"Save before running again",
+  rerunEdited:"Run again with angle edits",
+  rerunApproval:"Run again for approval",
+  answerFailed:"Could not send the answer",
+  metricCoresFound:"Cores found",
+  metricEmptyPositions:"Empty positions",
+  metricRowsColumns:"Rows × columns",
+  metricHumanEdits:"Human edits",
+  pickedMissing:"Row {0}, column {1} · marked as no tissue · confidence {2}",
+  pickedMissingEdited:"Row {0}, column {1} · marked as no tissue · confidence {2} · edited",
+  pickedPresent:"Row {0}, column {1} · detected · confidence {2}",
+  pickedPresentEdited:"Row {0}, column {1} · detected · confidence {2} · edited",
+  gridSavedToast:"Grid edits saved · confirm to let CoreAlign apply them",
+  filterAll:"All",
+  filterPassed:"Passed",
+  filterReview:"Review again",
+  filterError:"Failed",
+  filterMissing:"Empty positions",
+  openCoreDetails:"Open details for core {0}",
+  dialogPosition:"{0} of {1}",
+  column:"Column {0}",
+  fileCount:"{0} files · {1}",
+  noResultFiles:"No result files yet",
+  metricAllPositions:"All positions",
+  metricAutoPassed:"Passed automatic QC",
+  metricFlagged:"Flagged earlier",
+  metricNoTissue:"No tissue",
+  groupPngTitle:"Aligned images",
+  groupPngNote:"Full-resolution PNG, one per core",
+  groupOmeTiffTitle:"OME-TIFF for analysis",
+  groupOmeTiffNote:"Multichannel files at the original bit depth",
+  groupTablesTitle:"Tables and QC records",
+  groupTablesNote:"CSV and JSON: rotation angles, QC values, and display ranges",
+  groupGridQcTitle:"Grid QC",
+  groupGridQcNote:"Whole-slide detection image with every position",
+  groupCoreQcTitle:"Core QC",
+  groupCoreQcNote:"Before and after rotation previews with contact sheet",
+  groupQupathTitle:"QuPath project",
+  groupQupathNote:"Ordered core project, for analysis mode only",
+  stateStarting:"Starting",
+  stateRunning:"Running",
+  stateComplete:"Complete",
+  stateStopped:"Stopped",
+  stateCancelled:"Cancelled",
+  stateFailed:"Failed",
+  waitingDecision:"Waiting for your decision",
+  abandonedGrid:"during grid review",
+  abandonedOrientation:"during rotated-core review",
+  abandonedWaiting:"while waiting for an answer",
+  abandonedAt:"Stopped {0} at {1} UTC · completed work is still here. Start again and it will not be repeated.",
+  abandonedNoTime:"Stopped {0} · completed work is still here. Start again and it will not be repeated.",
+  priorCounts:"{0} positions · {1} passed QC · {2} flagged · {3} have no tissue",
+  stepBuildGrid:"Finding core positions across the slide",
+  stepOrient:"Rotating and cropping each core",
+  stepApplyGrid:"Applying your grid edits",
+  stepRestoreGrid:"Restoring the approved grid",
+  stepFinalize:"Finishing the review",
+  stepExport:"Exporting result files",
+  stepQupath:"Building the QuPath project",
+  stepWorkers:"Using $1 processing workers",
+  stepProgress:"Rotated and cropped $1 of $2 cores",
+  stepEstimate:"Estimating core size",
+  stepDetect:"Detecting TMA cores",
+  stepPublished:"Published $1 files",
+  stepWaitingReview:"Waiting for review",
+  stepWaitingGrid:"Waiting for grid review",
+  stepWaitingOrientation:"Waiting for rotated-core review",
+  stepGateClosed:"Answer received · continuing",
+  stepChannelSubset:"Using $1 of $2 channels",
+  stepChannelsKept:"Channels used: $1",
+  stepStopped:"Stopped safely · not approved",
+  stepComplete:"Complete",
+  working:"Working",
+  done:"Done",
+  total:"Total",
+  resultsReady:"Results are ready",
+  resultsCurrent:"Results available now"
+};
+var TH = {
+  noSlide:"ยังไม่ได้เลือกสไลด์",
+  stateIdle:"พร้อมใช้งาน",
+  themeSwitch:"สลับโหมดสว่างและมืด",
+  languageSwitch:"เปลี่ยนเป็นภาษาอังกฤษ",
+  languageThai:"ไทย",
+  languageEnglish:"อังกฤษ",
+  workflowStages:"ขั้นตอนการทำงาน",
+  stageSlide:"เลือกสไลด์",
+  stageSetup:"ตั้งค่า",
+  stageRun:"ประมวลผล",
+  stageReview:"ตรวจผล",
+  stageExport:"ผลลัพธ์",
+  pickTitle:"เลือกสไลด์ที่จะจัดเรียง",
+  pickHint:"เลือกไฟล์ .ome.tif หรือ .tif ในโฟลเดอร์ที่คุณเข้าถึงได้",
+  setupPanel:"ตั้งค่าก่อนเริ่ม",
+  setupTitle:"ตอบสามข้อ แล้วกดเริ่ม",
+  setupTissue:"1 · เนื้อเยื่อชนิดไหน",
+  tissueType:"ชนิดเนื้อเยื่อ",
+  skin:"ผิวหนัง",
+  skinHint:"หมุนให้ชั้นหนังกำพร้าอยู่ด้านบน",
+  otherTissue:"เนื้อเยื่ออื่น",
+  otherTissueHint:"หมุนให้ขอบเนื้อเยื่อที่เด่นที่สุดอยู่ด้านบน",
+  setupFiles:"2 · ต้องการไฟล์แบบไหน",
+  outputType:"ชนิดไฟล์ผลลัพธ์",
+  presentationFiles:"ภาพสำหรับนำเสนอ",
+  presentationFilesHint:"PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core · เร็วกว่ามาก",
+  researchFiles:"ไฟล์สำหรับวิเคราะห์ต่อ",
+  researchFilesHint:"OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า",
+  setupChannels:"3 · ใช้แชนเนลไหน",
+  channelHint:"แชนเนลที่เลือกคือแชนเนลที่จะอยู่ในภาพและในไฟล์ที่ส่งออก · เลือกน้อยลงไม่ได้ทำให้เร็วขึ้น",
+  change:"เปลี่ยน",
+  close:"ปิด",
+  nucleiOnly:"เฉพาะนิวเคลียส",
+  allChannels:"ทุกแชนเนล",
+  abandonedTitle:"การรันครั้งก่อนหยุดไปกลางคัน",
+  priorTitle:"โฟลเดอร์นี้เคยผ่าน CoreAlign มาแล้ว",
+  viewPrior:"ดูผลเดิม",
+  changeSlide:"เปลี่ยนสไลด์",
+  start:"เริ่ม",
+  processing:"กำลังประมวลผล",
+  openingSlide:"กำลังเปิดสไลด์",
+  recentActivity:"สิ่งที่เพิ่งเกิดขึ้น",
+  stop:"หยุดการทำงาน",
+  reviewGrid:"ตรวจกริด",
+  gridImageAlt:"ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ",
+  zoomFull:"ขยายเต็มขนาด",
+  zoomFit:"ย่อกลับให้พอดีจอ",
+  gridEditHint:"ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก",
+  gridEditUnavailable:"รันใหม่หนึ่งรอบเพื่อให้แก้กริดในหน้านี้ได้",
+  gridQuestion:"ตรวจว่าวงกลมตรงกับเนื้อเยื่อไหม",
+  gridQuestionHint:"ถ้าตรงแล้วกดปุ่มด้านล่างเพื่อไปต่อ · ถ้ามี core ที่ระบบมองไม่เห็น ให้วาดวงรีทับใน QuPath แล้วตั้งชื่อว่า TMA correction",
+  markMissing:"ตำแหน่งนี้ไม่มีเนื้อเยื่อ",
+  markPresent:"ตำแหน่งนี้มีเนื้อเยื่อ",
+  reset:"คืนค่าเดิม",
+  moveCircleHint:"ลากวงกลมบนภาพเพื่อย้ายให้ตรงเนื้อเยื่อ",
+  reviewRotatedCores:"ตรวจ core ที่หมุนแล้ว",
+  bulkStraight:"ผ่านทั้งหมดที่ตรงแล้ว ({0})",
+  bulkStraightRule:"เอียงน้อยกว่า 5°",
+  top:"ด้านบน",
+  previousCore:"core ก่อนหน้า",
+  nextCore:"core ถัดไป",
+  adjustAngle:"ปรับมุมหมุนเพิ่มเติม",
+  adjustedAngle:"มุมที่ปรับ",
+  flip180:"กลับหัว 180°",
+  shortcutChangeCore:"เปลี่ยน core",
+  shortcutSpace:"เว้นวรรค",
+  shortcutAccept:"ผ่าน",
+  shortcutReset:"คืนค่า",
+  correct:"ถูกต้อง",
+  undoAccept:"ยกเลิกการผ่าน",
+  results:"ผลลัพธ์",
+  reportUnavailable:"รายงานราย core ไม่มีสำหรับการรันครั้งนี้",
+  filterResults:"กรองผลลัพธ์",
+  filterEmpty:"ไม่มี core ในตัวกรองนี้",
+  resultTable:"ตารางผลลัพธ์",
+  openResultTable:"เปิดส่วนนี้เพื่ออ่านตารางผลลัพธ์",
+  loadingResultTable:"กำลังอ่านตารางผลลัพธ์...",
+  resultTableMissing:"ไม่พบตารางผลลัพธ์สำหรับการรันครั้งนี้",
+  resultTableFailed:"เปิดตารางผลลัพธ์ไม่ได้",
+  downloadFiles:"ดาวน์โหลดไฟล์",
+  downloadAllZip:"ดาวน์โหลดทั้งหมดเป็น zip",
+  newSlide:"เริ่มสไลด์ใหม่",
+  coreDetails:"รายละเอียด core",
+  closeDetails:"ปิดรายละเอียด",
+  beforeRotation:"ก่อนหมุน",
+  afterRotation:"หลังหมุน",
+  noPreview:"ไม่มีภาพตัวอย่าง",
+  rotation:"มุมที่หมุน",
+  confidence:"ความมั่นใจ",
+  residual:"มุมที่เหลือ",
+  reviewReasons:"เหตุผลที่ต้องดู",
+  downloadCorePng:"ดาวน์โหลด PNG ความละเอียดเต็มของ core นี้",
+  previous:"← ก่อนหน้า",
+  next:"ถัดไป →",
+  saveGridEdits:"บันทึกการแก้กริด",
+  saveAngleEdits:"บันทึกมุมที่ปรับ",
+  runLog:"บันทึกการทำงาน",
+  browseFailed:"เปิดโฟลเดอร์นี้ไม่ได้",
+  upOneLevel:"↑ ขึ้นหนึ่งชั้น",
+  outsideAllowedArea:"อยู่นอกพื้นที่ที่เปิดให้เข้าถึง",
+  folderNotWritable:"{0} · เขียนไฟล์ในโฟลเดอร์นี้ไม่ได้",
+  emptyFolder:"โฟลเดอร์นี้ไม่มีสไลด์และไม่มีโฟลเดอร์ย่อย",
+  channelAll:"ทุกแชนเนล {0} ช่อง",
+  channelSelected:"{0} จาก {1} แชนเนล · ไฟล์ผลลัพธ์จะมีเฉพาะช่องที่เลือก",
+  roleNuclear:"นิวเคลียส",
+  roleAutofluorescence:"ออโตฟลูออเรสเซนซ์",
+  roleMarker:"มาร์กเกอร์",
+  reasonResidual:"หมุนแล้วยังเอียงอยู่ {0}°",
+  reasonOrientation:"มุมหมุนยังไม่มั่นใจ",
+  reasonCrop:"กรอบครอปยังไม่นิ่ง",
+  chooseOneChannel:"ต้องเลือกอย่างน้อยหนึ่งแชนเนล",
+  chooseSlideFirst:"เลือกสไลด์ก่อน",
+  startFailed:"เริ่มไม่สำเร็จ",
+  stopped:"หยุดแล้ว",
+  bandFlipped:"กลับหัว",
+  bandWrong:"เอียงมาก",
+  bandSlight:"เอียงเล็กน้อย",
+  bandStraight:"ตรงแล้ว",
+  bandMissing:"ไม่มีเนื้อเยื่อ",
+  verdictStraightLabel:"ตรงแล้ว",
+  verdictStraightAria:"สรุป core ที่ตรงแล้ว",
+  verdictReviewLabel:"ต้องดู",
+  verdictReviewAria:"สรุป core ที่ต้องดู",
+  verdictPercentage:"{0}% ของ core ที่มีผล",
+  queueRemaining:"เหลือ {0} core ที่ต้องตัดสินใจ",
+  queueEmpty:"ไม่เหลือ core ที่ต้องตัดสินใจ",
+  residualUnknown:"เอียง ไม่ทราบ",
+  residualKnown:"เอียง {0}°",
+  accepted:"ผ่านแล้ว",
+  edited:"ปรับแล้ว",
+  coreFacts:"แถว {0} คอลัมน์ {1} · หมุนอัตโนมัติ {2} · ความมั่นใจ {3} · เหลือเอียง {4}",
+  acceptedStraight:"ผ่าน core ที่ตรงแล้ว {0} core",
+  saving:"กำลังบันทึก...",
+  saveFailed:"บันทึกไม่สำเร็จ",
+  savedAngles:"บันทึกมุมที่ปรับแล้ว {0} core",
+  savedPositions:"บันทึกแล้ว {0} ตำแหน่ง",
+  unsavedPositions:"ยังไม่ได้บันทึก {0} ตำแหน่ง",
+  editedPositions:"แก้ไว้ {0} ตำแหน่ง",
+  waitingGridReview:"รอ CoreAlign เปิดขั้นตอนตรวจกริด",
+  saveGridFirstSummary:"บันทึกก่อน แล้วกดยืนยัน · CoreAlign จะใส่การแก้แล้วให้ดูกริดอีกรอบก่อนไปต่อ",
+  waiting:"รออยู่...",
+  saveBeforeContinue:"บันทึกก่อนจึงจะไปต่อได้",
+  applyGridEdits:"ใส่การแก้ แล้วดูกริดอีกครั้ง",
+  continue:"ไปต่อ",
+  savedCores:"บันทึกไว้แล้ว {0} core",
+  unsavedCores:"ยังไม่ได้บันทึก {0} core",
+  reviewRemaining:"เหลืออีก {0} core ที่ยังไม่ได้ดู",
+  reviewComplete:"ดูครบทุก core ที่ระบบทักแล้ว",
+  angleEditsSummary:"ปรับมุมไว้ {0} core · บันทึกก่อน แล้วอนุมัติเพื่อให้ประมวลผลใหม่เฉพาะที่แก้",
+  approveSummary:"อนุมัติเพื่อสร้างไฟล์ผลลัพธ์",
+  saveBeforeApprove:"บันทึกก่อนจึงจะอนุมัติได้",
+  gateGridTitle:"ตรวจ core ที่ระบบพบ",
+  gateGridSummary:"พบ {0} core และมีตำแหน่งว่าง {1} ตำแหน่ง",
+  gateGridButton:"กริดถูกต้อง",
+  gateOrientationTitle:"ตรวจ core ที่หมุนแล้ว",
+  gateOrientationSummary:"ผ่าน QC อัตโนมัติ {0} core และต้องดู {1} core",
+  gateOrientationButton:"อนุมัติ และสร้างผลลัพธ์",
+  approvedTitle:"การรันนี้อนุมัติแล้ว และสร้างไฟล์ครบ",
+  approvedSummary:"ดูย้อนหลังได้ตามสบาย · ปรับมุม core ไหนก็ได้ถ้าจะรันใหม่",
+  goToResults:"ไปที่ผลลัพธ์",
+  approvedWithEditsTitle:"การรันนี้อนุมัติไปแล้ว แต่มีมุมที่ปรับใหม่",
+  finishedTitle:"การรันครั้งนี้จบไปแล้ว",
+  rerunEditedSummary:"ปรับมุมไว้ {0} core · บันทึกก่อน แล้วรันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้",
+  rerunSummary:"ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ",
+  saveBeforeRun:"บันทึกก่อนจึงจะรันได้",
+  rerunEdited:"รันใหม่ด้วยมุมที่แก้",
+  rerunApproval:"รันอีกครั้งเพื่ออนุมัติ",
+  answerFailed:"ส่งคำตอบไม่สำเร็จ",
+  metricCoresFound:"core ที่พบ",
+  metricEmptyPositions:"ตำแหน่งว่าง",
+  metricRowsColumns:"แถว × คอลัมน์",
+  metricHumanEdits:"คนแก้ไว้",
+  pickedMissing:"แถว {0} คอลัมน์ {1} · ทำเครื่องหมายว่าไม่มีเนื้อเยื่อ · ความมั่นใจ {2}",
+  pickedMissingEdited:"แถว {0} คอลัมน์ {1} · ทำเครื่องหมายว่าไม่มีเนื้อเยื่อ · ความมั่นใจ {2} · แก้ไว้แล้ว",
+  pickedPresent:"แถว {0} คอลัมน์ {1} · ตรวจพบ · ความมั่นใจ {2}",
+  pickedPresentEdited:"แถว {0} คอลัมน์ {1} · ตรวจพบ · ความมั่นใจ {2} · แก้ไว้แล้ว",
+  gridSavedToast:"บันทึกการแก้กริดแล้ว · กดยืนยันเพื่อให้ CoreAlign ใส่การแก้นี้",
+  filterAll:"ทั้งหมด",
+  filterPassed:"ผ่าน",
+  filterReview:"ต้องดูซ้ำ",
+  filterError:"ไม่สำเร็จ",
+  filterMissing:"ตำแหน่งว่าง",
+  openCoreDetails:"เปิดรายละเอียด core {0}",
+  dialogPosition:"{0} จาก {1}",
+  column:"คอลัมน์ {0}",
+  fileCount:"{0} ไฟล์ · {1}",
+  noResultFiles:"ยังไม่มีไฟล์ผลลัพธ์",
+  metricAllPositions:"ตำแหน่งทั้งหมด",
+  metricAutoPassed:"ผ่าน QC อัตโนมัติ",
+  metricFlagged:"เคยถูกทัก",
+  metricNoTissue:"ไม่มีเนื้อเยื่อ",
+  groupPngTitle:"ภาพที่จัดเรียงแล้ว",
+  groupPngNote:"PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core",
+  groupOmeTiffTitle:"OME-TIFF สำหรับวิเคราะห์ต่อ",
+  groupOmeTiffNote:"หลายแชนเนล บิตเดปธ์เดิม",
+  groupTablesTitle:"ตารางและบันทึกตรวจสอบ",
+  groupTablesNote:"CSV และ JSON: มุมหมุน ค่า QC และช่วงการแสดงผล",
+  groupGridQcTitle:"QC ของกริด",
+  groupGridQcNote:"ภาพตรวจจับทั้งสไลด์ พร้อมพิกัดของทุกตำแหน่ง",
+  groupCoreQcTitle:"QC ราย core",
+  groupCoreQcNote:"ภาพตัวอย่างก่อนและหลังหมุน พร้อม contact sheet",
+  groupQupathTitle:"โปรเจกต์ QuPath",
+  groupQupathNote:"โปรเจกต์ core ที่เรียงลำดับแล้ว เฉพาะโหมดวิเคราะห์ต่อ",
+  stateStarting:"กำลังเริ่ม",
+  stateRunning:"กำลังทำงาน",
+  stateComplete:"เสร็จสมบูรณ์",
+  stateStopped:"หยุดไว้",
+  stateCancelled:"ยกเลิกแล้ว",
+  stateFailed:"ล้มเหลว",
+  waitingDecision:"รอคุณตัดสินใจ",
+  abandonedGrid:"ตอนตรวจกริด",
+  abandonedOrientation:"ตอนตรวจ core ที่หมุนแล้ว",
+  abandonedWaiting:"ระหว่างรอคำตอบ",
+  abandonedAt:"หยุด{0} เมื่อ {1} UTC · งานที่ทำไว้ยังอยู่ครบ กดเริ่มอีกครั้งได้เลย จะไม่ทำซ้ำของเดิม",
+  abandonedNoTime:"หยุด{0} · งานที่ทำไว้ยังอยู่ครบ กดเริ่มอีกครั้งได้เลย จะไม่ทำซ้ำของเดิม",
+  priorCounts:"{0} ตำแหน่ง · ผ่าน QC {1} · ถูกทัก {2} · ไม่มีเนื้อเยื่อ {3}",
+  stepBuildGrid:"กำลังหาตำแหน่ง core ทั้งแผ่น",
+  stepOrient:"กำลังหมุนและครอปทีละ core",
+  stepApplyGrid:"กำลังใส่การแก้ไขกริดที่คุณวาดไว้",
+  stepRestoreGrid:"กำลังกู้กริดที่อนุมัติไว้แล้ว",
+  stepFinalize:"กำลังสรุปผลการตรวจ",
+  stepExport:"กำลังส่งออกไฟล์ผลลัพธ์",
+  stepQupath:"กำลังสร้างโปรเจกต์ QuPath",
+  stepWorkers:"ใช้ $1 หน่วยประมวลผลพร้อมกัน",
+  stepProgress:"หมุนและครอปแล้ว $1 จาก $2 core",
+  stepEstimate:"กำลังประมาณขนาดของ core",
+  stepDetect:"กำลังตรวจหา core",
+  stepPublished:"จัดไฟล์ให้หาง่ายแล้ว $1 ไฟล์",
+  stepWaitingReview:"รอให้คุณตรวจ",
+  stepWaitingGrid:"รอให้คุณตรวจกริด",
+  stepWaitingOrientation:"รอให้คุณตรวจ core ที่หมุนแล้ว",
+  stepGateClosed:"รับคำตอบแล้ว กำลังเดินต่อ",
+  stepChannelSubset:"ใช้ $1 จาก $2 แชนเนล",
+  stepChannelsKept:"แชนเนลที่ใช้: $1",
+  stepStopped:"หยุดไว้อย่างปลอดภัย ยังไม่ได้อนุมัติ",
+  stepComplete:"เสร็จสมบูรณ์",
+  working:"กำลังทำงาน",
+  done:"ทำเสร็จ",
+  total:"ทั้งหมด",
+  resultsReady:"ผลลัพธ์พร้อมแล้ว",
+  resultsCurrent:"ผลลัพธ์ที่มีอยู่ตอนนี้"
+};
+var lang = "en";
+try {
+  var savedLang = localStorage.getItem("corealign-studio-lang");
+  if (savedLang === "en" || savedLang === "th") lang = savedLang;
+} catch (error) { lang = "en"; }
+document.documentElement.lang = lang;
+
+function t(key){
+  var dictionary = lang === "th" ? TH : EN;
+  if (key === "languageThai") dictionary = TH;
+  if (key === "languageEnglish") dictionary = EN;
+  var value = dictionary[key] == null ? EN[key] : dictionary[key];
+  var args = arguments;
+  return String(value == null ? key : value).replace(/\{(\d+)\}/g, function(_, index){
+    var replacement = args[Number(index) + 1];
+    return replacement == null ? "" : String(replacement);
+  });
+}
+function applyStaticTranslations(){
+  document.querySelectorAll("[data-i18n]").forEach(function(node){
+    node.textContent = t(node.dataset.i18n);
+  });
+  ["aria-label", "title", "alt"].forEach(function(attribute){
+    var dataName = "i18n" + attribute.split("-").map(function(part){
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    }).join("");
+    document.querySelectorAll("[data-i18n-" + attribute + "]").forEach(function(node){
+      node.setAttribute(attribute, t(node.dataset[dataName]));
+    });
+  });
+  $("langBtn").textContent = t(lang === "en" ? "languageThai" : "languageEnglish");
+  $("langBtn").title = t("languageSwitch");
+  $("langBtn").setAttribute("aria-label", t("languageSwitch"));
+}
 var api = function(path, options){
   return fetch(path, Object.assign({cache:"no-store"}, options || {})).then(function(r){
     return r.json().then(function(body){ return {ok:r.ok, body:body}; })
@@ -1007,25 +1529,34 @@ function toast(message){
 
 /* ------------------------------------------------------------------ theme */
 (function(){
-  var saved = localStorage.getItem("corealign-studio-theme");
-  if (saved) document.documentElement.dataset.theme = saved;
+  try {
+    var saved = localStorage.getItem("corealign-studio-theme");
+    if (saved) document.documentElement.dataset.theme = saved;
+  } catch (error) { /* The system theme remains usable when storage is blocked. */ }
   $("themeBtn").addEventListener("click", function(){
     var now = document.documentElement.dataset.theme;
     var isDark = now === "dark" ||
       (now !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     var next = isDark ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    localStorage.setItem("corealign-studio-theme", next);
+    try { localStorage.setItem("corealign-studio-theme", next); }
+    catch (error) { /* The visible choice still works for this page. */ }
   });
 })();
+$("langBtn").addEventListener("click", function(){
+  lang = lang === "en" ? "th" : "en";
+  try { localStorage.setItem("corealign-studio-lang", lang); }
+  catch (error) { /* The visible choice still works for this page. */ }
+  renderLanguage();
+});
 
 /* ------------------------------------------------------------------ stages */
 var STAGES = [
-  {key:"slide",  label:"เลือกสไลด์"},
-  {key:"setup",  label:"ตั้งค่า"},
-  {key:"run",    label:"ประมวลผล"},
-  {key:"review", label:"ตรวจผล"},
-  {key:"export", label:"ผลลัพธ์"}
+  {key:"slide",  labelKey:"stageSlide"},
+  {key:"setup",  labelKey:"stageSetup"},
+  {key:"run",    labelKey:"stageRun"},
+  {key:"review", labelKey:"stageReview"},
+  {key:"export", labelKey:"stageExport"}
 ];
 var stage = "slide";
 var reached = {slide:true};
@@ -1037,7 +1568,7 @@ function buildStages(){
     var b = document.createElement("button");
     b.className = "stageTab"; b.dataset.key = item.key; b.type = "button";
     b.innerHTML = '<span class="num">' + (index + 1) + "</span>";
-    b.appendChild(document.createTextNode(item.label));
+    b.appendChild(document.createTextNode(t(item.labelKey)));
     b.addEventListener("click", function(){
       if (!reached[item.key]) return;
       setStage(item.key === "review" && lastGateId === "grid" ? "grid" : item.key);
@@ -1068,15 +1599,20 @@ function setStage(next){
 /* ------------------------------------------------------------------ picker */
 var chosenSlide = null, tissue = "skin", output = "presentation";
 var channelsAvailable = false, channelSuggested = [];
+var browseData = null;
 
 function browse(path){
   api("/api/browse?path=" + encodeURIComponent(path || "")).then(function(res){
-    if (!res.ok) { toast(res.body.error || "เปิดโฟลเดอร์นี้ไม่ได้"); return; }
-    var data = res.body;
+    if (!res.ok) { toast(res.body.error || t("browseFailed")); return; }
+    browseData = res.body;
+    drawBrowse(browseData);
+  });
+}
+function drawBrowse(data){
     var crumbs = $("crumbs"); crumbs.textContent = "";
     if (data.parent) {
       var up = document.createElement("button");
-      up.type = "button"; up.textContent = "↑ ขึ้นหนึ่งชั้น";
+      up.type = "button"; up.textContent = t("upOneLevel");
       up.addEventListener("click", function(){ browse(data.parent); });
       crumbs.appendChild(up);
     }
@@ -1090,17 +1626,16 @@ function browse(path){
     });
     (data.slides || []).forEach(function(slide){
       var blocked = !slide.reachable || !slide.folderWritable;
-      var meta = !slide.reachable ? "อยู่นอกพื้นที่ที่เปิดให้เข้าถึง"
-        : (!slide.folderWritable ? slide.size + " · เขียนไฟล์ในโฟลเดอร์นี้ไม่ได้" : slide.size);
+      var meta = !slide.reachable ? t("outsideAllowedArea")
+        : (!slide.folderWritable ? t("folderNotWritable", slide.size) : slide.size);
       list.appendChild(fileRow("slide", slide.name, meta, blocked, function(){ pick(slide); }));
     });
     if (!(data.folders || []).length && !(data.slides || []).length) {
       var empty = document.createElement("p");
       empty.className = "emptyNote";
-      empty.textContent = "โฟลเดอร์นี้ไม่มีสไลด์และไม่มีโฟลเดอร์ย่อย";
+      empty.textContent = t("emptyFolder");
       list.appendChild(empty);
     }
-  });
 }
 function fileRow(kind, name, meta, blocked, onClick){
   var b = document.createElement("button");
@@ -1131,8 +1666,8 @@ function paintChannelSummary(){
   // on the same slide came out 18:28 with six channels against 15:27 with all nineteen.
   // What the choice actually decides is what ends up in the files, so say that.
   $("channelSummary").textContent = (selected >= total)
-    ? "ทุกแชนเนล " + total + " ช่อง"
-    : selected + " จาก " + total + " แชนเนล · ไฟล์ผลลัพธ์จะมีเฉพาะช่องที่เลือก";
+    ? t("channelAll", total)
+    : t("channelSelected", selected, total);
 }
 function selectChannels(indices){
   var wanted = {};
@@ -1149,7 +1684,7 @@ function loadChannels(slide){
   $("channelChoice").hidden = true;
   $("channelPanel").hidden = true;
   $("channelToggle").setAttribute("aria-expanded", "false");
-  $("channelToggleWord").textContent = "เปลี่ยน";
+  $("channelToggleWord").textContent = t("change");
   $("channelList").textContent = "";
   api("/api/channels?slide=" + encodeURIComponent(path)).then(function(res){
     if (!chosenSlide || chosenSlide.path !== path) return;
@@ -1159,9 +1694,9 @@ function loadChannels(slide){
 
     var list = $("channelList");
     var roleWords = {
-      nuclear:"นิวเคลียส",
-      autofluorescence:"ออโตฟลูออเรสเซนซ์",
-      marker:"มาร์กเกอร์"
+      nuclear:"roleNuclear",
+      autofluorescence:"roleAutofluorescence",
+      marker:"roleMarker"
     };
     data.channels.forEach(function(channel){
       var row = document.createElement("label");
@@ -1174,7 +1709,8 @@ function loadChannels(slide){
       name.textContent = String(channel.name || "");
       var role = document.createElement("span");
       role.className = "role";
-      role.textContent = roleWords[channel.kind] || roleWords.marker;
+      role.dataset.kind = channel.kind || "marker";
+      role.textContent = t(roleWords[channel.kind] || roleWords.marker);
       row.appendChild(input);
       row.appendChild(name);
       row.appendChild(role);
@@ -1190,7 +1726,7 @@ function loadChannels(slide){
       function(input){ return Number(input.dataset.index); }));
     $("channelPanel").hidden = true;
     $("channelToggle").setAttribute("aria-expanded", "false");
-    $("channelToggleWord").textContent = "เปลี่ยน";
+    $("channelToggleWord").textContent = t("change");
     $("channelChoice").hidden = false;
   });
 }
@@ -1211,9 +1747,9 @@ function pick(slide){
 function reasonWords(reason){
   var text = String(reason || "").trim();
   var residual = /^residual\s+([\d.]+)\s*deg$/i.exec(text);
-  if (residual) return "หมุนแล้วยังเอียงอยู่ " + residual[1] + "°";
-  if (/^orientation status review$/i.test(text)) return "มุมหมุนยังไม่มั่นใจ";
-  if (/^crop region review$/i.test(text)) return "กรอบครอปยังไม่นิ่ง";
+  if (residual) return t("reasonResidual", residual[1]);
+  if (/^orientation status review$/i.test(text)) return t("reasonOrientation");
+  if (/^crop region review$/i.test(text)) return t("reasonCrop");
   return text;
 }
 function segmented(containerId, onChange){
@@ -1233,7 +1769,7 @@ $("channelList").addEventListener("change", function(event){
   if (!input) return;
   if (!input.checked && !selectedChannelIndices().length) {
     input.checked = true;
-    toast("ต้องเลือกอย่างน้อยหนึ่งแชนเนล");
+    toast(t("chooseOneChannel"));
   }
   paintChannelSummary();
 });
@@ -1246,13 +1782,13 @@ $("channelToggle").addEventListener("click", function(){
   var open = $("channelPanel").hidden;
   $("channelPanel").hidden = !open;
   this.setAttribute("aria-expanded", open ? "true" : "false");
-  $("channelToggleWord").textContent = open ? "ปิด" : "เปลี่ยน";
+  $("channelToggleWord").textContent = open ? t("close") : t("change");
 });
 $("backToPicker").addEventListener("click", function(){ setStage("slide"); });
 $("openPrior").addEventListener("click", function(){ setStage("review"); drawActionBar(); });
 
 function startRun(button){
-  if (!chosenSlide) { toast("เลือกสไลด์ก่อน"); return; }
+  if (!chosenSlide) { toast(t("chooseSlideFirst")); return; }
   button.disabled = true;
   var payload = {slide:chosenSlide.path, tissue:tissue, output:output};
   // Selecting every channel is what the run already did before this question existed, so
@@ -1267,14 +1803,14 @@ function startRun(button){
     body:JSON.stringify(payload)})
   .then(function(res){
     button.disabled = false;
-    if (!res.ok) { toast(res.body.error || "เริ่มไม่สำเร็จ"); return; }
+    if (!res.ok) { toast(res.body.error || t("startFailed")); return; }
     reviewKey = ""; model = null; lastGateId = "";
     setStage("run"); poll();
   });
 }
 $("startBtn").addEventListener("click", function(){ startRun(this); });
 $("stopBtn").addEventListener("click", function(){
-  api("/api/stop", {method:"POST"}).then(function(){ toast("หยุดแล้ว"); poll(); });
+  api("/api/stop", {method:"POST"}).then(function(){ toast(t("stopped")); poll(); });
 });
 $("newRun").addEventListener("click", function(){
   api("/api/reset", {method:"POST"}).then(function(){
@@ -1320,11 +1856,11 @@ function coreClassOf(core){
 }
 
 var SEVERITY_BANDS = [
-  {key:"flipped",  label:"กลับหัว"},
-  {key:"wrong",    label:"เอียงมาก"},
-  {key:"slight",   label:"เอียงเล็กน้อย"},
-  {key:"straight", label:"ตรงแล้ว"},
-  {key:"missing",  label:"ไม่มีเนื้อเยื่อ"}
+  {key:"flipped",  labelKey:"bandFlipped"},
+  {key:"wrong",    labelKey:"bandWrong"},
+  {key:"slight",   labelKey:"bandSlight"},
+  {key:"straight", labelKey:"bandStraight"},
+  {key:"missing",  labelKey:"bandMissing"}
 ];
 function severityBandOf(core){
   var kind = coreClassOf(core);
@@ -1417,15 +1953,15 @@ function drawVerdicts(){
   var percentage = withResult ? Math.round(straight * 100 / withResult) : 0;
   var box = $("filterChips");
   box.innerHTML =
-    '<section class="verdictCard" aria-label="สรุป core ที่ตรงแล้ว">' +
-      '<span class="title">ตรงแล้ว</span><b class="total"></b><span class="meta"></span>' +
+    '<section class="verdictCard" aria-label="' + t("verdictStraightAria") + '">' +
+      '<span class="title">' + t("verdictStraightLabel") + '</span><b class="total"></b><span class="meta"></span>' +
     '</section>' +
-    '<section class="verdictCard" aria-label="สรุป core ที่ต้องดู">' +
-      '<span class="title">ต้องดู</span><b class="total"></b><div class="verdictBreakdown"></div>' +
+    '<section class="verdictCard" aria-label="' + t("verdictReviewAria") + '">' +
+      '<span class="title">' + t("verdictReviewLabel") + '</span><b class="total"></b><div class="verdictBreakdown"></div>' +
     '</section>';
   var cards = box.querySelectorAll(".verdictCard");
   cards[0].querySelector(".total").textContent = straight;
-  cards[0].querySelector(".meta").textContent = percentage + "% ของ core ที่มีผล";
+  cards[0].querySelector(".meta").textContent = t("verdictPercentage", percentage);
   cards[1].querySelector(".total").textContent = attention;
   var breakdown = cards[1].querySelector(".verdictBreakdown");
   SEVERITY_BANDS.slice(0, 3).forEach(function(band){
@@ -1434,7 +1970,7 @@ function drawVerdicts(){
     row.className = "verdictRow";
     row.innerHTML = '<i class="severityDot" data-band="' + band.key + '"></i>' +
       '<span class="label"></span><span class="count"></span>';
-    row.querySelector(".label").textContent = band.label;
+    row.querySelector(".label").textContent = t(band.labelKey);
     row.querySelector(".count").textContent = groups[band.key].length;
     breakdown.appendChild(row);
   });
@@ -1444,7 +1980,7 @@ function updateStraightBulk(){
   var left = straight.filter(function(core){ return !checked[core.core]; }).length;
   var button = $("bulkStraight");
   button.hidden = left === 0;
-  $("bulkStraightLabel").textContent = "ผ่านทั้งหมดที่ตรงแล้ว (" + left + ")";
+  $("bulkStraightLabel").textContent = t("bulkStraight", left);
 }
 function updateQueueCount(){
   var groups = groupedReviewCores();
@@ -1452,14 +1988,14 @@ function updateQueueCount(){
     return !checked[core.core];
   }).length;
   $("queueCount").textContent = left
-    ? "เหลือ " + left + " core ที่ต้องตัดสินใจ"
-    : "ไม่เหลือ core ที่ต้องตัดสินใจ";
+    ? t("queueRemaining", left)
+    : t("queueEmpty");
   updateStraightBulk();
   syncQueueRowStates();
 }
 function residualLabel(core){
   var residual = residualSortValue(core);
-  return residual === -Infinity ? "เอียง ไม่ทราบ" : "เอียง " + residual.toFixed(1) + "°";
+  return residual === -Infinity ? t("residualUnknown") : t("residualKnown", residual.toFixed(1));
 }
 function makeCoreRow(core, index){
   var b = document.createElement("button");
@@ -1467,6 +2003,7 @@ function makeCoreRow(core, index){
   b.dataset.visibleIndex = String(index);
   b.dataset.checked = String(!!checked[core.core]);
   b.dataset.edited = String(isEdited(core));
+  b.dataset.editedLabel = t("edited");
   if (index === current) b.setAttribute("aria-current", "true");
   b.innerHTML =
     '<img class="thumb" alt="" loading="lazy" decoding="async">' +
@@ -1476,7 +2013,7 @@ function makeCoreRow(core, index){
   b.querySelector(".nm").textContent = core.core;
   b.querySelector(".sub").textContent = residualLabel(core);
   b.setAttribute("aria-label", core.core + " · " + residualLabel(core) +
-    (checked[core.core] ? " · ผ่านแล้ว" : ""));
+    (checked[core.core] ? " · " + t("accepted") : ""));
   if (core.rotated) b.querySelector(".thumb").src = "/project/" + core.rotated;
   b.addEventListener("click", function(){
     current = index;
@@ -1501,7 +2038,7 @@ function drawQueue(scrollCurrent){
       '<span class="label"></span><span class="count"></span>' +
       '<svg class="caret" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">' +
       '<path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>';
-    button.querySelector(".label").textContent = band.label;
+    button.querySelector(".label").textContent = t(band.labelKey);
     button.querySelector(".count").textContent = cores.length;
     button.addEventListener("click", function(){
       var previous = visible[current] ? visible[current].core : "";
@@ -1533,8 +2070,9 @@ function syncQueueRowStates(){
     if (!core) return;
     row.dataset.checked = String(!!checked[core.core]);
     row.dataset.edited = String(isEdited(core));
+    row.dataset.editedLabel = t("edited");
     row.setAttribute("aria-label", core.core + " · " + residualLabel(core) +
-      (checked[core.core] ? " · ผ่านแล้ว" : ""));
+      (checked[core.core] ? " · " + t("accepted") : ""));
   });
 }
 function markCurrentRow(){
@@ -1571,14 +2109,13 @@ function drawDetail(){
   var residual = core.residualDeg == null ? "–" : core.residualDeg.toFixed(1) + "°";
   var confidence = core.confidence == null ? "–" : Math.round(core.confidence * 100) + "%";
   var applied = core.rotateToTopDeg == null ? "–" : core.rotateToTopDeg.toFixed(1) + "°";
-  $("coreFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
-    " · หมุนอัตโนมัติ " + applied + " · ความมั่นใจ " + confidence + " · เหลือเอียง " + residual;
+  $("coreFacts").textContent = t("coreFacts", core.row, core.col, applied, confidence, residual);
   $("viewerTag").textContent = core.core + "  ·  " + (current + 1) + "/" + visible.length;
   var reason = (core.reasons || []).map(reasonWords).join(" · ");
   $("coreReason").hidden = !reason;
   $("coreReason").textContent = reason;
   setAngle(angleOf(core), false);
-  $("confirmLabel").textContent = checked[core.core] ? "ยกเลิกการผ่าน" : "ถูกต้อง";
+  $("confirmLabel").textContent = checked[core.core] ? t("undoAccept") : t("correct");
 }
 function setAngle(value, mark){
   var core = visible[current];
@@ -1650,7 +2187,7 @@ $("bulkStraight").addEventListener("click", function(){
   updateQueueCount();
   drawDetail();
   drawActionBar();
-  toast("ผ่าน core ที่ตรงแล้ว " + pending.length + " core");
+  toast(t("acceptedStraight", pending.length));
 });
 
 function toggleChecked(){
@@ -1660,7 +2197,7 @@ function toggleChecked(){
   saveLocal();
   var row = $("queueList").children[current];
   if (row) row.dataset.checked = String(!!checked[core.core]);
-  $("confirmLabel").textContent = checked[core.core] ? "ยกเลิกการผ่าน" : "ถูกต้อง";
+  $("confirmLabel").textContent = checked[core.core] ? t("undoAccept") : t("correct");
   updateQueueCount();
   if (checked[core.core] && current < visible.length - 1) {
     current++; markCurrentRow(); drawDetail();
@@ -1702,23 +2239,38 @@ function setSaveState(text, tone){
 }
 $("saveEdits").addEventListener("click", function(){
   var payload = pendingEdits();
-  setSaveState("กำลังบันทึก...", "busy");
+  setSaveState(t("saving"), "busy");
   api("/api/corrections", {method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({corrections:payload})})
   .then(function(res){
     if (!res.ok || res.body.ok === false) {
-      setSaveState(res.body.error || "บันทึกไม่สำเร็จ", "bad");
+      setSaveState(res.body.error || t("saveFailed"), "bad");
       return;
     }
     savedEdits = {};
     payload.forEach(function(item){ savedEdits[item.core] = item.rotationAdjustmentDeg; });
     drawActionBar();
-    toast("บันทึกมุมที่ปรับแล้ว " + payload.length + " core");
+    toast(t("savedAngles", payload.length));
   });
 });
 
 /* ------------------------------------------------------------------ action bar */
 var openGate = null;
+
+function gateTitle(gate){
+  return t(gate && gate.gate === "orientation" ? "gateOrientationTitle" : "gateGridTitle");
+}
+function gateSummary(gate){
+  if (gate && gate.gate === "orientation") {
+    var counts = model && model.counts ? model.counts : {};
+    return t("gateOrientationSummary", counts.ok || 0, counts.review || 0);
+  }
+  var grid = model && model.grid ? model.grid : {};
+  return t("gateGridSummary", grid.present || 0, grid.missing || 0);
+}
+function gateButton(gate){
+  return t(gate && gate.gate === "orientation" ? "gateOrientationButton" : "gateGridButton");
+}
 
 function drawActionBar(){
   var bar = $("actionBar");
@@ -1734,22 +2286,22 @@ function drawActionBar(){
     var gridSynced = gridFingerprint() === gridSaved;
     $("saveGrid").hidden = gridChanges === 0;
     $("saveGrid").disabled = gridSynced;
-    if (gridChanges && gridSynced) setSaveState("บันทึกแล้ว " + gridChanges + " ตำแหน่ง", "ok");
-    else if (gridChanges) setSaveState("ยังไม่ได้บันทึก " + gridChanges + " ตำแหน่ง", "");
+    if (gridChanges && gridSynced) setSaveState(t("savedPositions", gridChanges), "ok");
+    else if (gridChanges) setSaveState(t("unsavedPositions", gridChanges), "");
     else setSaveState("");
 
     $("askTitle").textContent = openGate
-      ? (gridChanges ? "แก้ไว้ " + gridChanges + " ตำแหน่ง" : openGate.title)
-      : "รอ CoreAlign เปิดขั้นตอนตรวจกริด";
+      ? (gridChanges ? t("editedPositions", gridChanges) : gateTitle(openGate))
+      : t("waitingGridReview");
     $("askSummary").textContent = openGate
       ? (gridChanges
-          ? "บันทึกก่อน แล้วกดยืนยัน · CoreAlign จะใส่การแก้แล้วให้ดูกริดอีกรอบก่อนไปต่อ"
-          : openGate.summary)
+          ? t("saveGridFirstSummary")
+          : gateSummary(openGate))
       : "";
-    go.textContent = !openGate ? "รออยู่..."
-      : (gridChanges && !gridSynced) ? "บันทึกก่อนจึงจะไปต่อได้"
-      : gridChanges ? "ใส่การแก้ แล้วดูกริดอีกครั้ง"
-      : (openGate.primaryLabel || "ไปต่อ");
+    go.textContent = !openGate ? t("waiting")
+      : (gridChanges && !gridSynced) ? t("saveBeforeContinue")
+      : gridChanges ? t("applyGridEdits")
+      : gateButton(openGate);
     go.dataset.act = "gate";
     go.disabled = !openGate || (gridChanges > 0 && !gridSynced);
     return;
@@ -1764,40 +2316,40 @@ function drawActionBar(){
 
   save.hidden = changes === 0 && synced;
   save.disabled = synced;
-  if (changes && synced) setSaveState("บันทึกไว้แล้ว " + changes + " core", "ok");
-  else if (changes) setSaveState("ยังไม่ได้บันทึก " + changes + " core", "");
+  if (changes && synced) setSaveState(t("savedCores", changes), "ok");
+  else if (changes) setSaveState(t("unsavedCores", changes), "");
   else setSaveState("");
 
   if (openGate) {
     $("askTitle").textContent = left
-      ? "เหลืออีก " + left + " core ที่ยังไม่ได้ดู"
-      : "ดูครบทุก core ที่ระบบทักแล้ว";
+      ? t("reviewRemaining", left)
+      : t("reviewComplete");
     $("askSummary").textContent = changes
-      ? "ปรับมุมไว้ " + changes + " core · บันทึกก่อน แล้วอนุมัติเพื่อให้ประมวลผลใหม่เฉพาะที่แก้"
-      : "อนุมัติเพื่อสร้างไฟล์ผลลัพธ์";
+      ? t("angleEditsSummary", changes)
+      : t("approveSummary");
     go.textContent = (changes && !synced)
-      ? "บันทึกก่อนจึงจะอนุมัติได้"
-      : (openGate.primaryLabel || "อนุมัติ และสร้างผลลัพธ์");
+      ? t("saveBeforeApprove")
+      : gateButton(openGate);
     go.dataset.act = "gate";
     go.disabled = changes > 0 && !synced;
   } else if (runState === "complete" && changes === 0) {
     // Approved and the files exist. Offering to run again to approve would be wrong, and
     // pressing it would do nothing useful. Point at the results instead.
-    $("askTitle").textContent = "การรันนี้อนุมัติแล้ว และสร้างไฟล์ครบ";
-    $("askSummary").textContent = "ดูย้อนหลังได้ตามสบาย · ปรับมุม core ไหนก็ได้ถ้าจะรันใหม่";
-    go.textContent = "ไปที่ผลลัพธ์";
+    $("askTitle").textContent = t("approvedTitle");
+    $("askSummary").textContent = t("approvedSummary");
+    go.textContent = t("goToResults");
     go.dataset.act = "export";
     go.disabled = false;
     return;
   } else {
     $("askTitle").textContent = runState === "complete"
-      ? "การรันนี้อนุมัติไปแล้ว แต่มีมุมที่ปรับใหม่"
-      : "การรันครั้งนี้จบไปแล้ว";
+      ? t("approvedWithEditsTitle")
+      : t("finishedTitle");
     $("askSummary").textContent = changes
-      ? "ปรับมุมไว้ " + changes + " core · บันทึกก่อน แล้วรันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้"
-      : "ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ";
-    go.textContent = (changes && !synced) ? "บันทึกก่อนจึงจะรันได้"
-      : (runState === "complete" ? "รันใหม่ด้วยมุมที่แก้" : "รันอีกครั้งเพื่ออนุมัติ");
+      ? t("rerunEditedSummary", changes)
+      : t("rerunSummary");
+    go.textContent = (changes && !synced) ? t("saveBeforeRun")
+      : (runState === "complete" ? t("rerunEdited") : t("rerunApproval"));
     go.dataset.act = "run";
     go.disabled = changes > 0 && !synced;
   }
@@ -1811,7 +2363,7 @@ $("gateGo").addEventListener("click", function(){
     body:JSON.stringify({gate:openGate.gate, decision:"continue"})})
   .then(function(res){
     if (!res.ok || res.body.ok === false) {
-      toast((res.body && res.body.error) || "ส่งคำตอบไม่สำเร็จ");
+      toast((res.body && res.body.error) || t("answerFailed"));
       button.disabled = false;
       return;
     }
@@ -1851,14 +2403,14 @@ function drawGrid(){
     requestAnimationFrame(drawGridOverlay);
   }
   $("zoomHint").textContent = model.grid.editable
-    ? "ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก"
-    : "รันใหม่หนึ่งรอบเพื่อให้แก้กริดในหน้านี้ได้";
+    ? t("gridEditHint")
+    : t("gridEditUnavailable");
   var grid = model.grid;
   $("gridStrip").innerHTML =
-    metric(grid.present == null ? "–" : grid.present, "core ที่พบ", "ok") +
-    metric(grid.missing == null ? "–" : grid.missing, "ตำแหน่งว่าง", "none") +
-    metric((grid.rows || "?") + " × " + (grid.cols || "?"), "แถว × คอลัมน์", "") +
-    metric(grid.humanCorrectedTotal || 0, "คนแก้ไว้", "");
+    metric(grid.present == null ? "–" : grid.present, t("metricCoresFound"), "ok") +
+    metric(grid.missing == null ? "–" : grid.missing, t("metricEmptyPositions"), "none") +
+    metric((grid.rows || "?") + " × " + (grid.cols || "?"), t("metricRowsColumns"), "") +
+    metric(grid.humanCorrectedTotal || 0, t("metricHumanEdits"), "");
   var box = $("gridWarnings"); box.textContent = "";
   (grid.hardErrors || []).concat(grid.warnings || []).forEach(function(text){
     if (!text) return;
@@ -1873,7 +2425,7 @@ $("zoomToggle").addEventListener("click", function(){
   var stage = $("gridStage");
   var zoomed = stage.dataset.zoom !== "true";
   stage.dataset.zoom = String(zoomed);
-  this.textContent = zoomed ? "ย่อกลับให้พอดีจอ" : "ขยายเต็มขนาด";
+  this.textContent = zoomed ? t("zoomFit") : t("zoomFull");
   if (zoomed) { stage.scrollTop = 0; stage.scrollLeft = 0; }
   requestAnimationFrame(drawGridOverlay);
 });
@@ -1979,9 +2531,10 @@ function pickCore(name){
   var core = coreNow(raw);
   $("pickedName").textContent = core.core;
   var confidence = core.confidence ? Math.round(Number(core.confidence) * 100) + "%" : "–";
-  $("pickedFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
-    " · " + (core.missing ? "ทำเครื่องหมายว่าไม่มีเนื้อเยื่อ" : "ตรวจพบ") +
-    " · ความมั่นใจ " + confidence + (core.edited ? " · แก้ไว้แล้ว" : "");
+  var factsKey = core.missing
+    ? (core.edited ? "pickedMissingEdited" : "pickedMissing")
+    : (core.edited ? "pickedPresentEdited" : "pickedPresent");
+  $("pickedFacts").textContent = t(factsKey, core.row, core.col, confidence);
   $("markMissing").hidden = core.missing;
   $("markPresent").hidden = !core.missing;
   $("undoCore").hidden = !core.edited;
@@ -2056,17 +2609,17 @@ $("saveGrid").addEventListener("click", function(){
             centerY: edit.centerY, diameter: edit.diameter};
   });
   var sentFingerprint = gridFingerprint();
-  setSaveState("กำลังบันทึก...", "busy");
+  setSaveState(t("saving"), "busy");
   api("/api/grid-corrections", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({corrections: payload})})
   .then(function(res){
     if (!res.ok || res.body.ok === false) {
-      setSaveState(res.body.error || "บันทึกไม่สำเร็จ", "bad");
+      setSaveState(res.body.error || t("saveFailed"), "bad");
       return;
     }
     gridSaved = sentFingerprint;
-    setSaveState("บันทึกแล้ว " + payload.length + " ตำแหน่ง", "ok");
-    toast("บันทึกการแก้กริดแล้ว · กดยืนยันเพื่อให้ CoreAlign ใส่การแก้นี้");
+    setSaveState(t("savedPositions", payload.length), "ok");
+    toast(t("gridSavedToast"));
     drawActionBar();
   });
 });
@@ -2094,15 +2647,16 @@ function metric(value, label, tone){
 
 /* ------------------------------------------------------------------ export */
 var EXPORT_FILTERS = [
-  {key:"all",     label:"ทั้งหมด",       test:function(){ return true; }},
-  {key:"ok",      label:"ผ่าน",          test:function(c){ return coreClassOf(c) === "ok"; }},
-  {key:"review",  label:"ต้องดูซ้ำ",      test:function(c){ return coreClassOf(c) === "review"; }},
-  {key:"error",   label:"ไม่สำเร็จ",      test:function(c){ return coreClassOf(c) === "error"; }},
-  {key:"missing", label:"ตำแหน่งว่าง",    test:function(c){ return coreClassOf(c) === "missing"; }}
+  {key:"all",     labelKey:"filterAll",     test:function(){ return true; }},
+  {key:"ok",      labelKey:"filterPassed",  test:function(c){ return coreClassOf(c) === "ok"; }},
+  {key:"review",  labelKey:"filterReview",  test:function(c){ return coreClassOf(c) === "review"; }},
+  {key:"error",   labelKey:"filterError",   test:function(c){ return coreClassOf(c) === "error"; }},
+  {key:"missing", labelKey:"filterMissing", test:function(c){ return coreClassOf(c) === "missing"; }}
 ];
 var exportFilter = "all", exportVisible = [], exportDialogIndex = 0;
 var exportDrawnModel = null, exportProject = "", exportGroups = [];
-var exportGroupsDetailed = false, exportTableLoad = "idle", exportDialogSource = null;
+var exportGroupsDetailed = false, exportTableLoad = "idle", exportTableError = "";
+var exportDialogSource = null;
 
 function projectUrl(path){
   return "/project/" + String(path || "").split("/").map(encodeURIComponent).join("/");
@@ -2122,10 +2676,10 @@ function exportFilterTest(key){
   return EXPORT_FILTERS[0].test;
 }
 function exportStatusWord(kind){
-  if (kind === "review") return "ต้องดูซ้ำ";
-  if (kind === "error") return "ไม่สำเร็จ";
-  if (kind === "missing") return "ตำแหน่งว่าง";
-  return "ผ่าน";
+  if (kind === "review") return t("filterReview");
+  if (kind === "error") return t("filterError");
+  if (kind === "missing") return t("filterMissing");
+  return t("filterPassed");
 }
 function drawExportChips(){
   var box = $("exportChips");
@@ -2135,7 +2689,7 @@ function drawExportChips(){
     button.type = "button";
     button.className = "chip";
     button.setAttribute("aria-pressed", String(exportFilter === item.key));
-    button.appendChild(document.createTextNode(item.label));
+    button.appendChild(document.createTextNode(t(item.labelKey)));
     var count = document.createElement("span");
     count.className = "n";
     count.textContent = (model.cores || []).filter(item.test).length;
@@ -2157,7 +2711,7 @@ function drawExportGallery(){
     var tile = document.createElement("button");
     tile.type = "button";
     tile.className = "resultTile";
-    tile.setAttribute("aria-label", "เปิดรายละเอียด core " + core.core);
+    tile.setAttribute("aria-label", t("openCoreDetails", core.core));
     if (core.rotated) {
       var image = document.createElement("img");
       image.className = "resultThumb";
@@ -2174,7 +2728,7 @@ function drawExportGallery(){
     } else {
       var placeholder = document.createElement("span");
       placeholder.className = "resultPlaceholder";
-      placeholder.textContent = "ไม่มีภาพตัวอย่าง";
+      placeholder.textContent = t("noPreview");
       tile.appendChild(placeholder);
     }
     var meta = document.createElement("span");
@@ -2251,7 +2805,7 @@ function drawExportDialog(){
     ? "/api/download?path=" + encodeURIComponent(fullResolution) : "#";
   $("exportPrev").disabled = exportDialogIndex <= 0;
   $("exportNext").disabled = exportDialogIndex >= exportVisible.length - 1;
-  $("exportDialogPosition").textContent = (exportDialogIndex + 1) + " จาก " + exportVisible.length;
+  $("exportDialogPosition").textContent = t("dialogPosition", exportDialogIndex + 1, exportVisible.length);
 }
 function openExportDialog(index, source){
   exportDialogIndex = index;
@@ -2275,9 +2829,10 @@ function loadDetailedExportGroups(project){
 }
 function resetResultTable(){
   exportTableLoad = "idle";
+  exportTableError = "";
   $("resultTableSection").open = false;
   $("resultTableState").hidden = false;
-  $("resultTableState").textContent = "เปิดส่วนนี้เพื่ออ่านตารางผลลัพธ์";
+  $("resultTableState").textContent = t("openResultTable");
   $("resultTableWrap").hidden = true;
   $("resultTable").textContent = "";
 }
@@ -2313,7 +2868,7 @@ function renderResultTable(rows){
   for (var column = 0; column < width; column++) {
     var heading = document.createElement("th");
     heading.scope = "col";
-    heading.textContent = rows[0][column] || "คอลัมน์ " + (column + 1);
+    heading.textContent = rows[0][column] || t("column", column + 1);
     headRow.appendChild(heading);
   }
   head.appendChild(headRow); table.appendChild(head);
@@ -2333,7 +2888,7 @@ function loadResultTable(){
   if (exportTableLoad !== "idle") return;
   exportTableLoad = "loading";
   $("resultTableState").hidden = false;
-  $("resultTableState").textContent = "กำลังอ่านตารางผลลัพธ์...";
+  $("resultTableState").textContent = t("loadingResultTable");
   fetch("/api/download?path=" + encodeURIComponent("results/tables/orientation_results.csv"),
     {cache:"no-store"})
   .then(function(response){
@@ -2350,11 +2905,12 @@ function loadResultTable(){
   })
   .catch(function(error){
     exportTableLoad = "failed";
+    exportTableError = error.message;
     $("resultTableWrap").hidden = true;
     $("resultTableState").hidden = false;
     $("resultTableState").textContent = error.message === "404"
-      ? "ไม่พบตารางผลลัพธ์สำหรับการรันครั้งนี้"
-      : "เปิดตารางผลลัพธ์ไม่ได้";
+      ? t("resultTableMissing")
+      : t("resultTableFailed");
   });
 }
 function drawDownloadGroups(groups){
@@ -2366,9 +2922,13 @@ function drawDownloadGroups(groups){
     el.innerHTML = '<div class="txt"><b></b><span></span></div><span class="cnt"></span>' +
       '<button class="btn"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">' +
       '<path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg> zip</button>';
-    el.querySelector("b").textContent = group.title;
-    el.querySelector(".txt span").textContent = group.note || "";
-    el.querySelector(".cnt").textContent = group.count + " ไฟล์ · " + (group.size || "");
+    var groupName = String(group.key || "").replace(/-([a-z])/g, function(_, letter){
+      return letter.toUpperCase();
+    });
+    groupName = groupName.charAt(0).toUpperCase() + groupName.slice(1);
+    el.querySelector("b").textContent = t("group" + groupName + "Title");
+    el.querySelector(".txt span").textContent = t("group" + groupName + "Note");
+    el.querySelector(".cnt").textContent = t("fileCount", group.count, group.size || "");
     el.querySelector("button").addEventListener("click", function(){
       window.location.href = "/api/download-zip?group=" + encodeURIComponent(group.key);
     });
@@ -2377,7 +2937,7 @@ function drawDownloadGroups(groups){
   if (!(groups || []).length) {
     var note = document.createElement("p");
     note.className = "emptyNote";
-    note.textContent = "ยังไม่มีไฟล์ผลลัพธ์";
+    note.textContent = t("noResultFiles");
     list.appendChild(note);
   }
 }
@@ -2385,10 +2945,10 @@ function drawExport(status){
   $("exportPath").textContent = status.project || "";
   var counts = model && model.counts ? model.counts : null;
   $("exportStrip").innerHTML = counts
-    ? metric(counts.positions || 0, "ตำแหน่งทั้งหมด", "") +
-      metric(counts.ok || 0, "ผ่าน QC อัตโนมัติ", "ok") +
-      metric(counts.review || 0, "เคยถูกทัก", "warn") +
-      metric(counts.missing || 0, "ไม่มีเนื้อเยื่อ", "none")
+    ? metric(counts.positions || 0, t("metricAllPositions"), "") +
+      metric(counts.ok || 0, t("metricAutoPassed"), "ok") +
+      metric(counts.review || 0, t("metricFlagged"), "warn") +
+      metric(counts.missing || 0, t("metricNoTissue"), "none")
     : "";
   var projectChanged = exportProject !== (status.project || "");
   if (projectChanged) {
@@ -2464,15 +3024,16 @@ function refreshLog(){
 
 /* ------------------------------------------------------------------ polling */
 var STATE_TEXT = {
-  idle:      ["พร้อมใช้งาน", "idle"],
-  starting:  ["กำลังเริ่ม", "run"],
-  running:   ["กำลังทำงาน", "run"],
-  complete:  ["เสร็จสมบูรณ์", "ok"],
-  stopped:   ["หยุดไว้", "wait"],
-  cancelled: ["ยกเลิกแล้ว", "wait"],
-  failed:    ["ล้มเหลว", "bad"]
+  idle:      ["stateIdle", "idle"],
+  starting:  ["stateStarting", "run"],
+  running:   ["stateRunning", "run"],
+  complete:  ["stateComplete", "ok"],
+  stopped:   ["stateStopped", "wait"],
+  cancelled: ["stateCancelled", "wait"],
+  failed:    ["stateFailed", "bad"]
 };
-var lastLogLine = "", lastGateId = "", runState = "idle";
+var lastLogLine = "", lastLogLanguage = "", lastLogText = "";
+var lastGateId = "", runState = "idle", lastStatus = null;
 
 function poll(){
   api("/api/status").then(function(res){
@@ -2480,11 +3041,12 @@ function poll(){
   });
 }
 function paintStatus(status){
+  lastStatus = status;
   runState = status.state || "idle";
   var gate = status.gate;
   var waiting = !!(gate && gate.gate);
   var text = STATE_TEXT[status.state] || ["", "idle"];
-  $("stateText").textContent = waiting ? "รอคุณตัดสินใจ" : text[0];
+  $("stateText").textContent = waiting ? t("waitingDecision") : t(text[0]);
   $("statePill").dataset.tone = waiting ? "wait" : text[1];
 
   var clock = $("clock");
@@ -2522,7 +3084,7 @@ function paintStatus(status){
     route(status, gateId);
   });
 }
-var GATE_WORDS = {grid:"ตอนตรวจกริด", orientation:"ตอนตรวจ core ที่หมุนแล้ว"};
+var GATE_WORDS = {grid:"abandonedGrid", orientation:"abandonedOrientation"};
 
 function showAbandoned(status){
   // A gate.json from a run that has since died. CoreAlign removes that file when it
@@ -2532,10 +3094,10 @@ function showAbandoned(status){
   var banner = $("abandonedRun");
   if (!left || !left.gate) { banner.hidden = true; return; }
   var when = String(left.openedAt || "").replace("T", " ").replace(/(Z|\+.*)$/, "");
-  $("abandonedNote").textContent =
-    "หยุด" + (GATE_WORDS[left.gate] || "ระหว่างรอคำตอบ") +
-    (when ? " เมื่อ " + when + " UTC" : "") +
-    " · งานที่ทำไว้ยังอยู่ครบ กดเริ่มอีกครั้งได้เลย จะไม่ทำซ้ำของเดิม";
+  var gateWords = t(GATE_WORDS[left.gate] || "abandonedWaiting");
+  $("abandonedNote").textContent = when
+    ? t("abandonedAt", gateWords, when)
+    : t("abandonedNoTime", gateWords);
   banner.hidden = false;
 }
 
@@ -2546,41 +3108,41 @@ function showPriorRun(){
   // though nothing is running. Reaching them is the whole point of attaching.
   reached.review = true; reached.export = true; paintStages();
   var counts = model.counts || {};
-  $("priorRunNote").textContent =
-    (counts.positions || 0) + " ตำแหน่ง · ผ่าน QC " + (counts.ok || 0) +
-    " · ถูกทัก " + (counts.review || 0) + " · ไม่มีเนื้อเยื่อ " + (counts.missing || 0);
+  $("priorRunNote").textContent = t("priorCounts", counts.positions || 0, counts.ok || 0,
+    counts.review || 0, counts.missing || 0);
   banner.hidden = false;
 }
 // CoreAlign logs in English because the log is also the audit trail. The run screen is
-// read by people mid-task, so say the same thing in Thai and leave anything unrecognised
-// alone rather than guessing at a translation.
+// read by people mid-task, so use the page language and leave anything unrecognised alone.
 var STEP_WORDS = [
-  [/Running 01_build_tma_grid/,        "กำลังหาตำแหน่ง core ทั้งแผ่น"],
-  [/Running 02_auto_orient/,           "กำลังหมุนและครอปทีละ core"],
-  [/Running 03_review_correct/,        "กำลังใส่การแก้ไขกริดที่คุณวาดไว้"],
-  [/Running 04_restore_approved_grid/, "กำลังกู้กริดที่อนุมัติไว้แล้ว"],
-  [/Running 05_finalize/,              "กำลังสรุปผลการตรวจ"],
-  [/Running 06_export/,                "กำลังส่งออกไฟล์ผลลัพธ์"],
-  [/Running 07_build_qupath/,          "กำลังสร้างโปรเจกต์ QuPath"],
-  [/Orientation workers: (\d+)/,       "ใช้ $1 หน่วยประมวลผลพร้อมกัน"],
-  [/Orientation progress: (\d+)\/(\d+)/, "หมุนและครอปแล้ว $1 จาก $2 core"],
-  [/Estimating core size/,             "กำลังประมาณขนาดของ core"],
-  [/Detecting TMA cores/,              "กำลังตรวจหา core"],
-  [/Published (\d+)/,                  "จัดไฟล์ให้หาง่ายแล้ว $1 ไฟล์"],
-  [/WAITING FOR REVIEW/,               "รอให้คุณตรวจ"],
-  [/COREALIGN_GATE_OPEN: grid/,        "รอให้คุณตรวจกริด"],
-  [/COREALIGN_GATE_OPEN: orientation/, "รอให้คุณตรวจ core ที่หมุนแล้ว"],
-  [/COREALIGN_GATE_CLOSED/,            "รับคำตอบแล้ว กำลังเดินต่อ"],
-  [/Channel subset: keeping (\d+) of (\d+)/, "ใช้ $1 จาก $2 แชนเนล"],
-  [/Channels kept \(\d+\): \[(.+)\]/,   "แชนเนลที่ใช้: $1"],
-  [/Pipeline stopped safely/,          "หยุดไว้อย่างปลอดภัย ยังไม่ได้อนุมัติ"],
-  [/CoreAlign COMPLETE/,               "เสร็จสมบูรณ์"]
+  [/Running 01_build_tma_grid/,        "stepBuildGrid"],
+  [/Running 02_auto_orient/,           "stepOrient"],
+  [/Running 03_review_correct/,        "stepApplyGrid"],
+  [/Running 04_restore_approved_grid/, "stepRestoreGrid"],
+  [/Running 05_finalize/,              "stepFinalize"],
+  [/Running 06_export/,                "stepExport"],
+  [/Running 07_build_qupath/,          "stepQupath"],
+  [/Orientation workers: (\d+)/,       "stepWorkers"],
+  [/Orientation progress: (\d+)\/(\d+)/, "stepProgress"],
+  [/Estimating core size/,             "stepEstimate"],
+  [/Detecting TMA cores/,              "stepDetect"],
+  [/Published (\d+)/,                  "stepPublished"],
+  [/WAITING FOR REVIEW/,               "stepWaitingReview"],
+  [/COREALIGN_GATE_OPEN: grid/,        "stepWaitingGrid"],
+  [/COREALIGN_GATE_OPEN: orientation/, "stepWaitingOrientation"],
+  [/COREALIGN_GATE_CLOSED/,            "stepGateClosed"],
+  [/Channel subset: keeping (\d+) of (\d+)/, "stepChannelSubset"],
+  [/Channels kept \(\d+\): \[(.+)\]/,   "stepChannelsKept"],
+  [/Pipeline stopped safely/,          "stepStopped"],
+  [/CoreAlign COMPLETE/,               "stepComplete"]
 ];
-function inThai(line){
+function stepWords(line){
   for (var i = 0; i < STEP_WORDS.length; i++) {
     var found = STEP_WORDS[i][0].exec(line);
     if (found) {
-      return STEP_WORDS[i][1].replace(/\$(\d)/g, function(_, n){ return found[Number(n)] || ""; });
+      return t(STEP_WORDS[i][1]).replace(/\$(\d)/g, function(_, n){
+        return found[Number(n)] || "";
+      });
     }
   }
   return line;
@@ -2589,14 +3151,20 @@ function inThai(line){
 function paintProgress(){
   api("/api/log").then(function(res){
     var log = (res.body && res.body.log) || "";
+    renderProgress(log);
+  });
+}
+function renderProgress(log){
+    lastLogText = log;
     var lines = log.replace(/\s+$/, "").split("\n");
     var tail = lines[lines.length - 1] || "";
-    if (tail === lastLogLine) return;
+    if (tail === lastLogLine && lang === lastLogLanguage) return;
     lastLogLine = tail;
+    lastLogLanguage = lang;
     // The drawer holds the raw log on purpose. The one line peeking out of it sits at the
-    // bottom of every screen, though, so it gets the same Thai treatment as the run step.
-    $("logTail").textContent = tail ? inThai(tail) : "";
-    $("runStep").textContent = tail ? inThai(tail).slice(0, 140) : "กำลังทำงาน";
+    // bottom of every screen, though, so it gets the same treatment as the run step.
+    $("logTail").textContent = tail ? stepWords(tail) : "";
+    $("runStep").textContent = tail ? stepWords(tail).slice(0, 140) : t("working");
     // The last few things that happened, so a long step does not look like a hang.
     var recent = lines.filter(function(line){
       return /Running \d\d_|Orientation workers|Orientation progress|Estimating core size|Detecting TMA cores|Published \d+|WAITING FOR REVIEW|GATE_CLOSED|Pipeline stopped safely|CoreAlign COMPLETE/.test(line);
@@ -2605,7 +3173,7 @@ function paintProgress(){
     activity.textContent = "";
     recent.forEach(function(line){
       var li = document.createElement("li");
-      li.textContent = inThai(line.trim());
+      li.textContent = stepWords(line.trim());
       activity.appendChild(li);
     });
     // The tail holds several progress lines. Take the last, not the first one the scan
@@ -2618,15 +3186,14 @@ function paintProgress(){
       bar.firstElementChild.style.width = (100 * Number(match[1]) / Number(match[2])) + "%";
       $("runCounts").hidden = false;
       $("runCounts").innerHTML =
-        "<div><b>" + match[1] + "</b><span>ทำเสร็จ</span></div>" +
-        "<div><b>" + match[2] + "</b><span>ทั้งหมด</span></div>";
+        "<div><b>" + match[1] + "</b><span>" + t("done") + "</span></div>" +
+        "<div><b>" + match[2] + "</b><span>" + t("total") + "</span></div>";
     } else {
       bar.classList.add("indeterminate");
       bar.firstElementChild.style.width = "100%";
       $("runCounts").hidden = true;
     }
     if ($("logDrawer").dataset.open === "true") refreshLog();
-  });
 }
 function route(status, gateId){
   if (gateId === "grid") {
@@ -2649,7 +3216,7 @@ function route(status, gateId){
   if (status.state === "complete") {
     reached.review = true; reached.export = true;
     if (stage !== "export" && stage !== "review") setStage("export");
-    $("exportTitle").textContent = "ผลลัพธ์พร้อมแล้ว";
+    $("exportTitle").textContent = t("resultsReady");
     drawExport(status);
     drawActionBar();
     return;
@@ -2661,7 +3228,7 @@ function route(status, gateId){
       // Results exist and nobody has approved them yet: the review screen is the useful one.
       if (stage !== "review" && stage !== "export" && stage !== "grid") setStage("review");
     }
-    if (stage === "export") { $("exportTitle").textContent = "ผลลัพธ์ที่มีอยู่ตอนนี้"; drawExport(status); }
+    if (stage === "export") { $("exportTitle").textContent = t("resultsCurrent"); drawExport(status); }
     drawActionBar();
     return;
   }
@@ -2679,8 +3246,51 @@ if (window.ResizeObserver) {
 }
 window.addEventListener("resize", function(){ drawGridOverlay(); });
 
+function renderLanguage(){
+  document.documentElement.lang = lang;
+  applyStaticTranslations();
+  buildStages();
+  paintStages();
+  if (browseData) drawBrowse(browseData);
+  if (chosenSlide) $("slideName").textContent = chosenSlide.name;
+
+  var roleKeys = {nuclear:"roleNuclear", autofluorescence:"roleAutofluorescence", marker:"roleMarker"};
+  $("channelList").querySelectorAll(".role").forEach(function(role){
+    role.textContent = t(roleKeys[role.dataset.kind] || roleKeys.marker);
+  });
+  if ($("channelList").querySelectorAll("input").length) paintChannelSummary();
+  $("channelToggleWord").textContent = $("channelPanel").hidden ? t("change") : t("close");
+  $("zoomToggle").textContent = $("gridStage").dataset.zoom === "true" ? t("zoomFit") : t("zoomFull");
+
+  if (lastStatus) {
+    var waiting = !!(lastStatus.gate && lastStatus.gate.gate);
+    var stateWords = STATE_TEXT[lastStatus.state] || ["stateIdle", "idle"];
+    $("stateText").textContent = waiting ? t("waitingDecision") : t(stateWords[0]);
+    showAbandoned(lastStatus);
+  }
+  if (model && model.available) {
+    drawReview(false);
+    showPriorRun();
+  }
+  if (model && model.grid) {
+    drawGrid();
+    if (pickedCore) pickCore(pickedCore);
+  }
+  if (lastStatus && stage === "export") {
+    $("exportTitle").textContent = lastStatus.state === "complete"
+      ? t("resultsReady") : t("resultsCurrent");
+    drawExport(lastStatus);
+  }
+  if (exportTableLoad === "loading") $("resultTableState").textContent = t("loadingResultTable");
+  if (exportTableLoad === "failed") $("resultTableState").textContent = exportTableError === "404"
+    ? t("resultTableMissing") : t("resultTableFailed");
+  if ($("exportDialog").open) drawExportDialog();
+  renderProgress(lastLogText);
+  drawActionBar();
+}
+
 /* ------------------------------------------------------------------ start */
-buildStages();
+renderLanguage();
 setStage("slide");
 browse("");
 poll();

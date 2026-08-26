@@ -676,20 +676,13 @@ class Run:
         return None
 
     # -- results ------------------------------------------------------------
-    # Titles are what the page shows, and the people using Studio read Thai.
     RESULT_GROUPS = (
-        ("png", "results/png", "ภาพที่จัดเรียงแล้ว",
-         "PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core"),
-        ("ome-tiff", "results/ome-tiff", "OME-TIFF สำหรับวิเคราะห์ต่อ",
-         "หลายแชนเนล บิตเดปธ์เดิม"),
-        ("tables", "results/tables", "ตารางและบันทึกตรวจสอบ",
-         "CSV และ JSON: มุมหมุน ค่า QC และช่วงการแสดงผล"),
-        ("grid-qc", "qc/01-grid", "QC ของกริด",
-         "ภาพตรวจจับทั้งสไลด์ พร้อมพิกัดของทุกตำแหน่ง"),
-        ("core-qc", "qc/02-orientation", "QC ราย core",
-         "ภาพตัวอย่างก่อนและหลังหมุน พร้อม contact sheet"),
-        ("qupath", "qupath", "โปรเจกต์ QuPath",
-         "โปรเจกต์ core ที่เรียงลำดับแล้ว เฉพาะโหมดวิเคราะห์ต่อ"),
+        ("png", "results/png"),
+        ("ome-tiff", "results/ome-tiff"),
+        ("tables", "results/tables"),
+        ("grid-qc", "qc/01-grid"),
+        ("core-qc", "qc/02-orientation"),
+        ("qupath", "qupath"),
     )
 
     # The page polls status every two seconds and this walk stats every produced file, which
@@ -710,7 +703,7 @@ class Run:
                 return groups
             return [{k: v for k, v in group.items() if k != "files"} for group in groups]
         groups = []
-        for key, relative, title, note in self.RESULT_GROUPS:
+        for key, relative in self.RESULT_GROUPS:
             folder = self.project / relative
             if not folder.is_dir():
                 continue
@@ -731,7 +724,7 @@ class Run:
             if not files:
                 continue
             groups.append({
-                "key": key, "folder": relative, "title": title, "note": note,
+                "key": key, "folder": relative,
                 "count": len(files), "size": human_size(total),
                 "files": files[:400], "truncated": len(files) > 400,
             })
@@ -744,7 +737,7 @@ class Run:
     def group_folder(self, key: str) -> Path | None:
         if not self.project:
             return None
-        for candidate, relative, _title, _note in self.RESULT_GROUPS:
+        for candidate, relative in self.RESULT_GROUPS:
             if candidate == key:
                 folder = self.project / relative
                 return folder if folder.is_dir() else None
