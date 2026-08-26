@@ -7,8 +7,10 @@ const step2 = await readFile(
   new URL("workflow/embedded/02_auto_orient_epidermis.groovy.src", root), "utf8");
 const runner = await readFile(new URL("workflow/CoreAlign.groovy", root), "utf8");
 
-// Reading every channel of a 19-channel slide cost 6.1-6.9 s per core against 1.23-1.47 s for
-// six, measured on the reference slide. The subset is the whole reason this feature exists.
+// The subset controls what the run delivers, not how fast it is. An earlier comment here
+// claimed 5x from a benchmark that read all the channels first and the subset second at the
+// same coordinates, so the subset was reading a warm cache. Measured properly it is 1.18x,
+// and a full run came out 18:28 with six channels against 15:27 with all nineteen.
 test("step 2 can read a subset of the channels", () => {
   assert.match(step2, /TransformedServerBuilder/,
     "the subset is built with QuPath's channel-extracting server");

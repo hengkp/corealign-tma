@@ -219,6 +219,7 @@ h2{font-size:17px;font-weight:750}
 .channelRow .name{flex:1 1 auto;min-width:0;font-size:14px;font-weight:650}
 .channelRow .role{flex:0 0 auto;color:var(--faint);font-size:12.5px}
 .channelSummary{margin:0;color:var(--muted);font-size:13px}
+.channelHint{margin:0;color:var(--faint);font-size:12.5px;line-height:1.5}
 .channelActions{justify-content:flex-start}
 .channelActions .btn{min-height:34px;padding:0 11px;font-size:12.5px}
 
@@ -687,6 +688,7 @@ kbd{
 
         <div class="choice" id="channelChoice" hidden>
           <span class="label">3 · ใช้แชนเนลไหน</span>
+          <p class="channelHint">แชนเนลที่เลือกคือแชนเนลที่จะอยู่ในภาพและในไฟล์ที่ส่งออก · เลือกน้อยลงไม่ได้ทำให้เร็วขึ้น</p>
           <!-- Collapsed by default. Nineteen checkboxes opened on arrival pushed the Start
                button off a 900 px screen, and most runs never need to touch this. The one
                line says what will happen; the panel opens for the run that wants less. -->
@@ -1092,13 +1094,13 @@ function selectedChannelIndices(){
 function paintChannelSummary(){
   var total = $("channelList").querySelectorAll("input").length;
   var selected = selectedChannelIndices().length;
-  // The number people act on is time, so put the consequence of the choice in the same
-  // line as the choice. Measured on the 19-channel reference slide: reading 6 channels
-  // per core took 1.2 s against 6.5 s for all 19, so the ratio understates the gain.
+  // This line used to promise a speed-up. It was wrong: a benchmark that always read all
+  // the channels first had warmed the cache for the subset read, and a real end-to-end run
+  // on the same slide came out 18:28 with six channels against 15:27 with all nineteen.
+  // What the choice actually decides is what ends up in the files, so say that.
   $("channelSummary").textContent = (selected >= total)
-    ? "ทุกแชนเนล " + total + " ช่อง · ช้าที่สุด แต่ได้ครบ"
-    : selected + " จาก " + total + " แชนเนล · เร็วขึ้นอย่างน้อย " +
-      (total / selected).toFixed(1) + " เท่า";
+    ? "ทุกแชนเนล " + total + " ช่อง"
+    : selected + " จาก " + total + " แชนเนล · ไฟล์ผลลัพธ์จะมีเฉพาะช่องที่เลือก";
 }
 function selectChannels(indices){
   var wanted = {};

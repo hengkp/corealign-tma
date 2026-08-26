@@ -110,6 +110,11 @@ excluded:
 | 8 | 6.0 s | 11.7 min | |
 | 16 | 6.1 s | 11.9 min | no better, and it needs the heap cap below |
 
+Those per-core figures exclude warm-up, so they understate a whole run. Measured end to end on
+the same slide on 26 Aug 2026, node2, 12 CPUs and 48 GB: **Step 2 took 15:27** for 126
+positions at 8 workers, against **44:20** for the 2-worker run of 23 Aug. That is the real
+speed change, and it shipped in v2.5.4.
+
 **It plateaus at 8.** Past that the extra workers wait on something shared, most likely the read
 path to the NAS, and only add memory pressure: each worker holds its own full-resolution crop on
 top of QuPath's shared tile cache. `orientation_workers()` therefore takes the smaller of the CPU
@@ -131,44 +136,52 @@ same 16-worker run then reported an 11,472 MB tile cache and peaked at 51 GB ins
 it was not killed. Anyone running Studio outside AppHub should set `-Xmx` themselves for the same
 reason.
 
-## Choosing the channels, and why it is the fastest knob on the run
+## Choosing the channels
 
-A 19-channel slide was costing every core a 19-channel read even when four DAPI planes drove the
-rotation and three more made the picture. Measured on node3 on 26 Aug 2026 against a 2580 px
-core-support window on the reference slide:
+The operator picks which of the slide's channels the run keeps. Those are the channels that
+end up in the presentation picture and in the exported OME-TIFF, and they are the ones the
+rotation is computed from.
 
-| Channels read | Per read | |
-|---|---|---|
-| 19 | 6.1–6.9 s | every channel, which is what every run did before this |
-| 6 | 1.23–1.47 s | four DAPI, p53 and CD31 |
+🔴 **This is not a speed feature, and an earlier version of this file said it was.** The claim
+came from a benchmark that always read all nineteen channels first and the six-channel subset
+second, at the same coordinates · the subset was reading a warm cache and looked five times
+faster. Re-run on fresh windows with the order alternating, on 26 Aug 2026:
 
-**Five times faster per core**, on a ratio of only 3.2 in data volume · skipping a plane skips
-its decompression too. Across 126 cores at 8 workers that is the difference between most of an
-hour and a few minutes, and it stacks with the worker change above.
+| Channels read | Per read, steady state |
+|---|---|
+| 19 | 5.1–5.6 s |
+| 6 | 5.1–5.7 s |
 
-Studio reads the channel names from the slide's own header. An OME-TIFF keeps its OME-XML in TIFF
-tag 270 of the first IFD, so the list is one seek: **0.155 s on the 28 GB reference slide**, no
-JVM and no Bio-Formats open, and the names came back identical to QuPath's. A `.qptiff` falls
-back to its `ScanColorTable` entries. A slide whose header says nothing simply hides the
-question, and that run behaves exactly as it did before this feature existed.
+**Ratio 1.18, inside the noise.** `TransformedServerBuilder.extractChannels` reads the whole
+region from the underlying server and copies the wanted bands out of it, so Bio-Formats still
+decodes every plane. Two full runs on the same slide, same node, same 8 workers, said the same
+thing end to end: **15:27 with all nineteen channels, 18:28 with six.** The subset is slightly
+slower, which is the extra band copy.
 
-The setup screen asks the question collapsed to one line, with every channel checked. Nineteen
-checkboxes opened on arrival pushed the Start button off a 900 px screen, and most runs never
-need to touch it. The summary line carries the consequence of the choice rather than leaving it
-implicit, because the number people act on is time.
+Keep the feature for what it is: control over what the run delivers. Do not sell it as speed.
 
-`orientation.channelIndices` carries the answer into the run: 0-based indices into the slide's
-own channel list, absent or empty meaning every channel. Step 2 swaps the server for a
+Channel names cost one seek, not a JVM. An OME-TIFF keeps its OME-XML in TIFF tag 270 of the
+first IFD: **0.155 s on the 28 GB reference slide**, and the names came back identical to
+QuPath's. A `.qptiff` falls back to its `ScanColorTable` entries. A slide whose header says
+nothing hides the question, and that run behaves exactly as it did before this feature existed.
+
+The setup screen asks it collapsed to one line, with every channel checked. Selecting every
+channel sends nothing at all: the selection is part of both identity hashes, and a list saying
+"all of them" would invalidate every core a previous run had already computed.
+
+`orientation.channelIndices` carries the answer: 0-based indices into the slide's own channel
+list, absent or empty meaning every channel. Step 2 swaps the server for a
 `TransformedServerBuilder(...).extractChannels(...)` view once, immediately after the channel
 names are first read, and re-reads the names from it. Every positional channel index downstream
-is computed after that point, so they all land in the subset's space without a single manual
-remap · which is the only version of this change that is safe to make.
+is computed after that point, so they all land in the subset's space without a manual remap.
 
 Two things this touched that are easy to get wrong. `imageStem` decides the state and output
-directory names and now comes from the original server, because a transformed server reporting a
-different name or path would silently orphan every checkpoint and re-do the whole run. And the
-selection joins both the processing and the output identity hashes, because a different set of
-channels is a different run and must never quietly reuse cores computed from a different set.
+directory names and now comes from the original server, because a transformed server reporting
+a different name or path would silently orphan every checkpoint. And the approval check
+compares the slide's name and size against Step 3's checkpoint · reading those from the channel
+view blocked every channel-selected run at *"the current grid does not match its approved
+checkpoint"* before a single core was processed. The rule is written where the swap happens:
+**sourceServer identifies the slide, server reads its pixels.**
 
 ## Running it outside AppHub
 
