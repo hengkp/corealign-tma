@@ -15,7 +15,10 @@
     Reddit mod queue     queue on the left, the item and its two decisions on the right
     ClassDojo review     media on a dark stage, the decision rail beside it
     Databricks pipeline  run header with state and duration, event log in a drawer
-    Frontify assets      filter chips and a count above the list
+    Vanta tests          verdict cards above a severity queue
+    Supabase advisor     worst severity first with a count on every group
+    Graphite inbox       collapsible groups that skip quiet items on arrival
+    Linear inbox         one clearly scoped bulk action
     AWS upload status    a summary strip of counts above the detail
     Zoho CRM migration   numbered stage tracker across the top
 
@@ -352,10 +355,22 @@ h2{font-size:17px;font-weight:750}
 /* ---------------------------------------------------------------- core review */
 .review{grid-template-columns:minmax(288px,332px) minmax(0,1fr)}
 .queue{
-  display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;min-width:0;
   border-right:1px solid var(--line);background:var(--surface);
 }
 .queueHead{padding:14px 16px 12px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.verdicts{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:8px}
+.verdictCard{
+  min-width:0;padding:10px 11px;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface-2);
+}
+.verdictCard .title{display:block;color:var(--muted);font-size:11.5px;font-weight:750}
+.verdictCard .total{display:block;font-size:23px;font-weight:850;line-height:1.2;font-variant-numeric:tabular-nums}
+.verdictCard .meta{display:block;margin-top:2px;color:var(--faint);font-size:11px;line-height:1.35}
+.verdictBreakdown{display:grid;gap:3px;margin-top:6px}
+.verdictRow{display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;color:var(--muted)}
+.verdictRow .label{min-width:0;flex:1 1 auto}
+.verdictRow .count{font-weight:800;font-variant-numeric:tabular-nums;color:var(--text)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{
   padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:700;
@@ -365,7 +380,35 @@ h2{font-size:17px;font-weight:750}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip .n{opacity:.72;margin-left:5px;font-variant-numeric:tabular-nums}
 .queueCount{font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
-.queueList{overflow-y:auto;padding:8px;display:grid;gap:6px;align-content:start}
+.queueList{min-width:0;overflow-y:auto;overflow-x:hidden;align-content:start}
+.queueGroup{border-bottom:1px solid var(--line)}
+.bandToggle{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;
+  width:100%;padding:10px 14px;text-align:left;color:var(--text);
+}
+.bandToggle:hover{background:var(--surface-2)}
+.bandToggle .label{font-size:13.5px;font-weight:780}
+.bandToggle .count{color:var(--muted);font-size:12.5px;font-weight:750;font-variant-numeric:tabular-nums}
+.bandToggle .caret{color:var(--faint);transition:transform 140ms ease}
+.bandToggle[aria-expanded="true"] .caret{transform:rotate(90deg)}
+.bandRows{display:grid;gap:4px;padding:0 8px 8px}
+.severityDot{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:var(--none)}
+.severityDot[data-band="flipped"]{background:var(--bad)}
+.severityDot[data-band="wrong"]{background:var(--bad)}
+.severityDot[data-band="slight"]{background:var(--warn)}
+.severityDot[data-band="straight"]{background:var(--ok)}
+.severityDot[data-band="missing"]{background:var(--none)}
+.queueBulk{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  padding:11px 16px;border-top:1px solid var(--line);background:var(--ok-soft);
+  color:var(--ok);text-align:left;
+}
+.queueBulk:hover:not(:disabled){background:var(--surface-2)}
+.queueBulk:disabled{cursor:default;opacity:.58}
+.queueBulk .copy{min-width:0}
+.queueBulk b{display:block;font-size:13.5px;font-weight:800}
+.queueBulk span{display:block;font-size:11.5px}
+.queueBulk svg{flex:0 0 auto}
 .btn.confirm{border-color:var(--ok);color:var(--ok)}
 .btn.confirm:hover:not(:disabled){background:var(--ok-soft)}
 .coreRow{
@@ -390,10 +433,6 @@ h2{font-size:17px;font-weight:750}
   content:"ปรับแล้ว";margin-left:7px;padding:1px 7px;border-radius:999px;
   background:var(--accent-soft);color:var(--accent-dark);font-size:10.5px;font-weight:800;vertical-align:middle;
 }
-.sDot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
-.sDot[data-s="ok"]{background:var(--ok)} .sDot[data-s="review"]{background:var(--warn)}
-.sDot[data-s="missing"]{background:var(--none)} .sDot[data-s="error"]{background:var(--bad)}
-
 .detail{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0}
 .viewer{position:relative;background:var(--stage-bg);display:flex;align-items:center;
   justify-content:center;min-height:0;min-width:0;overflow:hidden;padding:20px}
@@ -585,25 +624,11 @@ kbd{
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 @media (max-width:900px){
-  /* One column. The queue becomes a filmstrip across the top so the core being reviewed
-     still gets the space, and the detail takes the flexible row rather than the queue. */
-  .review{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
-  .queue{border-right:0;border-bottom:1px solid var(--line);grid-template-rows:auto auto}
+  /* The severity headers need to stay readable at a narrow width. A bounded queue keeps
+     its own scroll without taking the viewing area away from the selected core. */
+  .review{grid-template-columns:1fr;grid-template-rows:minmax(0,42vh) minmax(0,1fr)}
+  .queue{border-right:0;border-bottom:1px solid var(--line)}
   .queueHead{padding:10px 14px 8px}
-  .queueList{
-    display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
-    padding:8px 14px 12px;align-content:stretch;
-  }
-  .coreRow{
-    flex:0 0 88px;grid-template-columns:1fr;justify-items:center;gap:5px;
-    padding:6px;text-align:center;position:relative;
-  }
-  .coreRow .thumb{width:72px;height:72px}
-  .coreRow .sub{display:none}
-  .coreRow .nm{font-size:13px}
-  .coreRow[data-edited="true"] .nm::after{display:block;margin:2px auto 0;width:fit-content}
-  .coreRow .tick{position:absolute;top:4px;right:4px;width:18px;height:18px;background:var(--surface)}
-  .coreRow[data-checked="true"] .tick{background:var(--ok)}
 
   .gridGate{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}
   .gridStage{border-right:0;border-bottom:1px solid var(--line)}
@@ -787,10 +812,17 @@ kbd{
     <section class="panel review" data-panel="review" aria-label="ตรวจ core ที่หมุนแล้ว">
       <div class="queue">
         <div class="queueHead">
-          <div class="chips" id="filterChips"></div>
+          <div class="verdicts" id="filterChips"></div>
           <div class="queueCount" id="queueCount"></div>
         </div>
         <div class="queueList" id="queueList"></div>
+        <button class="queueBulk" id="bulkStraight" type="button" hidden>
+          <span class="copy">
+            <b id="bulkStraightLabel">ผ่านทั้งหมดที่ตรงแล้ว (0)</b>
+            <span>เอียงน้อยกว่า 5°</span>
+          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg>
+        </button>
       </div>
       <div class="detail">
         <div class="viewer">
@@ -1255,9 +1287,9 @@ $("newRun").addEventListener("click", function(){
 /* ------------------------------------------------------------------ review model */
 var model = null;      // the /api/review payload
 var reviewKey = "";    // baseRun of the model currently drawn
-var filter = "review";
 var current = 0;
 var visible = [];
+var expandedBands = {};
 var edits = {};        // core -> cumulative web adjustment in degrees
 var checked = {};      // core -> true
 var savedEdits = {};   // what the bridge already holds
@@ -1287,22 +1319,64 @@ function coreClassOf(core){
   return "error";
 }
 
-var FILTERS = [
-  {key:"review",  label:"ต้องตรวจ",       test:function(c){ return c.status === "review"; }},
-  {key:"edited",  label:"ปรับแล้ว",        test:function(c){ return isEdited(c); }},
-  {key:"ok",      label:"ผ่านแล้ว",        test:function(c){ return c.status === "ok"; }},
-  {key:"missing", label:"ไม่มีเนื้อเยื่อ", test:function(c){
-    return coreClassOf(c) === "missing" || coreClassOf(c) === "error";
-  }},
-  {key:"all",     label:"ทั้งหมด",         test:function(){ return true; }}
+var SEVERITY_BANDS = [
+  {key:"flipped",  label:"กลับหัว"},
+  {key:"wrong",    label:"เอียงมาก"},
+  {key:"slight",   label:"เอียงเล็กน้อย"},
+  {key:"straight", label:"ตรงแล้ว"},
+  {key:"missing",  label:"ไม่มีเนื้อเยื่อ"}
 ];
-function filterTest(key){
-  for (var i = 0; i < FILTERS.length; i++) if (FILTERS[i].key === key) return FILTERS[i].test;
-  return FILTERS[FILTERS.length - 1].test;
+function severityBandOf(core){
+  var kind = coreClassOf(core);
+  if (kind === "missing" || kind === "error") return "missing";
+  var residual = core.residualDeg;
+  if (residual === null || residual === undefined || !Number.isFinite(Number(residual))) return "wrong";
+  residual = Number(residual);
+  if (residual > 150) return "flipped";
+  if (residual > 20) return "wrong";
+  if (residual > 5) return "slight";
+  return "straight";
+}
+function residualSortValue(core){
+  var residual = core.residualDeg;
+  return residual === null || residual === undefined || !Number.isFinite(Number(residual))
+    ? -Infinity : Number(residual);
+}
+function groupedReviewCores(){
+  var groups = {};
+  SEVERITY_BANDS.forEach(function(band){ groups[band.key] = []; });
+  model.cores.forEach(function(core){ groups[severityBandOf(core)].push(core); });
+  SEVERITY_BANDS.forEach(function(band){
+    groups[band.key].sort(function(a, b){
+      var difference = residualSortValue(b) - residualSortValue(a);
+      return difference || Number(a.index || 0) - Number(b.index || 0);
+    });
+  });
+  return groups;
+}
+function bandsStillWaiting(){
+  var groups = groupedReviewCores();
+  for (var i = 0; i < SEVERITY_BANDS.length; i++) {
+    var key = SEVERITY_BANDS[i].key;
+    if (expandedBands[key] || key === "missing") continue;
+    var waiting = (groups[key] || []).filter(function(core){ return !checked[core.core]; });
+    if (waiting.length) return true;
+  }
+  return false;
+}
+function rebuildVisible(previous){
+  var groups = groupedReviewCores();
+  visible = [];
+  SEVERITY_BANDS.forEach(function(band){
+    if (expandedBands[band.key]) visible = visible.concat(groups[band.key]);
+  });
+  var found = visible.map(function(core){ return core.core; }).indexOf(previous);
+  current = found >= 0 ? found : Math.min(current, Math.max(0, visible.length - 1));
 }
 
 function drawReview(fresh){
   if (!model || !model.available) return;
+  var previous = visible[current] ? visible[current].core : "";
   if (fresh) {
     // A correction that CoreAlign has already applied comes back as the core's own
     // adjustment, and the corrections file still names it. Counting it as pending would
@@ -1316,89 +1390,169 @@ function drawReview(fresh){
       if (!(name in applied) || Math.abs(applied[name] - angle) >= 0.05) savedEdits[name] = angle;
     });
     loadLocal();
-    var pending = model.cores.filter(function(c){ return c.status === "review"; });
-    filter = pending.length ? "review" : "all";
+    var groups = groupedReviewCores();
+    expandedBands = {};
+    SEVERITY_BANDS.forEach(function(band){ expandedBands[band.key] = false; });
+    for (var i = 0; i < 3; i++) {
+      if (groups[SEVERITY_BANDS[i].key].length) {
+        expandedBands[SEVERITY_BANDS[i].key] = true;
+        break;
+      }
+    }
     current = 0;
+    previous = "";
   }
-  drawChips();
-  applyFilter(fresh);
-}
-function drawChips(){
-  var box = $("filterChips"); box.textContent = "";
-  FILTERS.forEach(function(item){
-    var count = model.cores.filter(item.test).length;
-    if (!count && item.key !== "all" && item.key !== filter) return;
-    var b = document.createElement("button");
-    b.type = "button"; b.className = "chip";
-    b.setAttribute("aria-pressed", String(filter === item.key));
-    b.innerHTML = '<span class="n"></span>';
-    b.insertBefore(document.createTextNode(item.label), b.firstChild);
-    b.querySelector(".n").textContent = count;
-    b.addEventListener("click", function(){
-      filter = item.key; current = 0; drawChips(); applyFilter(true);
-    });
-    box.appendChild(b);
-  });
-}
-function applyFilter(rebuild){
-  var previous = visible[current] ? visible[current].core : "";
-  visible = model.cores.filter(filterTest(filter));
-  if (!rebuild) {
-    var found = visible.map(function(c){ return c.core; }).indexOf(previous);
-    current = found >= 0 ? found : Math.min(current, Math.max(0, visible.length - 1));
-  }
+  drawVerdicts();
+  rebuildVisible(previous);
   updateQueueCount();
-  drawQueue();
+  drawQueue(true);
   drawDetail();
   drawActionBar();
 }
-function updateQueueCount(){
-  var done = visible.filter(function(c){ return checked[c.core]; }).length;
-  $("queueCount").textContent = visible.length
-    ? "ตรวจแล้ว " + done + " จาก " + visible.length
-    : "ไม่มี core ในตัวกรองนี้";
+function drawVerdicts(){
+  var groups = groupedReviewCores();
+  var straight = groups.straight.length;
+  var attention = groups.flipped.length + groups.wrong.length + groups.slight.length;
+  var withResult = model.cores.length - groups.missing.length;
+  var percentage = withResult ? Math.round(straight * 100 / withResult) : 0;
+  var box = $("filterChips");
+  box.innerHTML =
+    '<section class="verdictCard" aria-label="สรุป core ที่ตรงแล้ว">' +
+      '<span class="title">ตรงแล้ว</span><b class="total"></b><span class="meta"></span>' +
+    '</section>' +
+    '<section class="verdictCard" aria-label="สรุป core ที่ต้องดู">' +
+      '<span class="title">ต้องดู</span><b class="total"></b><div class="verdictBreakdown"></div>' +
+    '</section>';
+  var cards = box.querySelectorAll(".verdictCard");
+  cards[0].querySelector(".total").textContent = straight;
+  cards[0].querySelector(".meta").textContent = percentage + "% ของ core ที่มีผล";
+  cards[1].querySelector(".total").textContent = attention;
+  var breakdown = cards[1].querySelector(".verdictBreakdown");
+  SEVERITY_BANDS.slice(0, 3).forEach(function(band){
+    if (!groups[band.key].length) return;
+    var row = document.createElement("div");
+    row.className = "verdictRow";
+    row.innerHTML = '<i class="severityDot" data-band="' + band.key + '"></i>' +
+      '<span class="label"></span><span class="count"></span>';
+    row.querySelector(".label").textContent = band.label;
+    row.querySelector(".count").textContent = groups[band.key].length;
+    breakdown.appendChild(row);
+  });
 }
-function drawQueue(){
+function updateStraightBulk(){
+  var straight = groupedReviewCores().straight;
+  var left = straight.filter(function(core){ return !checked[core.core]; }).length;
+  var button = $("bulkStraight");
+  button.hidden = left === 0;
+  $("bulkStraightLabel").textContent = "ผ่านทั้งหมดที่ตรงแล้ว (" + left + ")";
+}
+function updateQueueCount(){
+  var groups = groupedReviewCores();
+  var left = groups.flipped.concat(groups.wrong, groups.slight).filter(function(core){
+    return !checked[core.core];
+  }).length;
+  $("queueCount").textContent = left
+    ? "เหลือ " + left + " core ที่ต้องตัดสินใจ"
+    : "ไม่เหลือ core ที่ต้องตัดสินใจ";
+  updateStraightBulk();
+  syncQueueRowStates();
+}
+function residualLabel(core){
+  var residual = residualSortValue(core);
+  return residual === -Infinity ? "เอียง ไม่ทราบ" : "เอียง " + residual.toFixed(1) + "°";
+}
+function makeCoreRow(core, index){
+  var b = document.createElement("button");
+  b.type = "button"; b.className = "coreRow";
+  b.dataset.visibleIndex = String(index);
+  b.dataset.checked = String(!!checked[core.core]);
+  b.dataset.edited = String(isEdited(core));
+  if (index === current) b.setAttribute("aria-current", "true");
+  b.innerHTML =
+    '<img class="thumb" alt="" loading="lazy" decoding="async">' +
+    '<span><span class="nm"></span><br><span class="sub"></span></span>' +
+    '<span class="tick" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24">' +
+    '<path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg></span>';
+  b.querySelector(".nm").textContent = core.core;
+  b.querySelector(".sub").textContent = residualLabel(core);
+  b.setAttribute("aria-label", core.core + " · " + residualLabel(core) +
+    (checked[core.core] ? " · ผ่านแล้ว" : ""));
+  if (core.rotated) b.querySelector(".thumb").src = "/project/" + core.rotated;
+  b.addEventListener("click", function(){
+    current = index;
+    markCurrentRow();
+    drawDetail();
+  });
+  return b;
+}
+function drawQueue(scrollCurrent){
   var list = $("queueList"); list.textContent = "";
-  visible.forEach(function(core, index){
-    var b = document.createElement("button");
-    b.type = "button"; b.className = "coreRow";
-    b.dataset.checked = String(!!checked[core.core]);
-    b.dataset.edited = String(isEdited(core));
-    if (index === current) b.setAttribute("aria-current", "true");
-    var dot = coreClassOf(core);
-    var confidence = core.confidence == null ? "–" : Math.round(core.confidence * 100) + "%";
-    b.innerHTML =
-      '<img class="thumb" alt="" loading="lazy" decoding="async">' +
-      '<span><span class="nm"></span><br>' +
-      '<span class="sub"><i class="sDot" data-s="' + dot + '"></i>ความมั่นใจ ' + confidence + '</span></span>' +
-      '<span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">' +
-      '<path d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg></span>';
-    b.querySelector(".nm").textContent = core.core;
-    if (core.rotated) b.querySelector(".thumb").src = "/project/" + core.rotated;
-    b.addEventListener("click", function(){
-      current = index;
-      markCurrentRow();
+  var groups = groupedReviewCores();
+  SEVERITY_BANDS.forEach(function(band){
+    var cores = groups[band.key];
+    if (!cores.length) return;
+    var group = document.createElement("section");
+    group.className = "queueGroup";
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "bandToggle";
+    button.setAttribute("aria-expanded", String(!!expandedBands[band.key]));
+    button.setAttribute("aria-controls", "bandRows-" + band.key);
+    button.innerHTML = '<i class="severityDot" data-band="' + band.key + '"></i>' +
+      '<span class="label"></span><span class="count"></span>' +
+      '<svg class="caret" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M13.172 12l-4.95-4.95 1.414-1.414L16 12l-6.364 6.364-1.414-1.414z"/></svg>';
+    button.querySelector(".label").textContent = band.label;
+    button.querySelector(".count").textContent = cores.length;
+    button.addEventListener("click", function(){
+      var previous = visible[current] ? visible[current].core : "";
+      expandedBands[band.key] = !expandedBands[band.key];
+      rebuildVisible(previous);
+      drawQueue(!previous);
+      updateQueueCount();
       drawDetail();
     });
-    list.appendChild(b);
+    group.appendChild(button);
+    var rows = document.createElement("div");
+    rows.className = "bandRows"; rows.id = "bandRows-" + band.key;
+    rows.hidden = !expandedBands[band.key];
+    if (expandedBands[band.key]) {
+      cores.forEach(function(core){ rows.appendChild(makeCoreRow(core, visible.indexOf(core))); });
+    }
+    group.appendChild(rows);
+    list.appendChild(group);
   });
-  var active = list.children[current];
-  if (active) active.scrollIntoView({block:"nearest"});
+  var active = currentQueueRow();
+  if (active && scrollCurrent !== false) active.scrollIntoView({block:"nearest"});
+}
+function currentQueueRow(){
+  return $("queueList").querySelector('.coreRow[data-visible-index="' + current + '"]');
+}
+function syncQueueRowStates(){
+  $("queueList").querySelectorAll(".coreRow").forEach(function(row){
+    var core = visible[Number(row.dataset.visibleIndex)];
+    if (!core) return;
+    row.dataset.checked = String(!!checked[core.core]);
+    row.dataset.edited = String(isEdited(core));
+    row.setAttribute("aria-label", core.core + " · " + residualLabel(core) +
+      (checked[core.core] ? " · ผ่านแล้ว" : ""));
+  });
 }
 function markCurrentRow(){
   var list = $("queueList");
-  for (var i = 0; i < list.children.length; i++) {
-    if (i === current) list.children[i].setAttribute("aria-current", "true");
-    else list.children[i].removeAttribute("aria-current");
-  }
-  var active = list.children[current];
+  list.querySelectorAll(".coreRow").forEach(function(row){
+    if (Number(row.dataset.visibleIndex) === current) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  });
+  var active = currentQueueRow();
   if (active) active.scrollIntoView({block:"nearest"});
 }
 function drawDetail(){
   var core = visible[current];
   $("prevCore").disabled = current <= 0;
-  $("nextCore").disabled = current >= visible.length - 1;
+  // Next stays live while any folded band still holds a core waiting for a decision · the
+  // handler opens the next band and steps into it. Disabling it at the end of the visible
+  // list is what made the review dead-end after the first three cores.
+  $("nextCore").disabled = current >= visible.length - 1 && !bandsStillWaiting();
   var img = $("viewerImg");
   if (!core) {
     img.removeAttribute("src"); img.dataset.core = "";
@@ -1442,7 +1596,7 @@ function setAngle(value, mark){
   if (Math.abs(angle - baseAngleOf(core)) < 0.05) delete edits[core.core];
   else edits[core.core] = angle;
   saveLocal();
-  var row = $("queueList").children[current];
+  var row = currentQueueRow();
   if (row) row.dataset.edited = String(isEdited(core));
   drawActionBar();
 }
@@ -1459,7 +1613,7 @@ $("resetAngle").addEventListener("click", function(){
   delete edits[core.core];
   saveLocal();
   setAngle(baseAngleOf(core), false);
-  var row = $("queueList").children[current];
+  var row = currentQueueRow();
   if (row) row.dataset.edited = "false";
   drawActionBar();
 });
@@ -1467,9 +1621,37 @@ $("prevCore").addEventListener("click", function(){
   if (current > 0) { current--; markCurrentRow(); drawDetail(); }
 });
 $("nextCore").addEventListener("click", function(){
-  if (current < visible.length - 1) { current++; markCurrentRow(); drawDetail(); }
+  if (current < visible.length - 1) { current++; markCurrentRow(); drawDetail(); return; }
+  // At the end of what is on screen. The reviewer is not finished · the next band is just
+  // folded away. Open it and step into it rather than going silent.
+  var groups = groupedReviewCores();
+  var opened = "";
+  for (var i = 0; i < SEVERITY_BANDS.length && !opened; i++) {
+    var key = SEVERITY_BANDS[i].key;
+    if (expandedBands[key] || key === "missing") continue;
+    var waiting = (groups[key] || []).filter(function(core){ return !checked[core.core]; });
+    if (waiting.length) { expandedBands[key] = true; opened = key; }
+  }
+  if (!opened) return;
+  var here = visible[current] ? visible[current].core : "";
+  rebuildVisible(here);
+  drawQueue();
+  if (current < visible.length - 1) current++;
+  markCurrentRow();
+  drawDetail();
 });
 $("confirmCore").addEventListener("click", function(){ toggleChecked(); });
+$("bulkStraight").addEventListener("click", function(){
+  var straight = groupedReviewCores().straight;
+  var pending = straight.filter(function(core){ return !checked[core.core]; });
+  if (!pending.length) return;
+  pending.forEach(function(core){ checked[core.core] = true; });
+  saveLocal();
+  updateQueueCount();
+  drawDetail();
+  drawActionBar();
+  toast("ผ่าน core ที่ตรงแล้ว " + pending.length + " core");
+});
 
 function toggleChecked(){
   var core = visible[current];
