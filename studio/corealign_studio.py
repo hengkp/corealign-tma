@@ -491,6 +491,14 @@ class Run:
         with self.lock:
             if self.state in ("running", "starting"):
                 return False
+            if self.project != slide.parent:
+                # A different project inherits nothing. Leaving state at "complete" made the
+                # next slide look finished before it had been looked at once.
+                self.state = "idle"
+                self.message = ""
+                self.process = None
+                self.started_at = 0.0
+                self.finished_at = 0.0
             self.slide = slide
             self.project = slide.parent
             self._results_cache = None
@@ -1227,7 +1235,15 @@ class Handler(BaseHTTPRequestHandler):
         target = Path(raw)
         if not raw or not inside_roots(target):
             return self.json_out({"error": "that slide is outside the allowed roots"}, 403)
-        return self.json_out(read_channels(target))
+        # Only an actual slide file has channels. A directory, a fifo or a device under an
+        # allowed root would otherwise be opened and could block the request thread.
+        try:
+            resolved = target.resolve()
+            if not (resolved.is_file() and is_slide(resolved)):
+                return self.json_out({"available": False, "channels": [], "suggested": []})
+        except OSError:
+            return self.json_out({"available": False, "channels": [], "suggested": []})
+        return self.json_out(read_channels(resolved))
 
     def browse(self, raw: str) -> None:
         target = Path(raw) if raw else (ROOTS[0] if ROOTS else Path.home())
@@ -1294,6 +1310,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out({"error": f"QuPath was not found at {QUPATH}"}, 500)
         if not Path(WORKFLOW).is_file():
             return self.json_out({"error": f"CoreAlign.groovy was not found at {WORKFLOW}"}, 500)
+        if channels:
+            # Bound the selection against the slide's own channel count. Reading the header
+            # costs one seek, and it turns "channel 999" from a run that silently drops the
+            # index and processes something else into a refusal the person can act on.
+            known = read_channels(slide).get("channels") or []
+            if known:
+                count = len(known)
+                if any(index < 0 or index >= count for index in channels):
+                    return self.json_out({"error":
+                        f"This slide has {count} channel(s), so that selection cannot be "
+                        "applied. Reload the page and choose again."}, 400)
+                if len(channels) == count and channels == list(range(count)):
+                    # Every channel in order is what a run did before this question existed.
+                    # Saying so explicitly would change both identity hashes and throw away
+                    # cores a previous run already computed.
+                    channels = None
         try:
             RUN.start(slide, tissue, output, channels)
         except RuntimeError as error:

@@ -1484,6 +1484,10 @@ System.setProperty('tma.config.detectionHash', detectionConfigHash)
 System.setProperty('tma.config.processingHash', processingHash)
 System.setProperty('tma.config.outputHash', outputHash)
 
+// setProp leaves a property untouched when the config omits the key, so a second run
+// in the same QuPath session would keep the first run's channel subset while both
+// identity hashes said every channel. Clear the ones that mean "nothing selected".
+System.clearProperty('tma.orientation.channelIndices')
 def setProp = { String key, value ->
     if (value == null) return
     String propertyValue

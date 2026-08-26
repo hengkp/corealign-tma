@@ -1221,7 +1221,14 @@ function startRun(button){
   if (!chosenSlide) { toast("เลือกสไลด์ก่อน"); return; }
   button.disabled = true;
   var payload = {slide:chosenSlide.path, tissue:tissue, output:output};
-  if (channelsAvailable) payload.channels = selectedChannelIndices();
+  // Selecting every channel is what the run already did before this question existed, so
+  // send nothing. The selection is part of both identity hashes, and a list that says "all
+  // of them" would invalidate every core a previous run had already computed.
+  if (channelsAvailable) {
+    var picked = selectedChannelIndices();
+    var everything = $("channelList").querySelectorAll("input").length;
+    if (picked.length && picked.length < everything) payload.channels = picked;
+  }
   api("/api/run", {method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify(payload)})
   .then(function(res){
@@ -1540,7 +1547,7 @@ function drawActionBar(){
   if (stage === "grid") {
     save.hidden = true;
     var gridChanges = Object.keys(gridEdits).length;
-    var gridSynced = gridChanges === gridSaved;
+    var gridSynced = gridFingerprint() === gridSaved;
     $("saveGrid").hidden = gridChanges === 0;
     $("saveGrid").disabled = gridSynced;
     if (gridChanges && gridSynced) setSaveState("บันทึกแล้ว " + gridChanges + " ตำแหน่ง", "ok");
@@ -1643,14 +1650,14 @@ function drawGrid(){
     gridKey = model.grid.gridHash;
     gridEdits = {};
     pickedCore = "";
-    gridSaved = -1;
+    gridSaved = null;
     (model.grid.savedCorrections || []).forEach(function(item){
       if (item && item.core) {
         gridEdits[item.core] = {action: item.action, centerX: item.centerX,
                                 centerY: item.centerY, diameter: item.diameter};
       }
     });
-    if (Object.keys(gridEdits).length) gridSaved = Object.keys(gridEdits).length;
+    if (Object.keys(gridEdits).length) gridSaved = gridFingerprint();
     $("gridPicked").hidden = true;
   }
   if (img.getAttribute("src") !== wanted) {
@@ -1864,6 +1871,7 @@ $("saveGrid").addEventListener("click", function(){
     return {core: name, action: edit.action, centerX: edit.centerX,
             centerY: edit.centerY, diameter: edit.diameter};
   });
+  var sentFingerprint = gridFingerprint();
   setSaveState("กำลังบันทึก...", "busy");
   api("/api/grid-corrections", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({corrections: payload})})
@@ -1872,14 +1880,24 @@ $("saveGrid").addEventListener("click", function(){
       setSaveState(res.body.error || "บันทึกไม่สำเร็จ", "bad");
       return;
     }
-    gridSaved = payload.length;
+    gridSaved = sentFingerprint;
     setSaveState("บันทึกแล้ว " + payload.length + " ตำแหน่ง", "ok");
     toast("บันทึกการแก้กริดแล้ว · กดยืนยันเพื่อให้ CoreAlign ใส่การแก้นี้");
     drawActionBar();
   });
 });
-var gridSaved = -1;
+var gridSaved = null;
 
+function gridFingerprint(){
+  // Not a count. Dragging an already-saved core leaves the count unchanged while the
+  // coordinates move, and a count comparison would call that "already saved" and let the
+  // gate through with the old position.
+  return Object.keys(gridEdits).sort().map(function(core){
+    var edit = gridEdits[core];
+    return [core, edit.action, Math.round(edit.centerX), Math.round(edit.centerY),
+            Math.round(edit.diameter || 0)].join(":");
+  }).join("|");
+}
 function metric(value, label, tone){
   var div = document.createElement("div");
   div.className = "metric";

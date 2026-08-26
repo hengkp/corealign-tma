@@ -137,3 +137,38 @@ test("the bridge address is never cached across steps", () => {
   assert.ok(!/self\.bridge_tokens\.update/.test(server),
     "discovery must replace the tokens, not merge a stale port into them");
 });
+
+// Selecting every channel is what a run did before the question existed. Saying so
+// explicitly puts a list into both identity hashes and throws away every core a previous
+// run already computed, so the all-channels case has to normalise back to silence.
+test("an all-channels selection is sent as no selection at all", () => {
+  assert.ok(page.includes("picked.length < everything"),
+    "the page must omit channels when every one of them is ticked");
+  assert.match(server, /channels == list\(range\(count\)\)/,
+    "the server must normalise an explicit full list back to None");
+  assert.match(server, /index < 0 or index >= count/,
+    "an index outside the slide's channel count must be refused, not silently dropped");
+});
+
+// Counting edits cannot tell "saved" from "changed since saved". Dragging an already-saved
+// core leaves the count at one while the coordinates move, and the gate would then go
+// through with the old position while the page said the work was saved.
+test("the grid save state compares the edits, not how many there are", () => {
+  assert.ok(page.includes("function gridFingerprint()"),
+    "the saved state needs a content fingerprint");
+  assert.ok(!/gridSynced = gridChanges === gridSaved/.test(page),
+    "comparing counts hides a re-drag of an already-saved core");
+  assert.ok(page.includes("gridSaved = sentFingerprint"),
+    "stamp what was sent, not what the edits look like when the reply lands");
+});
+
+// Picking a second slide after a finished run reported the new one as complete and sent the
+// reader straight to a results screen belonging to the previous project.
+test("attaching a different project does not inherit the last run's state", () => {
+  const body = server.slice(server.indexOf("    def attach(self"),
+                            server.indexOf("    def stop(self"));
+  assert.match(body, /if self\.project != slide\.parent:/,
+    "attach must notice it is being pointed somewhere else");
+  assert.match(body, /self\.state = "idle"/,
+    "a different project starts idle, whatever the last one ended as");
+});
