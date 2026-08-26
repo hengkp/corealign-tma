@@ -200,9 +200,9 @@ def sourceServer = imageData.getServer()
 def server = sourceServer
 def hierarchy = imageData.getHierarchy()
 if (!webCorrectionImageName.isEmpty() &&
-        webCorrectionImageName != server.getMetadata().getName()) {
+        webCorrectionImageName != sourceServer.getMetadata().getName()) {
     println "WARNING: ${webCorrectionFile.getName()} belongs to ${webCorrectionImageName}; " +
-        "ignoring it for ${server.getMetadata().getName()}."
+        "ignoring it for ${sourceServer.getMetadata().getName()}."
     webCorrectionsByCore.clear()
 }
 def channelObjs = server.getMetadata().getChannels()
@@ -223,11 +223,16 @@ if (channelSubsetActive) {
 } else {
     keptChannelIndices = allChannelIndices
 }
+
+// From here the rule is: sourceServer identifies the slide, server reads its pixels.
+// A transformed server reports its own name, and every checkpoint written by another step
+// was stamped with the slide's · mixing the two fails the approval check in Step 3 and
+// blocks the run with "the current grid does not match its approved checkpoint".
 int imgW = server.getWidth()
 int imgH = server.getHeight()
 
 println '=== Step 2: Auto-orient epidermis ==='
-println "Image: ${server.getMetadata().getName()}"
+println "Image: ${sourceServer.getMetadata().getName()}"
 println "Dimensions: ${imgW} x ${imgH} px"
 println "Channels (${sourceChannelNames.size()}): ${sourceChannelNames}"
 if (channelSubsetActive) {
@@ -308,7 +313,7 @@ try {
 } catch (Throwable ignored) {}
 if (projectDir == null)
     try {
-        def fileUri = server.getURIs().find { it != null && it.getScheme() == 'file' }
+        def fileUri = sourceServer.getURIs().find { it != null && it.getScheme() == 'file' }
         if (fileUri != null) projectDir = new File(fileUri).getParentFile()
     } catch (Throwable ignored) {}
 if (projectDir == null)
@@ -1515,11 +1520,11 @@ catch (Throwable approvalError) {
     return
 }
 String gridHash = sha256(canonicalGrid(tmaGrid))
-String imageNameForApproval = server.getMetadata().getName() ?: 'image'
+String imageNameForApproval = sourceServer.getMetadata().getName() ?: 'image'
 boolean approvalMatches = approval.status == 'APPROVED' &&
     approval.gridHash == gridHash && approval.imageName == imageNameForApproval &&
-    (approval.imageWidth as long) == server.getWidth() &&
-    (approval.imageHeight as long) == server.getHeight() &&
+    (approval.imageWidth as long) == sourceServer.getWidth() &&
+    (approval.imageHeight as long) == sourceServer.getHeight() &&
     (approval.approvalMode == 'human' ||
         ('true'.equalsIgnoreCase(System.getProperty('tma.approveForTest', 'false')) &&
             ((approval.detectionConfigHash != null &&
@@ -2234,7 +2239,7 @@ def processCore = { entry ->
     }
 
     def record = [
-        image: server.getMetadata().getName(),
+        image: sourceServer.getMetadata().getName(),
         index: i + 1,
         core: coreName,
         row: row,
@@ -2450,7 +2455,7 @@ def runManifestFile = new File(outDir, 'run_manifest.json')
 def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' : 'COMPLETE',
     startedAt: runStartedAt, completedAt: runCompletedAt,
     elapsedSeconds: elapsedSeconds, elapsed: formatDuration(elapsedSeconds),
-    image: server.getMetadata().getName(), gridHash: gridHash,
+    image: sourceServer.getMetadata().getName(), gridHash: gridHash,
     profileHash: CURRENT_PROFILE_HASH,
     processingHash: CURRENT_PROCESSING_HASH,
     outputHash: CURRENT_OUTPUT_HASH,
@@ -2564,7 +2569,7 @@ def runReport = [
     message: PARTIAL_CORE_TEST ?
         'The selected test cores finished.' :
         'Orientation processing finished successfully. The workflow paused intentionally for human review.',
-    image: server.getMetadata().getName(),
+    image: sourceServer.getMetadata().getName(),
     profileHash: CURRENT_PROFILE_HASH,
     processingHash: CURRENT_PROCESSING_HASH,
     outputHash: CURRENT_OUTPUT_HASH,
@@ -2638,7 +2643,7 @@ try { new File(exportBaseDir, 'LATEST_RUN_REPORT.txt').delete() } catch (Throwab
 def summaryFile = new File(outDir, 'workflow_summary.txt')
 summaryFile.withPrintWriter('UTF-8') { pw ->
     pw.println('TMA auto-orientation summary')
-    pw.println("Image: ${server.getMetadata().getName()}")
+    pw.println("Image: ${sourceServer.getMetadata().getName()}")
     pw.println("Cores: ${records.size()}")
     pw.println("OK: ${okCount}")
     pw.println("Review: ${reviewCount}")

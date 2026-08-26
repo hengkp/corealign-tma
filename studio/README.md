@@ -131,6 +131,45 @@ same 16-worker run then reported an 11,472 MB tile cache and peaked at 51 GB ins
 it was not killed. Anyone running Studio outside AppHub should set `-Xmx` themselves for the same
 reason.
 
+## Choosing the channels, and why it is the fastest knob on the run
+
+A 19-channel slide was costing every core a 19-channel read even when four DAPI planes drove the
+rotation and three more made the picture. Measured on node3 on 26 Aug 2026 against a 2580 px
+core-support window on the reference slide:
+
+| Channels read | Per read | |
+|---|---|---|
+| 19 | 6.1–6.9 s | every channel, which is what every run did before this |
+| 6 | 1.23–1.47 s | four DAPI, p53 and CD31 |
+
+**Five times faster per core**, on a ratio of only 3.2 in data volume · skipping a plane skips
+its decompression too. Across 126 cores at 8 workers that is the difference between most of an
+hour and a few minutes, and it stacks with the worker change above.
+
+Studio reads the channel names from the slide's own header. An OME-TIFF keeps its OME-XML in TIFF
+tag 270 of the first IFD, so the list is one seek: **0.155 s on the 28 GB reference slide**, no
+JVM and no Bio-Formats open, and the names came back identical to QuPath's. A `.qptiff` falls
+back to its `ScanColorTable` entries. A slide whose header says nothing simply hides the
+question, and that run behaves exactly as it did before this feature existed.
+
+The setup screen asks the question collapsed to one line, with every channel checked. Nineteen
+checkboxes opened on arrival pushed the Start button off a 900 px screen, and most runs never
+need to touch it. The summary line carries the consequence of the choice rather than leaving it
+implicit, because the number people act on is time.
+
+`orientation.channelIndices` carries the answer into the run: 0-based indices into the slide's
+own channel list, absent or empty meaning every channel. Step 2 swaps the server for a
+`TransformedServerBuilder(...).extractChannels(...)` view once, immediately after the channel
+names are first read, and re-reads the names from it. Every positional channel index downstream
+is computed after that point, so they all land in the subset's space without a single manual
+remap · which is the only version of this change that is safe to make.
+
+Two things this touched that are easy to get wrong. `imageStem` decides the state and output
+directory names and now comes from the original server, because a transformed server reporting a
+different name or path would silently orphan every checkpoint and re-do the whole run. And the
+selection joins both the processing and the output identity hashes, because a different set of
+channels is a different run and must never quietly reuse cores computed from a different set.
+
 ## Running it outside AppHub
 
 ```bash
@@ -168,11 +207,29 @@ CoreAlign writes its results **beside the slide it opened**. Studio checks that 
 writable before it will start, and says so plainly rather than failing halfway. A slide on a
 read-only share has to be copied into the person's locker first.
 
-## Results and export
+## Results and export: the report is the screen
 
-When a run produces files, Studio lists them by folder with a count and a size, and offers each
-folder as a zip plus one zip of everything. Files live on the cluster and the person is on a
-laptop, so this is the last mile.
+The results screen used to be a list of folders with download buttons, which meant the only way
+to find out how a run came out was to fetch a zip, unpack it, and open the generated report in
+another tab. It is now the report itself, drawn from `/api/review`: filter chips with live
+counts, a gallery of every core, and a detail view with the unrotated and rotated crops side by
+side, the angle, the confidence, the residual and the reasons. The results table is fetched and
+parsed in the browser and rendered in place.
+
+The gallery is built from the 900 px previews under `qc/02-orientation`, never from
+`results/png` · the full-resolution files are about 3.2 MB each and 377 MB per run. The
+previews are `loading="lazy"` and `fetchpriority="low"`; the two images in the detail view are
+eager and high, because 126 thumbnails will otherwise saturate the link and leave the one thing
+the person actually clicked for waiting behind them.
+
+One CSS trap worth remembering, found by looking at the rendered page rather than at the code:
+`width` and `height` attributes on an image carry a real presentational `height`, which beats
+`aspect-ratio`. Without `height:auto` every tile rendered 900 px tall and one screen became an
+18,016 px scroll.
+
+Downloads still work, one fold down. Studio lists the output folders with a count and a size and
+offers each as a zip plus one zip of everything. Files live on the cluster and the person is on a
+laptop, so this is still the last mile.
 
 The zip is streamed with chunked encoding rather than built in a temp file: a research run's PNG
 folder can be larger than anything this job should be writing twice. It is stored, not deflated,
@@ -184,6 +241,7 @@ node to save almost nothing.
 | Route | What it does |
 |---|---|
 | `GET /api/roots`, `GET /api/browse?path=` | the slide picker, sandboxed to the allowed roots with symlinks resolved |
+| `GET /api/channels?slide=` | the slide's channel names, read from the TIFF header without opening the slide |
 | `POST /api/run` | writes `corealign.config.json` and starts QuPath headless |
 | `GET /api/status` | run state plus the open gate, read from `work/state/<image>/gate.json` |
 | `GET /api/log` | tail of the run |

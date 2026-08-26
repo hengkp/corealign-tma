@@ -15,7 +15,7 @@
     "workflow:embed": "node scripts/embed-workflow.mjs",
     "workflow:verify": "node scripts/verify-embed.mjs",
     "ui:check": "node scripts/ui-harness.mjs",
-    "test": "npm run workflow:verify && node --test tests/studio-page.test.mjs && npm run build:pages && node --test tests/site-static.test.mjs",
+    "test": "npm run workflow:verify && node --test tests/studio-page.test.mjs tests/workflow-channels.test.mjs && npm run build:pages && node --test tests/site-static.test.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern out --ignore-pattern _archived"
   },
   "dependencies": {
