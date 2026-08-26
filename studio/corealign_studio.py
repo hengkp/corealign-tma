@@ -310,9 +310,10 @@ def allocated_memory_mb() -> int:
 # uncapped JVM heap was killed by Slurm at 94 GB of a 96 GB allocation.
 WORKER_MEMORY_MB = 2048
 JVM_HEADROOM_MB = 8192
-# The measurement above, not a guess. A different slide on a faster path might scale
-# further; a config can still ask for more explicitly, up to the runner's own limit of 32.
-MAX_WORKERS = 8
+# The 8 came from a 23 Aug measurement whose 16-worker arm was killed by Slurm before it
+# could be judged, so "no better past 8" was never actually established. Overridable so the
+# ceiling can be re-measured without rebuilding an image.
+MAX_WORKERS = int(os.environ.get("COREALIGN_MAX_WORKERS") or 8)
 
 
 def orientation_workers() -> int:
