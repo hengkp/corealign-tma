@@ -308,12 +308,21 @@ def allocated_memory_mb() -> int:
 # read path to the NAS, and only add memory pressure: each worker holds its own
 # full-resolution crop on top of QuPath's shared tile cache. A 16-worker run with an
 # uncapped JVM heap was killed by Slurm at 94 GB of a 96 GB allocation.
-WORKER_MEMORY_MB = 2048
+# Re-measured end to end on node2, 26 Aug 2026, on the 126-position reference slide, one run
+# at a time so they did not contend for the same NAS read path:
+#
+#      8 workers, 12 CPUs,  48 GB   Step 2 took 987 s   peak RSS  38 GB
+#     16 workers, 20 CPUs,  96 GB               662 s             75 GB
+#     32 workers, 36 CPUs, 160 GB               566 s            ~150 GB
+#
+# It does not plateau at 8. The 23 Aug measurement that said so had its 16-worker arm killed
+# by Slurm before it could be judged, and the conclusion was drawn anyway.
+#
+# Peak memory tracked ~5 GB per worker at every point, not the 2 GB this once assumed · which
+# is why the guard used to let a job ask for far more workers than its allocation could hold.
+WORKER_MEMORY_MB = 5120
 JVM_HEADROOM_MB = 8192
-# The 8 came from a 23 Aug measurement whose 16-worker arm was killed by Slurm before it
-# could be judged, so "no better past 8" was never actually established. Overridable so the
-# ceiling can be re-measured without rebuilding an image.
-MAX_WORKERS = int(os.environ.get("COREALIGN_MAX_WORKERS") or 8)
+MAX_WORKERS = int(os.environ.get("COREALIGN_MAX_WORKERS") or 32)
 
 
 def orientation_workers() -> int:

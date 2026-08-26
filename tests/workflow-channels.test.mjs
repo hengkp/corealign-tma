@@ -101,3 +101,30 @@ test("the OME writer takes its channel count and names from the view", () => {
   assert.match(writer, /server\.getMetadata\(\)\.getChannels\(\)\[c\]\.getName\(\)/,
     "and their names come from the view too");
 });
+
+// Three cores of the reference slide came out inverted · residuals of 179.92, 179.66 and
+// 179.35 degrees · and the refinement loop declined to act because it refuses any correction
+// larger than 65 degrees. That refusal is right for an arbitrary large correction and wrong
+// near 180, because scoreRgbComponentPca is a PCA estimate and PCA gives an axis, not a
+// direction. Verified on the real slide after the fix: 179.9 to 0.1, 179.7 to 0.0, 179.4 to 0.1.
+test("a residual near 180 degrees is treated as a flip, not as noise", () => {
+  assert.match(step2, /POST_ROTATION_FLIP_MIN_DEG = cfgDouble\('tma\.orientation\.postRotationFlipMinDeg', 160\.0d\)/,
+    "the flip threshold is config-backed so it can be turned off without a code change");
+  const loop = step2.slice(step2.indexOf("for (int iteration = 0; iteration < Math.max(1, POST_ROTATION_MAX_ITERATIONS)"),
+                           step2.indexOf("if (!qcAvailable) postRotationResidualDeg"));
+  assert.match(loop, /postRotationResidualDeg > 65\.0d &&\s*\n?\s*!postRotationLooksFlipped/,
+    "the 65 degree guard must still stop everything that is not a flip");
+});
+
+// A flip that turns out not to help must leave the core exactly as it would have been. The
+// angle ships in the CSV and the images ship beside it, so both have to come from the same
+// rotation · restoring one without re-rendering the other would be worse than not trying.
+test("a flip that does not help is reverted, images and all", () => {
+  const start = step2.indexOf("if (postRotationFlipAttempted)");
+  const block = step2.slice(start, start + 1400);
+  assert.match(block, /rotateRad = bestPostRotationRad/, "the best rotation is restored");
+  assert.match(block, /postRotationResidualDeg = bestPostRotationResidualDeg/,
+    "and the residual reported alongside it");
+  assert.match(block, /rotatedSupport = rotateImageAround\(rgbSupport, rotateRad/,
+    "and the images are re-rendered from it, or they would disagree with the angle");
+});
