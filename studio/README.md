@@ -126,6 +126,31 @@ The AppHub default is **24 CPUs and 128 GB**, which lands on 23 workers.
 Research OME-TIFF output still runs one core at a time, because the Bio-Formats writer is not
 thread safe.
 
+### Where the rest of the time goes, and why 3 to 5 minutes is not reachable here
+
+The other knob that matters is `orientation.exportDownsample`. Measured at 16 workers on the
+same slide:
+
+| Export | Step 2 | Per core | Output |
+|---|---|---|---|
+| full resolution | 662 s | – | 2662 x 2662 px, 395 MB |
+| half resolution | **366 s** | – | 1331 x 1331 px, 81 MB |
+
+**1.81x**, which puts the export path at roughly 60% of the per-core cost and the orientation
+analysis at the other 40%. Combining the best of both · 32 workers and half resolution ·
+extrapolates to about 313 s of orientation plus a 105 s grid step, so **about 7 minutes**.
+
+Full resolution at 32 workers is **11 minutes**. Neither reaches 3 to 5 minutes for a
+126-position slide, and saying otherwise would be a guess rather than a measurement. Quarter
+resolution would land near 6 minutes and produce 665 px cores, which is too small to be worth
+it.
+
+Two things are worth profiling before promising anything faster. The grid step is a flat
+105 to 125 s and is single-threaded, which is a quarter of a 7-minute run. And the per-core
+analysis · four independent estimators, each scoring the same core · has never been timed
+against the export path it shares a loop with.
+
+
 ### The JVM was sizing itself from the node, not the job
 
 A 16-worker run was killed by Slurm at 94 GB of a 96 GB allocation. The cause was in the log all

@@ -1,0 +1,13 @@
+=== half-res output ===
+78M	/mnt/allflash/apphub-build/scaleds2/results/png
+117
+  File "<string>", line 4
+    w,h=struct.unpack( core:, w, x, h, px)
+                           ^
+SyntaxError: invalid syntax
+=== full-res for comparison ===
+377M	/mnt/allflash/apphub-build/scale32/results/png
+  File "<string>", line 4
+    w,h=struct.unpack( core:, w, x, h, px)
+                           ^
+SyntaxError: invalid syntax
