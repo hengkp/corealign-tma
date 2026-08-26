@@ -800,7 +800,13 @@ def cropAround = { BufferedImage src, double cxImg, double cyImg, int sidePx ->
 // geometric transform uses bicubic interpolation, matching the visual export.
 def writeRotatedMultichannelOme = { BufferedImage sourceSupport,
         double radians, double cxImg, double cyImg, int sidePx, File destination ->
-    String sourcePixelType = server.getPixelType().toString()
+    // Judge the slide, not the view of it. A channel-subset server reports FLOAT32 even when
+    // the slide is UINT16 and the samples it hands back are bit-exact integers · checked on
+    // the reference slide, 4.86 million samples across six channels, zero differences and
+    // every value exactly integral. Reading the view's type refused every core in a research
+    // run with "supports UINT8/UINT16; found FLOAT32" and wrote nothing at all. A genuinely
+    // floating-point slide is still refused, which is what this guard is for.
+    String sourcePixelType = sourceServer.getPixelType().toString()
     boolean isU8 = sourcePixelType == 'UINT8'
     boolean isU16 = sourcePixelType == 'UINT16'
     if (!isU8 && !isU16)
@@ -847,6 +853,8 @@ def writeRotatedMultichannelOme = { BufferedImage sourceSupport,
         int bytesPerSample = isU8 ? 1 : 2
         int[] supportRow = new int[w]
         int[] cropRow = new int[side]
+        int maxWritable = isU8 ? 255 : 65535
+        long outOfRange = 0
         for (int c = 0; c < channels; c++) {
             def channelImage = new BufferedImage(w, h, imageType)
             def channelRaster = channelImage.getRaster()
@@ -864,12 +872,20 @@ def writeRotatedMultichannelOme = { BufferedImage sourceSupport,
                     side, 1, 0, cropRow)
                 for (int x = 0; x < side; x++) {
                     int value = cropRow[x]
+                    if (value < 0 || value > maxWritable) {
+                        outOfRange++
+                        value = Math.max(0, Math.min(maxWritable, value))
+                    }
                     plane[offset++] = (byte) (value & 0xff)
                     if (!isU8) plane[offset++] = (byte) ((value >> 8) & 0xff)
                 }
             }
             writer.saveBytes(c, plane)
         }
+        if (outOfRange > 0)
+            println "WARNING: ${destination.getName()} clamped ${outOfRange} sample(s) that " +
+                "did not fit ${sourcePixelType}. The channel view is no longer returning the " +
+                "slide's own values, and this file should not be trusted for quantification."
     } finally {
         try { writer.close() } catch (Throwable ignored) {}
     }

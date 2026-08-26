@@ -70,3 +70,34 @@ test("a different channel selection is a different run", () => {
   assert.match(output, /channelIndices/,
     "channelIndices must join the output identity: it changes the delivered files");
 });
+
+// A channel-subset server reports FLOAT32 even when the slide is UINT16, and the OME writer
+// judged the view. Every core of a research run was refused with "supports UINT8/UINT16;
+// found FLOAT32" and not one file was written. The samples are bit-exact integers · checked
+// on 4.86 million of them · so the guard has to ask the slide, not the view.
+test("the OME writer judges the slide's pixel type, not the channel view's", () => {
+  const writer = step2.slice(step2.indexOf("def writeRotatedMultichannelOme"),
+                             step2.indexOf("def scaleForPreview"));
+  assert.match(writer, /String sourcePixelType = sourceServer\.getPixelType\(\)/,
+    "the pixel type must come from the slide");
+  assert.ok(!/String sourcePixelType = server\.getPixelType\(\)/.test(writer),
+    "reading the view's type refuses every core of a channel-selected research run");
+  // The guard still has to refuse a genuinely floating-point slide.
+  assert.match(writer, /Rotated multichannel OME-TIFF supports UINT8\/UINT16/,
+    "a float slide is still not writable as an integer OME-TIFF");
+  // Truncating a float raster is exact today. Make it loud rather than silent if it stops being.
+  assert.match(writer, /outOfRange\+\+/,
+    "a sample that does not fit the target type must be counted, not quietly wrapped");
+  assert.match(writer, /should not be trusted for quantification/,
+    "and it must say so, because this file is the one people measure from");
+});
+
+// Channel count and channel names describe what is being written, so those stay on the view.
+test("the OME writer takes its channel count and names from the view", () => {
+  const writer = step2.slice(step2.indexOf("def writeRotatedMultichannelOme"),
+                             step2.indexOf("def scaleForPreview"));
+  assert.match(writer, /Math\.min\(server\.nChannels\(\), bands\)/,
+    "the file holds the selected channels, so the count comes from the view");
+  assert.match(writer, /server\.getMetadata\(\)\.getChannels\(\)\[c\]\.getName\(\)/,
+    "and their names come from the view too");
+});
