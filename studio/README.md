@@ -98,28 +98,30 @@ and the QC commentary from step 3's file when it exists.
 
 ## How fast a run is: workers come from the allocation
 
-Cores are independent of each other, so orientation processes them on a thread pool. That pool
-used to be a fixed 2 while the AppHub job held 8 CPUs, and the runner capped any request at 4.
+Cores are independent of each other, so orientation processes them on a thread pool.
 
-Measured on node3 on 23 Aug 2026, on the 117-core reference slide, steady state with warm-up
-excluded:
+Re-measured end to end on node2 on 26 Aug 2026, on the 126-position reference slide, one run
+at a time so they did not contend for the same NAS read path:
 
-| Workers | Per core | 117 cores | |
-|---|---|---|---|
-| 2 | 21.0 s | 40.9 min | the old fixed default |
-| 8 | 6.0 s | 11.7 min | |
-| 16 | 6.1 s | 11.9 min | no better, and it needs the heap cap below |
+| Workers | CPUs | Memory | Step 2 | Peak RSS |
+|---|---|---|---|---|
+| 8 | 12 | 48 GB | **987 s** | 38 GB |
+| 16 | 20 | 96 GB | **662 s** | 75 GB |
+| 32 | 36 | 160 GB | **566 s** | ~150 GB |
 
-Those per-core figures exclude warm-up, so they understate a whole run. Measured end to end on
-the same slide on 26 Aug 2026, node2, 12 CPUs and 48 GB: **Step 2 took 15:27** for 126
-positions at 8 workers, against **44:20** for the 2-worker run of 23 Aug. That is the real
-speed change, and it shipped in v2.5.4.
+🔴 **It does not plateau at 8, and an earlier version of this file said it did.** That claim
+came from a 23 Aug measurement whose 16-worker arm was killed by Slurm before it could be
+judged; the conclusion was drawn from the two arms that survived. Doubling from 8 to 16 is
+worth 1.49x and doubling again is worth a further 1.17x · diminishing, but real.
 
-**It plateaus at 8.** Past that the extra workers wait on something shared, most likely the read
-path to the NAS, and only add memory pressure: each worker holds its own full-resolution crop on
-top of QuPath's shared tile cache. `orientation_workers()` therefore takes the smaller of the CPU
-allocation less one, the memory allocation divided by 2 GB per worker after 8 GB of JVM headroom,
-and a ceiling of 8. The AppHub default is 12 CPUs and 48 GB, which lands exactly on 8 workers.
+Peak memory tracked about **5 GB per worker** at every point, not the 2 GB the guard assumed,
+which is why it would let a job ask for far more workers than its allocation could hold.
+`orientation_workers()` takes the smaller of the CPU allocation less one, the memory allocation
+less 8 GB of JVM headroom divided by 5 GB per worker, and a ceiling of 32 · which is also the
+AppHub template's CPU limit. The model reproduces each measured-safe point: 12 CPUs and 48 GB
+gives exactly 8.
+
+The AppHub default is **24 CPUs and 128 GB**, which lands on 23 workers.
 
 Research OME-TIFF output still runs one core at a time, because the Bio-Formats writer is not
 thread safe.
