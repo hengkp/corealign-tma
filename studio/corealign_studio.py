@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CoreAlign Studio: run a TMA slide from a web page, with no desktop and no QuPath GUI.
 
-The person opens one page, picks a slide, answers two questions, and presses Start. Everything
+The person opens one page, picks a slide, answers three questions, and presses Start. Everything
 after that happens in a Slurm job on a compute node: QuPath runs headless, and the two review
 gates are answered in the same page.
 
@@ -35,6 +35,7 @@ import os
 import re
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -42,6 +43,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -121,6 +123,139 @@ def is_slide(path: Path) -> bool:
     return any(name.endswith(suffix) for suffix in SLIDE_SUFFIXES)
 
 
+def tiff_description(path: Path | str, limit: int = 64 * 1024 * 1024) -> str:
+    """Read the first TIFF ImageDescription without loading the slide pixels."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(8)
+            if len(head) < 8:
+                return ""
+            order = head[:2]
+            endian = "<" if order == b"II" else ">" if order == b"MM" else None
+            if endian is None:
+                return ""
+            magic = struct.unpack(endian + "H", head[2:4])[0]
+            big = magic == 43
+            if big:
+                fh.seek(8)
+                offset = struct.unpack(endian + "Q", fh.read(8))[0]
+                fh.seek(offset)
+                count = struct.unpack(endian + "Q", fh.read(8))[0]
+                entry, tagfmt = 20, endian + "HHQQ"
+            else:
+                offset = struct.unpack(endian + "I", head[4:8])[0]
+                fh.seek(offset)
+                count = struct.unpack(endian + "H", fh.read(2))[0]
+                entry, tagfmt = 12, endian + "HHII"
+            for _ in range(count):
+                raw = fh.read(entry)
+                tag, typ, n, value = struct.unpack(tagfmt, raw[:struct.calcsize(tagfmt)])
+                if tag != 270:
+                    continue
+                if n > limit:
+                    return ""
+                inline = 4 if not big else 8
+                if n <= inline:
+                    start = struct.calcsize(tagfmt) - inline
+                    return raw[start:][:n].decode("utf-8", "replace")
+                fh.seek(value)
+                return fh.read(n).decode("utf-8", "replace")
+    except Exception:
+        # Channel metadata is an optional speed-up. A damaged header must not prevent the
+        # operator from starting the same all-channel run that worked before this feature.
+        return ""
+    return ""
+
+
+def channel_kind(name: str) -> str:
+    lowered = name.casefold()
+    if any(token in lowered for token in ("dapi", "hoechst", "nuclear")):
+        return "nuclear"
+    if re.fullmatch(r"af\d*", name.strip(), re.IGNORECASE):
+        return "autofluorescence"
+    return "marker"
+
+
+def read_channels(path: Path | str) -> dict:
+    """Return channel choices from TIFF metadata, or an unavailable response on any failure."""
+    unavailable = {"available": False, "channels": [], "suggested": []}
+    try:
+        description = tiff_description(path).rstrip("\x00")
+        if not description:
+            return unavailable
+
+        names: list[str] = []
+        source = "ome-xml"
+        try:
+            root = ET.fromstring(description)
+            pixels = next((element for element in root.iter()
+                           if element.tag.rsplit("}", 1)[-1] == "Pixels"), None)
+            elements = ([element for element in pixels
+                         if element.tag.rsplit("}", 1)[-1] == "Channel"]
+                        if pixels is not None else [])
+            found = [str(element.attrib.get("Name") or "").strip() for element in elements]
+            if found and all(found):
+                names = found
+        except (ET.ParseError, ValueError):
+            pass
+
+        if not names:
+            source = "qptiff"
+            found = []
+            pattern = re.compile(
+                r"<ScanColorTable-(\d+)\b[^>]*>(.*?)</ScanColorTable-\1\s*>",
+                re.IGNORECASE | re.DOTALL,
+            )
+            for match in pattern.finditer(description):
+                name = html.unescape(match.group(2)).strip()
+                if name:
+                    found.append((int(match.group(1)), name))
+            names = [name for _, name in sorted(found, key=lambda item: item[0])]
+
+        if not names:
+            return unavailable
+        channels = [
+            {"index": index, "name": name, "kind": channel_kind(name)}
+            for index, name in enumerate(names)
+        ]
+        suggested = [item["index"] for item in channels if item["kind"] == "nuclear"]
+        if not suggested:
+            suggested = [item["index"] for item in channels
+                         if item["kind"] != "autofluorescence"]
+        if not suggested:
+            suggested = [item["index"] for item in channels]
+        return {"available": True, "source": source,
+                "channels": channels, "suggested": suggested}
+    except Exception:
+        # Metadata from scanners varies widely. Unknown metadata means all channels, which
+        # is slower but remains correct and keeps setup usable for every existing slide.
+        return unavailable
+
+
+def validate_channels(value: object) -> list[int] | None:
+    """Keep distinct integer channel indices from an untrusted browser payload."""
+    if not isinstance(value, list):
+        return None
+    clean: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            index = item
+        elif isinstance(item, str):
+            try:
+                index = int(item)
+            except ValueError:
+                continue
+        else:
+            continue
+        if index not in seen:
+            clean.append(index)
+            seen.add(index)
+    return clean or None
+
+
 def human_size(num: int) -> str:
     step = float(num)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -197,10 +332,10 @@ def orientation_workers() -> int:
     return max(1, min(by_cpu, by_memory, MAX_WORKERS))
 
 
-def build_config(tissue: str, output: str) -> dict:
-    """The same two choices the desktop setup dialog asks, in the shape CoreAlign expects."""
+def build_config(tissue: str, output: str, channels: list[int] | None = None) -> dict:
+    """The setup choices in the shape CoreAlign expects."""
     skin = tissue == "skin"
-    return {
+    config = {
         "schemaVersion": 2,
         "activeProfile": "automatic",
         "profiles": {
@@ -264,6 +399,9 @@ def build_config(tissue: str, output: str) -> dict:
             }
         },
     }
+    if channels:
+        config["profiles"]["automatic"]["orientation"]["channelIndices"] = channels
+    return config
 
 
 class Run:
@@ -284,6 +422,7 @@ class Run:
             self.project: Path | None = None
             self.tissue = "skin"
             self.output = "presentation"
+            self.channels: list[int] | None = None
             self.process: subprocess.Popen | None = None
             self._results_cache: tuple[float, list[dict]] | None = None
             self.log_path: Path | None = None
@@ -294,13 +433,15 @@ class Run:
             self.bridge_tokens: dict[str, str] = {}
 
     # -- lifecycle ----------------------------------------------------------
-    def start(self, slide: Path, tissue: str, output: str) -> None:
+    def start(self, slide: Path, tissue: str, output: str,
+              channels: list[int] | None = None) -> None:
         with self.lock:
             if self.state in ("running", "starting"):
                 raise RuntimeError("a run is already in progress")
             project = slide.parent
             config = project / "corealign.config.json"
-            config.write_text(json.dumps(build_config(tissue, output), indent=2) + "\n", "utf-8")
+            config.write_text(
+                json.dumps(build_config(tissue, output, channels), indent=2) + "\n", "utf-8")
 
             work = project / "work"
             work.mkdir(exist_ok=True)
@@ -333,6 +474,7 @@ class Run:
             self._results_cache = None
             self.tissue = tissue
             self.output = output
+            self.channels = list(channels) if channels else None
             self.state = "running"
             self.started_at = time.time()
             self.finished_at = 0.0
@@ -352,6 +494,7 @@ class Run:
             self.slide = slide
             self.project = slide.parent
             self._results_cache = None
+            self.channels = None
             log = slide.parent / "work" / "studio-run.log"
             self.log_path = log if log.is_file() else None
             self.bridge_base = ""
@@ -901,6 +1044,7 @@ class Run:
                 "project": str(self.project) if self.project else "",
                 "tissue": self.tissue,
                 "output": self.output,
+                "channels": self.channels,
                 "elapsedSeconds": elapsed,
                 "gate": gate,
                 # A question from a run that has since died. Not answerable, but worth
@@ -1013,6 +1157,8 @@ class Handler(BaseHTTPRequestHandler):
                      "writable": os.access(root, os.W_OK)} for root in ROOTS]})
             if route == "/api/browse":
                 return self.browse(query.get("path", [""])[0])
+            if route == "/api/channels":
+                return self.channel_list(query.get("slide", [""])[0])
             if route == "/api/status":
                 return self.json_out(RUN.snapshot())
             if route == "/api/log":
@@ -1077,6 +1223,12 @@ class Handler(BaseHTTPRequestHandler):
             self.json_out({"error": str(error)}, 500)
 
     # -- handlers -----------------------------------------------------------
+    def channel_list(self, raw: str) -> None:
+        target = Path(raw)
+        if not raw or not inside_roots(target):
+            return self.json_out({"error": "that slide is outside the allowed roots"}, 403)
+        return self.json_out(read_channels(target))
+
     def browse(self, raw: str) -> None:
         target = Path(raw) if raw else (ROOTS[0] if ROOTS else Path.home())
         if not inside_roots(target):
@@ -1122,6 +1274,7 @@ class Handler(BaseHTTPRequestHandler):
         slide = Path(str(payload.get("slide") or ""))
         tissue = "skin" if payload.get("tissue") != "other" else "other"
         output = "research" if payload.get("output") == "research" else "presentation"
+        channels = validate_channels(payload.get("channels"))
         if not slide.name or not inside_roots(slide):
             target = ""
             try:
@@ -1142,7 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
         if not Path(WORKFLOW).is_file():
             return self.json_out({"error": f"CoreAlign.groovy was not found at {WORKFLOW}"}, 500)
         try:
-            RUN.start(slide, tissue, output)
+            RUN.start(slide, tissue, output, channels)
         except RuntimeError as error:
             return self.json_out({"error": str(error)}, 409)
         return self.json_out(RUN.snapshot())

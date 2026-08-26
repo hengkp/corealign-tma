@@ -186,6 +186,28 @@ h2{font-size:17px;font-weight:750}
 .segmented button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .segmented .t{display:block;font-weight:750;font-size:14.5px}
 .segmented .d{display:block;margin-top:2px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.channelBrief{
+  display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  color:inherit;font:inherit;text-align:left;cursor:pointer
+}
+.channelBrief:hover{border-color:var(--accent)}
+.channelBrief .channelSummary{flex:1 1 auto;min-width:0}
+.channelBrief .chev{flex:0 0 auto;color:var(--accent);font-size:12.5px;font-weight:700}
+.channelPanel{display:grid;gap:10px;margin-top:10px}
+.channelList{
+  display:grid;max-height:232px;overflow-y:auto;border:1px solid var(--line);
+  border-radius:12px;background:var(--surface);
+}
+.channelRow{display:flex;align-items:center;gap:11px;padding:10px 13px;cursor:pointer}
+.channelRow + .channelRow{border-top:1px solid var(--line)}
+.channelRow:hover{background:var(--surface-2)}
+.channelRow input{width:17px;height:17px;flex:0 0 auto;margin:0;accent-color:var(--accent)}
+.channelRow .name{flex:1 1 auto;min-width:0;font-size:14px;font-weight:650}
+.channelRow .role{flex:0 0 auto;color:var(--faint);font-size:12.5px}
+.channelSummary{margin:0;color:var(--muted);font-size:13px}
+.channelActions{justify-content:flex-start}
+.channelActions .btn{min-height:34px;padding:0 11px;font-size:12.5px}
 
 .priorRun{
   display:flex;align-items:center;gap:14px;padding:13px 15px;border-radius:12px;
@@ -427,14 +449,99 @@ kbd{
 .saveState[data-tone="ok"]{color:var(--ok)}
 
 /* ---------------------------------------------------------------- export */
-.export{overflow-y:auto;padding:26px 24px;align-content:start}
-.exportInner{width:100%;max-width:1000px;margin:0 auto;display:grid;gap:16px}
+.export{overflow-y:auto;overflow-x:hidden;padding:26px 24px;align-content:start}
+.exportInner{width:100%;max-width:1180px;min-width:0;margin:0 auto;display:grid;gap:16px}
+.exportReport{display:grid;gap:14px;min-width:0}
+.exportChips{padding-top:1px}
+.resultGallery{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,148px),1fr));
+  gap:12px;min-width:0;
+}
+.resultTile{
+  min-width:0;overflow:hidden;text-align:left;border:1px solid var(--line);
+  border-radius:12px;background:var(--surface);box-shadow:var(--shadow);
+}
+.resultTile:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.resultThumb{
+  /* height:auto is load-bearing. The width/height attributes carry a real presentational
+     height:900px, and aspect-ratio only applies while one axis is auto, so without this
+     every tile renders 900 px tall and the gallery becomes an 18,000 px scroll. */
+  display:block;width:100%;height:auto;aspect-ratio:1;background:var(--stage-bg);
+  object-fit:contain;
+}
+.resultPlaceholder{
+  display:grid;place-items:center;width:100%;aspect-ratio:1;padding:14px;
+  background:var(--surface-2);color:var(--faint);font-size:12.5px;text-align:center;
+}
+.resultTileMeta{display:grid;gap:3px;padding:9px 10px 10px;min-width:0}
+.resultTileName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:750}
+/* Reserve the status line on every tile. Only the flagged ones carry a word, and
+   letting the others collapse gives the gallery a ragged bottom edge that reads as
+   broken rather than as "this one is fine". */
+.resultState{min-height:15px;font-size:11.5px;color:var(--muted)}
+.resultState .sDot{margin-right:5px}
+.exportQuiet{margin:0;color:var(--muted);font-size:13.5px}
+.resultSection{
+  min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  overflow:hidden;
+}
+.resultSection > summary{
+  display:flex;align-items:center;gap:9px;padding:13px 15px;cursor:pointer;
+  color:var(--text);font-weight:750;list-style:none;
+}
+.resultSection > summary::-webkit-details-marker{display:none}
+.resultSection > summary::before{content:"›";color:var(--faint);font-size:20px;line-height:1;transition:transform 140ms ease}
+.resultSection[open] > summary::before{transform:rotate(90deg)}
+.resultSection > summary:hover{background:var(--surface-2)}
+.resultSectionBody{min-width:0;padding:0 15px 15px;border-top:1px solid var(--line)}
+.resultSectionBody > .exportQuiet{padding-top:14px}
+.resultTableWrap{max-width:100%;max-height:440px;overflow:auto;margin-top:14px;border:1px solid var(--line);border-radius:9px}
+.resultTable{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.resultTable th,.resultTable td{
+  max-width:360px;padding:7px 10px;border-right:1px solid var(--line);
+  border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap;
+}
+.resultTable th{position:sticky;top:0;z-index:1;background:var(--surface-2);font-weight:750}
+.resultTable tr:last-child td{border-bottom:0}
+.resultTable th:last-child,.resultTable td:last-child{border-right:0}
 .groupList{display:grid;gap:9px}
-.group{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.group{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+.group:last-child{border-bottom:0}
 .group .txt{flex:1 1 auto;min-width:0}
 .group .txt b{display:block;font-weight:750;font-size:14.5px}
 .group .txt span{display:block;color:var(--muted);font-size:12.5px}
 .group .cnt{color:var(--faint);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.downloadAll{justify-content:flex-end;margin-top:14px}
+.newRunRow{justify-content:flex-start}
+
+.resultDialog{
+  width:min(1040px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;
+  overflow:hidden;border:1px solid var(--line);border-radius:16px;
+  background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg);
+}
+.resultDialog::backdrop{background:color-mix(in srgb,var(--stage-bg) 74%,transparent)}
+.resultDialogLayout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:calc(100dvh - 34px)}
+.resultDialogHead{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.resultDialogHead h2{flex:1 1 auto;min-width:0}
+.resultCompare{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0;overflow-y:auto;padding:16px}
+.resultCompare figure{min-width:0;margin:0;display:grid;gap:7px;align-content:start}
+.resultCompare figcaption{font-size:13px;font-weight:750;color:var(--muted)}
+.resultCompareFrame{
+  display:grid;place-items:center;aspect-ratio:1;min-width:0;overflow:hidden;
+  border-radius:10px;background:var(--stage-bg);
+}
+.resultCompareFrame img{display:block;width:100%;height:100%;object-fit:contain}
+.resultCompareFrame .resultPlaceholder{background:transparent;color:var(--faint)}
+.resultDialogInfo{grid-column:1/-1;display:grid;gap:12px;min-width:0}
+.resultFacts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0}
+.resultFacts div{min-width:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)}
+.resultFacts dt{font-size:11.5px;color:var(--muted)}
+.resultFacts dd{margin:2px 0 0;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.resultReasons{margin:4px 0 0;padding-left:22px;color:var(--muted);font-size:13px}
+.resultDownload{width:max-content;color:var(--accent-dark);font-size:13px;text-decoration:none;font-weight:700}
+.resultDownload:hover{text-decoration:underline}
+.resultDialogFoot{display:flex;align-items:center;gap:9px;padding:12px 16px;border-top:1px solid var(--line)}
+.resultDialogPosition{color:var(--faint);font-size:12.5px;font-variant-numeric:tabular-nums}
 
 /* ---------------------------------------------------------------- log drawer */
 .logDrawer{background:var(--surface);border-top:1px solid var(--line)}
@@ -489,6 +596,11 @@ kbd{
   .sideRail{max-height:44vh;padding:16px}
   .actionBar{flex-wrap:wrap}
   .actionBar .ask{flex:1 1 100%}
+  .group{align-items:flex-start;flex-wrap:wrap}
+  .group .txt{flex-basis:100%}
+  .resultCompare{grid-template-columns:1fr}
+  .resultDialogInfo{grid-column:1}
+  .resultFacts{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -523,11 +635,11 @@ kbd{
       <div class="pickerBody"><div class="fileList" id="fileList"></div></div>
     </section>
 
-    <!-- 2 ------------------------------------------------------------- two choices -->
+    <!-- 2 ------------------------------------------------------------ three choices -->
     <section class="panel center" data-panel="setup" aria-label="ตั้งค่าก่อนเริ่ม">
       <div class="card rowGap">
         <div>
-          <h1>ตอบสองข้อ แล้วกดเริ่ม</h1>
+          <h1>ตอบสามข้อ แล้วกดเริ่ม</h1>
           <p class="lede" id="setupSlide"></p>
         </div>
 
@@ -556,6 +668,24 @@ kbd{
               <span class="t">ไฟล์สำหรับวิเคราะห์ต่อ</span>
               <span class="d">OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า</span>
             </button>
+          </div>
+        </div>
+
+        <div class="choice" id="channelChoice" hidden>
+          <span class="label">3 · ใช้แชนเนลไหน</span>
+          <!-- Collapsed by default. Nineteen checkboxes opened on arrival pushed the Start
+               button off a 900 px screen, and most runs never need to touch this. The one
+               line says what will happen; the panel opens for the run that wants less. -->
+          <button class="channelBrief" type="button" id="channelToggle" aria-expanded="false">
+            <span class="channelSummary" id="channelSummary" aria-live="polite"></span>
+            <span class="chev" id="channelToggleWord">เปลี่ยน</span>
+          </button>
+          <div class="channelPanel" id="channelPanel" hidden>
+            <div class="channelList" id="channelList"></div>
+            <div class="controlsRow channelActions">
+              <button class="btn quiet" type="button" id="suggestedChannels">เฉพาะนิวเคลียส</button>
+              <button class="btn quiet" type="button" id="allChannels">ทุกแชนเนล</button>
+            </div>
           </div>
         </div>
 
@@ -702,16 +832,86 @@ kbd{
           <p class="lede" id="exportPath"></p>
         </div>
         <div class="strip" id="exportStrip"></div>
-        <div class="groupList" id="groupList"></div>
-        <div class="controlsRow">
+        <p class="exportQuiet" id="exportUnavailable" hidden>รายงานราย core ไม่มีสำหรับการรันครั้งนี้</p>
+
+        <div class="exportReport" id="exportReport">
+          <div class="chips exportChips" id="exportChips" aria-label="กรองผลลัพธ์"></div>
+          <div class="resultGallery" id="exportGallery"></div>
+          <p class="exportQuiet" id="exportGalleryEmpty" hidden>ไม่มี core ในตัวกรองนี้</p>
+        </div>
+
+        <details class="resultSection" id="resultTableSection">
+          <summary>ตารางผลลัพธ์</summary>
+          <div class="resultSectionBody">
+            <p class="exportQuiet" id="resultTableState">เปิดส่วนนี้เพื่ออ่านตารางผลลัพธ์</p>
+            <div class="resultTableWrap" id="resultTableWrap" hidden>
+              <table class="resultTable" id="resultTable"></table>
+            </div>
+          </div>
+        </details>
+
+        <details class="resultSection" id="downloadSection">
+          <summary>ดาวน์โหลดไฟล์</summary>
+          <div class="resultSectionBody">
+            <div class="groupList" id="groupList"></div>
+            <div class="controlsRow downloadAll">
+              <button class="btn primary big" id="zipAll">
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
+                ดาวน์โหลดทั้งหมดเป็น zip
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <div class="controlsRow newRunRow">
           <button class="btn quiet" id="newRun">เริ่มสไลด์ใหม่</button>
-          <span class="spacer"></span>
-          <button class="btn primary big" id="zipAll">
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
-            ดาวน์โหลดทั้งหมดเป็น zip
-          </button>
         </div>
       </div>
+
+      <dialog class="resultDialog" id="exportDialog" aria-labelledby="exportDialogTitle">
+        <div class="resultDialogLayout">
+          <header class="resultDialogHead">
+            <h2 id="exportDialogTitle">รายละเอียด core</h2>
+            <button class="iconBtn" id="closeExportDialog" aria-label="ปิดรายละเอียด">
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
+            </button>
+          </header>
+          <div class="resultCompare">
+            <figure>
+              <figcaption>ก่อนหมุน</figcaption>
+              <div class="resultCompareFrame">
+                <img id="beforeResultImg" alt="" loading="eager" fetchpriority="high" decoding="async" width="900" height="900" hidden>
+                <span class="resultPlaceholder" id="beforeResultPlaceholder">ไม่มีภาพตัวอย่าง</span>
+              </div>
+            </figure>
+            <figure>
+              <figcaption>หลังหมุน</figcaption>
+              <div class="resultCompareFrame">
+                <img id="afterResultImg" alt="" loading="eager" fetchpriority="high" decoding="async" width="900" height="900" hidden>
+                <span class="resultPlaceholder" id="afterResultPlaceholder">ไม่มีภาพตัวอย่าง</span>
+              </div>
+            </figure>
+            <div class="resultDialogInfo">
+              <dl class="resultFacts">
+                <div><dt>มุมที่หมุน</dt><dd id="resultRotation">–</dd></div>
+                <div><dt>ความมั่นใจ</dt><dd id="resultConfidence">–</dd></div>
+                <div><dt>มุมที่เหลือ</dt><dd id="resultResidual">–</dd></div>
+              </dl>
+              <div id="resultReasonsBox" hidden>
+                <b>เหตุผลที่ต้องดู</b>
+                <ul class="resultReasons" id="resultReasons"></ul>
+              </div>
+              <a class="resultDownload" id="resultDownload" href="#" download>ดาวน์โหลด PNG ความละเอียดเต็มของ core นี้</a>
+            </div>
+          </div>
+          <footer class="resultDialogFoot">
+            <button class="btn" id="exportPrev">← ก่อนหน้า</button>
+            <button class="btn" id="exportNext">ถัดไป →</button>
+            <span class="spacer"></span>
+            <span class="resultDialogPosition" id="exportDialogPosition"></span>
+          </footer>
+        </div>
+      </dialog>
     </section>
 
   </main>
@@ -806,6 +1006,7 @@ function paintStages(){
   });
 }
 function setStage(next){
+  if (next !== "export" && $("exportDialog").open) $("exportDialog").close();
   stage = next;
   reached[next === "grid" ? "review" : next] = true;
   document.querySelectorAll(".panel").forEach(function(panel){
@@ -816,6 +1017,7 @@ function setStage(next){
 
 /* ------------------------------------------------------------------ picker */
 var chosenSlide = null, tissue = "skin", output = "presentation";
+var channelsAvailable = false, channelSuggested = [];
 
 function browse(path){
   api("/api/browse?path=" + encodeURIComponent(path || "")).then(function(res){
@@ -865,12 +1067,90 @@ function fileRow(kind, name, meta, blocked, onClick){
   if (!blocked) b.addEventListener("click", onClick);
   return b;
 }
+function selectedChannelIndices(){
+  return Array.prototype.map.call(
+    $("channelList").querySelectorAll("input:checked"),
+    function(input){ return Number(input.dataset.index); }
+  ).sort(function(a, b){ return a - b; });
+}
+function paintChannelSummary(){
+  var total = $("channelList").querySelectorAll("input").length;
+  var selected = selectedChannelIndices().length;
+  // The number people act on is time, so put the consequence of the choice in the same
+  // line as the choice. Measured on the 19-channel reference slide: reading 6 channels
+  // per core took 1.2 s against 6.5 s for all 19, so the ratio understates the gain.
+  $("channelSummary").textContent = (selected >= total)
+    ? "ทุกแชนเนล " + total + " ช่อง · ช้าที่สุด แต่ได้ครบ"
+    : selected + " จาก " + total + " แชนเนล · เร็วขึ้นอย่างน้อย " +
+      (total / selected).toFixed(1) + " เท่า";
+}
+function selectChannels(indices){
+  var wanted = {};
+  indices.forEach(function(index){ wanted[String(index)] = true; });
+  $("channelList").querySelectorAll("input").forEach(function(input){
+    input.checked = !!wanted[input.dataset.index];
+  });
+  paintChannelSummary();
+}
+function loadChannels(slide){
+  var path = slide.path;
+  channelsAvailable = false;
+  channelSuggested = [];
+  $("channelChoice").hidden = true;
+  $("channelPanel").hidden = true;
+  $("channelToggle").setAttribute("aria-expanded", "false");
+  $("channelToggleWord").textContent = "เปลี่ยน";
+  $("channelList").textContent = "";
+  api("/api/channels?slide=" + encodeURIComponent(path)).then(function(res){
+    if (!chosenSlide || chosenSlide.path !== path) return;
+    var data = res.body || {};
+    if (!res.ok || !data.available || !Array.isArray(data.channels) || !data.channels.length)
+      return;
+
+    var list = $("channelList");
+    var roleWords = {
+      nuclear:"นิวเคลียส",
+      autofluorescence:"ออโตฟลูออเรสเซนซ์",
+      marker:"มาร์กเกอร์"
+    };
+    data.channels.forEach(function(channel){
+      var row = document.createElement("label");
+      row.className = "channelRow";
+      var input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.index = String(channel.index);
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = String(channel.name || "");
+      var role = document.createElement("span");
+      role.className = "role";
+      role.textContent = roleWords[channel.kind] || roleWords.marker;
+      row.appendChild(input);
+      row.appendChild(name);
+      row.appendChild(role);
+      list.appendChild(row);
+    });
+    channelSuggested = (Array.isArray(data.suggested) ? data.suggested : []).map(Number);
+    if (!channelSuggested.length) {
+      channelSuggested = Array.prototype.map.call(list.querySelectorAll("input"),
+        function(input){ return Number(input.dataset.index); });
+    }
+    channelsAvailable = true;
+    selectChannels(Array.prototype.map.call(list.querySelectorAll("input"),
+      function(input){ return Number(input.dataset.index); }));
+    $("channelPanel").hidden = true;
+    $("channelToggle").setAttribute("aria-expanded", "false");
+    $("channelToggleWord").textContent = "เปลี่ยน";
+    $("channelChoice").hidden = false;
+  });
+}
 function pick(slide){
   chosenSlide = slide;
   $("slideName").textContent = slide.name;
   $("setupSlide").textContent = slide.path;
   reached.setup = true;
   setStage("setup");
+  loadChannels(slide);
   // If this folder has been through CoreAlign before, show what is already there rather
   // than making a person run it again to find out.
   model = null; reviewKey = ""; lastGateId = "";
@@ -878,6 +1158,14 @@ function pick(slide){
     body:JSON.stringify({slide:slide.path})}).then(function(){ poll(); });
 }
 
+function reasonWords(reason){
+  var text = String(reason || "").trim();
+  var residual = /^residual\s+([\d.]+)\s*deg$/i.exec(text);
+  if (residual) return "หมุนแล้วยังเอียงอยู่ " + residual[1] + "°";
+  if (/^orientation status review$/i.test(text)) return "มุมหมุนยังไม่มั่นใจ";
+  if (/^crop region review$/i.test(text)) return "กรอบครอปยังไม่นิ่ง";
+  return text;
+}
 function segmented(containerId, onChange){
   $(containerId).addEventListener("click", function(event){
     var button = event.target.closest("button[data-value]");
@@ -890,14 +1178,36 @@ function segmented(containerId, onChange){
 }
 segmented("tissueChoice", function(value){ tissue = value; });
 segmented("outputChoice", function(value){ output = value; });
+$("channelList").addEventListener("change", function(event){
+  var input = event.target.closest("input[type=checkbox]");
+  if (!input) return;
+  if (!input.checked && !selectedChannelIndices().length) {
+    input.checked = true;
+    toast("ต้องเลือกอย่างน้อยหนึ่งแชนเนล");
+  }
+  paintChannelSummary();
+});
+$("allChannels").addEventListener("click", function(){
+  selectChannels(Array.prototype.map.call($("channelList").querySelectorAll("input"),
+    function(input){ return Number(input.dataset.index); }));
+});
+$("suggestedChannels").addEventListener("click", function(){ selectChannels(channelSuggested); });
+$("channelToggle").addEventListener("click", function(){
+  var open = $("channelPanel").hidden;
+  $("channelPanel").hidden = !open;
+  this.setAttribute("aria-expanded", open ? "true" : "false");
+  $("channelToggleWord").textContent = open ? "ปิด" : "เปลี่ยน";
+});
 $("backToPicker").addEventListener("click", function(){ setStage("slide"); });
 $("openPrior").addEventListener("click", function(){ setStage("review"); drawActionBar(); });
 
 function startRun(button){
   if (!chosenSlide) { toast("เลือกสไลด์ก่อน"); return; }
   button.disabled = true;
+  var payload = {slide:chosenSlide.path, tissue:tissue, output:output};
+  if (channelsAvailable) payload.channels = selectedChannelIndices();
   api("/api/run", {method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({slide:chosenSlide.path, tissue:tissue, output:output})})
+    body:JSON.stringify(payload)})
   .then(function(res){
     button.disabled = false;
     if (!res.ok) { toast(res.body.error || "เริ่มไม่สำเร็จ"); return; }
@@ -945,12 +1255,20 @@ function saveLocal(){
 function baseAngleOf(core){ return Number(core.adjustmentDeg || 0); }
 function angleOf(core){ return core.core in edits ? Number(edits[core.core]) : baseAngleOf(core); }
 function isEdited(core){ return Math.abs(angleOf(core) - baseAngleOf(core)) >= 0.05; }
+function coreClassOf(core){
+  if (core.status === "ok") return "ok";
+  if (core.status === "review") return "review";
+  if (core.status === "missing") return "missing";
+  return "error";
+}
 
 var FILTERS = [
   {key:"review",  label:"ต้องตรวจ",       test:function(c){ return c.status === "review"; }},
   {key:"edited",  label:"ปรับแล้ว",        test:function(c){ return isEdited(c); }},
   {key:"ok",      label:"ผ่านแล้ว",        test:function(c){ return c.status === "ok"; }},
-  {key:"missing", label:"ไม่มีเนื้อเยื่อ", test:function(c){ return c.status !== "ok" && c.status !== "review"; }},
+  {key:"missing", label:"ไม่มีเนื้อเยื่อ", test:function(c){
+    return coreClassOf(c) === "missing" || coreClassOf(c) === "error";
+  }},
   {key:"all",     label:"ทั้งหมด",         test:function(){ return true; }}
 ];
 function filterTest(key){
@@ -1023,9 +1341,7 @@ function drawQueue(){
     b.dataset.checked = String(!!checked[core.core]);
     b.dataset.edited = String(isEdited(core));
     if (index === current) b.setAttribute("aria-current", "true");
-    var dot = core.status === "ok" ? "ok"
-      : (core.status === "review" ? "review"
-      : (core.status === "missing" ? "missing" : "error"));
+    var dot = coreClassOf(core);
     var confidence = core.confidence == null ? "–" : Math.round(core.confidence * 100) + "%";
     b.innerHTML =
       '<img class="thumb" alt="" loading="lazy" decoding="async">' +
@@ -1079,7 +1395,7 @@ function drawDetail(){
   $("coreFacts").textContent = "แถว " + core.row + " คอลัมน์ " + core.col +
     " · หมุนอัตโนมัติ " + applied + " · ความมั่นใจ " + confidence + " · เหลือเอียง " + residual;
   $("viewerTag").textContent = core.core + "  ·  " + (current + 1) + "/" + visible.length;
-  var reason = (core.reasons || []).join(" · ");
+  var reason = (core.reasons || []).map(reasonWords).join(" · ");
   $("coreReason").hidden = !reason;
   $("coreReason").textContent = reason;
   setAngle(angleOf(core), false);
@@ -1559,17 +1875,274 @@ function metric(value, label, tone){
 }
 
 /* ------------------------------------------------------------------ export */
-function drawExport(status){
-  $("exportPath").textContent = status.project || "";
-  var counts = model && model.counts ? model.counts : null;
-  $("exportStrip").innerHTML = counts
-    ? metric(counts.positions || 0, "ตำแหน่งทั้งหมด", "") +
-      metric(counts.ok || 0, "ผ่าน QC อัตโนมัติ", "ok") +
-      metric(counts.review || 0, "เคยถูกทัก", "warn") +
-      metric(counts.missing || 0, "ไม่มีเนื้อเยื่อ", "none")
-    : "";
-  var list = $("groupList"); list.textContent = "";
-  (status.results || []).forEach(function(group){
+var EXPORT_FILTERS = [
+  {key:"all",     label:"ทั้งหมด",       test:function(){ return true; }},
+  {key:"ok",      label:"ผ่าน",          test:function(c){ return coreClassOf(c) === "ok"; }},
+  {key:"review",  label:"ต้องดูซ้ำ",      test:function(c){ return coreClassOf(c) === "review"; }},
+  {key:"error",   label:"ไม่สำเร็จ",      test:function(c){ return coreClassOf(c) === "error"; }},
+  {key:"missing", label:"ตำแหน่งว่าง",    test:function(c){ return coreClassOf(c) === "missing"; }}
+];
+var exportFilter = "all", exportVisible = [], exportDialogIndex = 0;
+var exportDrawnModel = null, exportProject = "", exportGroups = [];
+var exportGroupsDetailed = false, exportTableLoad = "idle", exportDialogSource = null;
+
+function projectUrl(path){
+  return "/project/" + String(path || "").split("/").map(encodeURIComponent).join("/");
+}
+function degreeText(value){
+  if (value == null || value === "" || !Number.isFinite(Number(value))) return "–";
+  return Number(value).toFixed(1) + "°";
+}
+function confidenceText(value){
+  if (value == null || value === "" || !Number.isFinite(Number(value))) return "–";
+  return Math.round(Number(value) * 100) + "%";
+}
+function exportFilterTest(key){
+  for (var i = 0; i < EXPORT_FILTERS.length; i++) {
+    if (EXPORT_FILTERS[i].key === key) return EXPORT_FILTERS[i].test;
+  }
+  return EXPORT_FILTERS[0].test;
+}
+function exportStatusWord(kind){
+  if (kind === "review") return "ต้องดูซ้ำ";
+  if (kind === "error") return "ไม่สำเร็จ";
+  if (kind === "missing") return "ตำแหน่งว่าง";
+  return "ผ่าน";
+}
+function drawExportChips(){
+  var box = $("exportChips");
+  box.textContent = "";
+  EXPORT_FILTERS.forEach(function(item){
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.setAttribute("aria-pressed", String(exportFilter === item.key));
+    button.appendChild(document.createTextNode(item.label));
+    var count = document.createElement("span");
+    count.className = "n";
+    count.textContent = (model.cores || []).filter(item.test).length;
+    button.appendChild(count);
+    button.addEventListener("click", function(){
+      exportFilter = item.key;
+      if ($("exportDialog").open) $("exportDialog").close();
+      drawExportChips();
+      drawExportGallery();
+    });
+    box.appendChild(button);
+  });
+}
+function drawExportGallery(){
+  exportVisible = (model.cores || []).filter(exportFilterTest(exportFilter));
+  var gallery = $("exportGallery");
+  gallery.textContent = "";
+  exportVisible.forEach(function(core, index){
+    var tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "resultTile";
+    tile.setAttribute("aria-label", "เปิดรายละเอียด core " + core.core);
+    if (core.rotated) {
+      var image = document.createElement("img");
+      image.className = "resultThumb";
+      image.src = projectUrl(core.rotated);
+      image.alt = core.core;
+      image.loading = "lazy";
+      image.decoding = "async";
+      // A gallery of 126 previews at ~300 KB each will happily saturate the link and leave
+      // the detail view, which is the thing the person actually asked for, waiting behind it.
+      image.setAttribute("fetchpriority", "low");
+      image.width = 900;
+      image.height = 900;
+      tile.appendChild(image);
+    } else {
+      var placeholder = document.createElement("span");
+      placeholder.className = "resultPlaceholder";
+      placeholder.textContent = "ไม่มีภาพตัวอย่าง";
+      tile.appendChild(placeholder);
+    }
+    var meta = document.createElement("span");
+    meta.className = "resultTileMeta";
+    var name = document.createElement("span");
+    name.className = "resultTileName";
+    name.textContent = core.core + " · " + degreeText(core.rotateToTopDeg);
+    meta.appendChild(name);
+    // Every tile states its status, including the ones that passed. A blank line under the
+    // good cores makes the reader infer meaning from an absence, and it leaves the gallery
+    // with a ragged edge that reads as broken.
+    var kind = coreClassOf(core);
+    var state = document.createElement("span");
+    state.className = "resultState";
+    state.innerHTML = '<i class="sDot" data-s="' + kind + '"></i>';
+    state.appendChild(document.createTextNode(exportStatusWord(kind)));
+    meta.appendChild(state);
+    tile.appendChild(meta);
+    tile.addEventListener("click", function(){ openExportDialog(index, tile); });
+    gallery.appendChild(tile);
+  });
+  $("exportGalleryEmpty").hidden = exportVisible.length > 0;
+}
+function setResultImage(imageId, placeholderId, path, name){
+  var image = $(imageId), placeholder = $(placeholderId);
+  image.alt = name;
+  if (path) {
+    image.src = projectUrl(path);
+    image.hidden = false;
+    placeholder.hidden = true;
+  } else {
+    image.removeAttribute("src");
+    image.hidden = true;
+    placeholder.hidden = false;
+  }
+}
+function coreFullResolutionPath(core){
+  var basename = String(core.rotated || "").split("/").pop();
+  if (!basename) return "";
+  var pngGroup = null;
+  for (var i = 0; i < exportGroups.length; i++) {
+    if (exportGroups[i].key === "png") { pngGroup = exportGroups[i]; break; }
+  }
+  if (!pngGroup) return "";
+  if (Array.isArray(pngGroup.files)) {
+    for (var j = 0; j < pngGroup.files.length; j++) {
+      var file = pngGroup.files[j];
+      if (String(file.name || "").split("/").pop() === basename) return file.path;
+    }
+    return "";
+  }
+  return exportGroupsDetailed ? "" : "results/png/" + basename;
+}
+function drawExportDialog(){
+  var core = exportVisible[exportDialogIndex];
+  if (!core) { if ($("exportDialog").open) $("exportDialog").close(); return; }
+  $("exportDialogTitle").textContent = "core " + core.core;
+  setResultImage("beforeResultImg", "beforeResultPlaceholder", core.unrotated, core.core);
+  setResultImage("afterResultImg", "afterResultPlaceholder", core.rotated, core.core);
+  $("resultRotation").textContent = degreeText(core.rotateToTopDeg);
+  $("resultConfidence").textContent = confidenceText(core.confidence);
+  $("resultResidual").textContent = degreeText(core.residualDeg);
+  var reasons = $("resultReasons");
+  reasons.textContent = "";
+  (core.reasons || []).map(reasonWords).forEach(function(reason){
+    var item = document.createElement("li");
+    item.textContent = reason;
+    reasons.appendChild(item);
+  });
+  $("resultReasonsBox").hidden = !(core.reasons || []).length;
+  var fullResolution = coreFullResolutionPath(core);
+  $("resultDownload").hidden = !fullResolution;
+  $("resultDownload").href = fullResolution
+    ? "/api/download?path=" + encodeURIComponent(fullResolution) : "#";
+  $("exportPrev").disabled = exportDialogIndex <= 0;
+  $("exportNext").disabled = exportDialogIndex >= exportVisible.length - 1;
+  $("exportDialogPosition").textContent = (exportDialogIndex + 1) + " จาก " + exportVisible.length;
+}
+function openExportDialog(index, source){
+  exportDialogIndex = index;
+  exportDialogSource = source;
+  drawExportDialog();
+  $("exportDialog").showModal();
+}
+function moveExportDialog(step){
+  var next = exportDialogIndex + step;
+  if (next < 0 || next >= exportVisible.length) return;
+  exportDialogIndex = next;
+  drawExportDialog();
+}
+function loadDetailedExportGroups(project){
+  api("/api/results").then(function(res){
+    if (exportProject !== project || !res.ok) return;
+    exportGroups = res.body.results || exportGroups;
+    exportGroupsDetailed = true;
+    if ($("exportDialog").open) drawExportDialog();
+  });
+}
+function resetResultTable(){
+  exportTableLoad = "idle";
+  $("resultTableSection").open = false;
+  $("resultTableState").hidden = false;
+  $("resultTableState").textContent = "เปิดส่วนนี้เพื่ออ่านตารางผลลัพธ์";
+  $("resultTableWrap").hidden = true;
+  $("resultTable").textContent = "";
+}
+function parseCSV(text){
+  var rows = [], row = [], field = "", quoted = false;
+  text = String(text || "");
+  for (var i = 0; i < text.length; i++) {
+    var character = text[i];
+    if (quoted) {
+      if (character === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (character === '"') quoted = false;
+      else field += character;
+    } else if (character === '"' && field === "") {
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field); field = "";
+    } else if (character === "\r" || character === "\n") {
+      if (character === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row); row = []; field = "";
+    } else {
+      field += character;
+    }
+  }
+  if (field !== "" || row.length || text.endsWith(",")) { row.push(field); rows.push(row); }
+  if (rows.length && rows[0].length) rows[0][0] = rows[0][0].replace(/^\uFEFF/, "");
+  return rows;
+}
+function renderResultTable(rows){
+  var table = $("resultTable");
+  table.textContent = "";
+  var width = rows.reduce(function(maximum, row){ return Math.max(maximum, row.length); }, 0);
+  var head = document.createElement("thead"), headRow = document.createElement("tr");
+  for (var column = 0; column < width; column++) {
+    var heading = document.createElement("th");
+    heading.scope = "col";
+    heading.textContent = rows[0][column] || "คอลัมน์ " + (column + 1);
+    headRow.appendChild(heading);
+  }
+  head.appendChild(headRow); table.appendChild(head);
+  var body = document.createElement("tbody");
+  rows.slice(1).forEach(function(row){
+    var tr = document.createElement("tr");
+    for (var column = 0; column < width; column++) {
+      var cell = document.createElement("td");
+      cell.textContent = row[column] === "" || row[column] == null ? "–" : row[column];
+      tr.appendChild(cell);
+    }
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+}
+function loadResultTable(){
+  if (exportTableLoad !== "idle") return;
+  exportTableLoad = "loading";
+  $("resultTableState").hidden = false;
+  $("resultTableState").textContent = "กำลังอ่านตารางผลลัพธ์...";
+  fetch("/api/download?path=" + encodeURIComponent("results/tables/orientation_results.csv"),
+    {cache:"no-store"})
+  .then(function(response){
+    if (!response.ok) throw new Error(String(response.status));
+    return response.text();
+  })
+  .then(function(text){
+    var rows = parseCSV(text);
+    if (!rows.length) throw new Error("empty");
+    renderResultTable(rows);
+    exportTableLoad = "loaded";
+    $("resultTableState").hidden = true;
+    $("resultTableWrap").hidden = false;
+  })
+  .catch(function(error){
+    exportTableLoad = "failed";
+    $("resultTableWrap").hidden = true;
+    $("resultTableState").hidden = false;
+    $("resultTableState").textContent = error.message === "404"
+      ? "ไม่พบตารางผลลัพธ์สำหรับการรันครั้งนี้"
+      : "เปิดตารางผลลัพธ์ไม่ได้";
+  });
+}
+function drawDownloadGroups(groups){
+  var list = $("groupList");
+  list.textContent = "";
+  (groups || []).forEach(function(group){
     var el = document.createElement("div");
     el.className = "group";
     el.innerHTML = '<div class="txt"><b></b><span></span></div><span class="cnt"></span>' +
@@ -1583,15 +2156,73 @@ function drawExport(status){
     });
     list.appendChild(el);
   });
-  if (!(status.results || []).length) {
+  if (!(groups || []).length) {
     var note = document.createElement("p");
     note.className = "emptyNote";
     note.textContent = "ยังไม่มีไฟล์ผลลัพธ์";
     list.appendChild(note);
   }
 }
+function drawExport(status){
+  $("exportPath").textContent = status.project || "";
+  var counts = model && model.counts ? model.counts : null;
+  $("exportStrip").innerHTML = counts
+    ? metric(counts.positions || 0, "ตำแหน่งทั้งหมด", "") +
+      metric(counts.ok || 0, "ผ่าน QC อัตโนมัติ", "ok") +
+      metric(counts.review || 0, "เคยถูกทัก", "warn") +
+      metric(counts.missing || 0, "ไม่มีเนื้อเยื่อ", "none")
+    : "";
+  var projectChanged = exportProject !== (status.project || "");
+  if (projectChanged) {
+    exportProject = status.project || "";
+    exportGroups = status.results || [];
+    exportGroupsDetailed = false;
+    exportFilter = "all";
+    exportDrawnModel = null;
+    $("downloadSection").open = false;
+    resetResultTable();
+    loadDetailedExportGroups(exportProject);
+  } else if (!exportGroupsDetailed) {
+    exportGroups = status.results || [];
+  }
+  drawDownloadGroups(status.results || []);
+
+  var available = !!(model && model.available);
+  $("exportUnavailable").hidden = available;
+  $("exportReport").hidden = !available;
+  $("resultTableSection").hidden = !available;
+  if (!available) {
+    if ($("exportDialog").open) $("exportDialog").close();
+    return;
+  }
+  if (exportDrawnModel !== model) {
+    exportDrawnModel = model;
+    exportFilter = "all";
+    drawExportChips();
+    drawExportGallery();
+  }
+}
 $("zipAll").addEventListener("click", function(){
   window.location.href = "/api/download-zip?group=all";
+});
+$("resultTableSection").addEventListener("toggle", function(){
+  if (this.open) loadResultTable();
+});
+$("closeExportDialog").addEventListener("click", function(){ $("exportDialog").close(); });
+$("exportPrev").addEventListener("click", function(){ moveExportDialog(-1); });
+$("exportNext").addEventListener("click", function(){ moveExportDialog(1); });
+$("exportDialog").addEventListener("click", function(event){
+  if (event.target === this) this.close();
+});
+$("exportDialog").addEventListener("close", function(){
+  if (stage === "export" && exportDialogSource && exportDialogSource.isConnected)
+    exportDialogSource.focus();
+});
+document.addEventListener("keydown", function(event){
+  if (stage !== "export" || !$("exportDialog").open) return;
+  if (event.key === "ArrowLeft") { event.preventDefault(); moveExportDialog(-1); }
+  if (event.key === "ArrowRight") { event.preventDefault(); moveExportDialog(1); }
+  if (event.key === "Escape") { event.preventDefault(); $("exportDialog").close(); }
 });
 
 /* ------------------------------------------------------------------ log drawer */
