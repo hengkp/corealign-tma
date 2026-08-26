@@ -28,6 +28,7 @@ import qupath.lib.objects.classes.PathClass
 import qupath.lib.regions.ImagePlane
 import qupath.lib.regions.RegionRequest
 import qupath.lib.roi.ROIs
+import qupath.lib.images.servers.TransformedServerBuilder
 import qupath.lib.images.writers.ome.OMEPyramidWriter
 
 import loci.common.services.ServiceFactory
@@ -74,6 +75,12 @@ def cfgBool = { String key, boolean fallback ->
 }
 def cfgTokens = { String key, String fallback ->
     return cfgString(key, fallback).split(',').collect { it.trim().toLowerCase() }.findAll { !it.isEmpty() }
+}
+def cfgIntList = { String key ->
+    cfgString(key, '').split(',').collect { token ->
+        try { Integer.parseInt(token.trim()) }
+        catch (Throwable ignored) { null }
+    }.findAll { it != null }
 }
 
 double ANALYSIS_DOWNSAMPLE = cfgDouble('tma.orientation.analysisDownsample', 4.0d)
@@ -189,7 +196,8 @@ System.setProperty('tma.orientation.status', 'RUNNING')
 long runStartedAtMs = System.currentTimeMillis()
 String runStartedAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX").format(new Date(runStartedAtMs))
 
-def server = imageData.getServer()
+def sourceServer = imageData.getServer()
+def server = sourceServer
 def hierarchy = imageData.getHierarchy()
 if (!webCorrectionImageName.isEmpty() &&
         webCorrectionImageName != server.getMetadata().getName()) {
@@ -199,13 +207,33 @@ if (!webCorrectionImageName.isEmpty() &&
 }
 def channelObjs = server.getMetadata().getChannels()
 def channelNames = channelObjs.collect { it.getName() }
+def sourceChannelNames = channelNames.toList()
+def allChannelIndices = (0..<sourceChannelNames.size()).toList()
+def keptChannelIndices = cfgIntList('tma.orientation.channelIndices')
+    .findAll { it >= 0 && it < sourceChannelNames.size() }
+    .unique()
+boolean channelSubsetActive = !keptChannelIndices.isEmpty() &&
+    keptChannelIndices != allChannelIndices
+if (channelSubsetActive) {
+    server = new TransformedServerBuilder(sourceServer)
+        .extractChannels(keptChannelIndices as int[])
+        .build()
+    channelObjs = server.getMetadata().getChannels()
+    channelNames = channelObjs.collect { it.getName() }
+} else {
+    keptChannelIndices = allChannelIndices
+}
 int imgW = server.getWidth()
 int imgH = server.getHeight()
 
 println '=== Step 2: Auto-orient epidermis ==='
 println "Image: ${server.getMetadata().getName()}"
 println "Dimensions: ${imgW} x ${imgH} px"
-println "Channels (${channelNames.size()}): ${channelNames}"
+println "Channels (${sourceChannelNames.size()}): ${sourceChannelNames}"
+if (channelSubsetActive) {
+    println "Channel subset: keeping ${channelNames.size()} of ${sourceChannelNames.size()} channel(s)"
+    println "Channels kept (${channelNames.size()}): ${channelNames}"
+}
 
 def dapiIdx = []
 def epidermisMarkerIdx = []
@@ -286,9 +314,9 @@ if (projectDir == null)
 if (projectDir == null)
     projectDir = new File(System.getProperty('user.home'), 'QuPath-TMA-export')
 
-String imageStem = server.getMetadata().getName()
+String imageStem = sourceServer.getMetadata().getName()
 if (imageStem == null || imageStem.trim().isEmpty())
-    imageStem = server.getPath() == null ? 'image' : new File(server.getPath()).getName()
+    imageStem = sourceServer.getPath() == null ? 'image' : new File(sourceServer.getPath()).getName()
 imageStem = imageStem.replaceAll(/(?i)\.ome\.tif+$/, '')
 imageStem = imageStem.replaceAll(/[^A-Za-z0-9._-]+/, '_')
 if (imageStem.isEmpty()) imageStem = 'image'
@@ -2436,6 +2464,7 @@ def runManifest = [schemaVersion: 2, status: PARTIAL_CORE_TEST ? 'PARTIAL_TEST' 
     missing: missingCount, manualOverrides: overrideCount,
     regionReview: regionReviewCount, postRotationReview: postRotationReviewCount,
     exportDownsample: EXPORT_DOWNSAMPLE, rotationThenCrop: true,
+    channelIndices: keptChannelIndices, channelNames: channelNames,
     fullResolutionPng: SAVE_FULL_RESOLUTION_PNG,
     nativeOmeTiff: SAVE_NATIVE_OME_TIFF]
 runManifest.rotatedMultichannelOmeTiff = SAVE_ROTATED_MULTICHANNEL_OME_TIFF
