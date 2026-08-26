@@ -150,6 +150,19 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   width:100%;max-width:720px;background:var(--surface);border:1px solid var(--line);
   border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:26px;
 }
+/* On a 720 px laptop this card runs past the fold as soon as a prior-run banner appears,
+   and the one button the screen exists for goes with it. Same shape as the results dialog:
+   the questions scroll, the action row does not. */
+[data-panel="setup"] .card{
+  display:flex;flex-direction:column;max-height:calc(100dvh - 150px);padding-bottom:0;
+}
+[data-panel="setup"] .cardBody{
+  display:grid;gap:18px;align-content:start;min-height:0;overflow-y:auto;
+  margin:0 -26px;padding:0 26px 4px;
+}
+[data-panel="setup"] .card > .controlsRow{
+  flex:0 0 auto;margin-top:16px;padding:14px 0 26px;border-top:1px solid var(--line);
+}
 h1,h2{margin:0;letter-spacing:-.015em}
 h1{font-size:23px;font-weight:800}
 h2{font-size:17px;font-weight:750}
@@ -638,6 +651,7 @@ kbd{
     <!-- 2 ------------------------------------------------------------ three choices -->
     <section class="panel center" data-panel="setup" aria-label="ตั้งค่าก่อนเริ่ม">
       <div class="card rowGap">
+        <div class="cardBody">
         <div>
           <h1>ตอบสามข้อ แล้วกดเริ่ม</h1>
           <p class="lede" id="setupSlide"></p>
@@ -702,6 +716,8 @@ kbd{
             <span id="priorRunNote"></span>
           </div>
           <button class="btn" id="openPrior">ดูผลเดิม</button>
+        </div>
+
         </div>
 
         <div class="controlsRow">
