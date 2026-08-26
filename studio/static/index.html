@@ -2350,7 +2350,11 @@ var STEP_WORDS = [
   [/Detecting TMA cores/,              "กำลังตรวจหา core"],
   [/Published (\d+)/,                  "จัดไฟล์ให้หาง่ายแล้ว $1 ไฟล์"],
   [/WAITING FOR REVIEW/,               "รอให้คุณตรวจ"],
+  [/COREALIGN_GATE_OPEN: grid/,        "รอให้คุณตรวจกริด"],
+  [/COREALIGN_GATE_OPEN: orientation/, "รอให้คุณตรวจ core ที่หมุนแล้ว"],
   [/COREALIGN_GATE_CLOSED/,            "รับคำตอบแล้ว กำลังเดินต่อ"],
+  [/Channel subset: keeping (\d+) of (\d+)/, "ใช้ $1 จาก $2 แชนเนล"],
+  [/Channels kept \(\d+\): \[(.+)\]/,   "แชนเนลที่ใช้: $1"],
   [/Pipeline stopped safely/,          "หยุดไว้อย่างปลอดภัย ยังไม่ได้อนุมัติ"],
   [/CoreAlign COMPLETE/,               "เสร็จสมบูรณ์"]
 ];
@@ -2371,7 +2375,9 @@ function paintProgress(){
     var tail = lines[lines.length - 1] || "";
     if (tail === lastLogLine) return;
     lastLogLine = tail;
-    $("logTail").textContent = tail;
+    // The drawer holds the raw log on purpose. The one line peeking out of it sits at the
+    // bottom of every screen, though, so it gets the same Thai treatment as the run step.
+    $("logTail").textContent = tail ? inThai(tail) : "";
     $("runStep").textContent = tail ? inThai(tail).slice(0, 140) : "กำลังทำงาน";
     // The last few things that happened, so a long step does not look like a hang.
     var recent = lines.filter(function(line){
