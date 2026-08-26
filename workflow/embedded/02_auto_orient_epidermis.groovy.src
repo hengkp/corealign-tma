@@ -122,7 +122,11 @@ String QC_PREVIEW_RENDERER_VERSION = cfgString(
     'tma.orientation.qcPreviewRendererVersion', 'nuclear-white-black-1.0')
 double POST_ROTATION_TOLERANCE_DEG = cfgDouble('tma.orientation.postRotationToleranceDeg', 12.0d)
 int POST_ROTATION_MAX_ITERATIONS = cfgInt('tma.orientation.postRotationMaxIterations', 2)
-String TEST_CORE_FILTER = System.getProperty('tma.orientation.testCoreFilter', '').trim()
+double POST_ROTATION_FLIP_MIN_DEG = cfgDouble('tma.orientation.postRotationFlipMinDeg', 160.0d)
+// A comma-separated list, so one short run can exercise several named cores. Testing a
+// change to the rotation on a whole slide costs twenty minutes; on three cores it costs four.
+def TEST_CORE_FILTER = System.getProperty('tma.orientation.testCoreFilter', '')
+    .split(',').collect { it.trim() }.findAll { !it.isEmpty() } as Set
 boolean PARTIAL_CORE_TEST = !TEST_CORE_FILTER.isEmpty()
 int N_SECTORS = cfgInt('tma.orientation.angularSectors', 72)
 double OUTER_RING_INNER = cfgDouble('tma.orientation.outerRingInner', 0.42d)
@@ -1740,7 +1744,7 @@ def recordsCsvText = { rows ->
 
 def coreEntries = cores.withIndex().collect { core, index -> [core: core, index: index] }
 if (PARTIAL_CORE_TEST)
-    coreEntries = coreEntries.findAll { (it.core.getName() ?: '') == TEST_CORE_FILTER }
+    coreEntries = coreEntries.findAll { TEST_CORE_FILTER.contains(it.core.getName() ?: '') }
 def completedCoreCount = new java.util.concurrent.atomic.AtomicInteger(0)
 def workerErrors = Collections.synchronizedList([])
 def processCore = { entry ->
@@ -2014,6 +2018,12 @@ def processCore = { entry ->
                 def rotatedSupport = null
                 def rotatedCrop = null
                 boolean qcAvailable = false
+                double bestPostRotationRad = rotateRad
+                double bestPostRotationResidualDeg = Double.POSITIVE_INFINITY
+                boolean bestPostRotationIncludesFlip = false
+                boolean postRotationFlipAttempted = false
+                boolean postRotationMeasuringFlippedState = false
+                double postRotationFlipResidualDeg = Double.NaN
                 for (int iteration = 0; iteration < Math.max(1, POST_ROTATION_MAX_ITERATIONS); iteration++) {
                     rotatedSupport = rotateImageAround(rgbSupport, rotateRad, exportCx, exportCy)
                     rotatedCrop = cropAround(rotatedSupport, exportCx, exportCy, finalSidePx)
@@ -2024,13 +2034,46 @@ def processCore = { entry ->
                     qcAvailable = true
                     double correction = normalizeRadians(-Math.PI / 2.0d - (qcResult.angle as double))
                     postRotationResidualDeg = Math.abs(angleToDegrees(correction))
+                    if (postRotationResidualDeg < bestPostRotationResidualDeg) {
+                        bestPostRotationRad = rotateRad
+                        bestPostRotationResidualDeg = postRotationResidualDeg
+                        bestPostRotationIncludesFlip = postRotationMeasuringFlippedState
+                    }
+                    boolean postRotationLooksFlipped =
+                        postRotationResidualDeg >= POST_ROTATION_FLIP_MIN_DEG
                     if (override != null || webManualRotation ||
                             postRotationResidualDeg <= POST_ROTATION_TOLERANCE_DEG ||
                             iteration + 1 >= POST_ROTATION_MAX_ITERATIONS ||
-                            postRotationResidualDeg > 65.0d) break
+                            (postRotationResidualDeg > 65.0d &&
+                                !postRotationLooksFlipped)) break
+                    if (postRotationLooksFlipped) {
+                        if (!postRotationFlipAttempted)
+                            postRotationFlipResidualDeg = postRotationResidualDeg
+                        postRotationFlipAttempted = true
+                        postRotationMeasuringFlippedState = true
+                    }
                     rotateRad = normalizeRadians(rotateRad + correction)
                 }
                 if (!qcAvailable) postRotationResidualDeg = 180.0d
+                if (postRotationFlipAttempted) {
+                    // PCA can reverse an axis, so only keep its direction fix when a
+                    // later measurement proves that the resulting orientation is better.
+                    boolean restoreBestPostRotation = Math.abs(normalizeRadians(
+                        rotateRad - bestPostRotationRad)) > 1.0e-12d
+                    rotateRad = bestPostRotationRad
+                    postRotationResidualDeg = bestPostRotationResidualDeg
+                    if (restoreBestPostRotation) {
+                        rotatedSupport = rotateImageAround(rgbSupport, rotateRad,
+                            exportCx, exportCy)
+                        rotatedCrop = cropAround(rotatedSupport, exportCx, exportCy,
+                            finalSidePx)
+                    }
+                    if (bestPostRotationIncludesFlip) {
+                        println "${coreName}: residual ${format1(postRotationFlipResidualDeg)} deg looked like an upside-down core; flipped, residual is now ${format1(postRotationResidualDeg)} deg"
+                    } else {
+                        println "${coreName}: tried flipping a residual of ${format1(postRotationFlipResidualDeg)} deg, it did not improve, keeping the original"
+                    }
+                }
                 if (webManualRotation) {
                     result.status = 'manual_override'
                     result.method = 'web_manual_rotation'
