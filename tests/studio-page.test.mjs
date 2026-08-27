@@ -97,11 +97,13 @@ test("the worker count is capped on every path", () => {
 // belongs to a dead process, and answering it fails with a bare "Connection refused" that
 // reads like a network fault. A gate is only real while the QuPath that asked it is alive.
 test("a gate is only real while its QuPath is running", () => {
+  const alive = server.slice(server.indexOf("    def alive(self)"),
+                             server.indexOf("    def poll(self)"));
+  assert.match(alive, /process is not None and process\.poll\(\) is None/,
+    "alive() must check that the process is still running");
   const body = server.slice(server.indexOf("    def gate(self)"),
                             server.indexOf("    def report_html"));
-  assert.match(body, /process\.poll\(\) is None/,
-    "gate() must check that the process it belongs to is still running");
-  assert.match(body, /if not alive:\s*\n\s*return None/,
+  assert.match(body, /if not self\.alive\(\):\s*\n\s*return None/,
     "a gate from a dead run must not be reported as open");
   assert.ok(server.includes('"abandonedGate"'),
     "the status should still surface the leftover, so the page can explain it");
@@ -136,6 +138,47 @@ test("the bridge address is never cached across steps", () => {
     "bridge_url must resolve the address again on every call");
   assert.ok(!/self\.bridge_tokens\.update/.test(server),
     "discovery must replace the tokens, not merge a stale port into them");
+});
+
+// REPORT.html outlives the JVM that wrote it and keeps naming the loopback port that JVM
+// opened, so a project that finished hours ago still hands back a live-looking address.
+// Adjusting an angle on a finished run then posted to a dead port and died on "Connection
+// refused", and the edits were lost, because the branch that writes the corrections file was
+// never reached. An address is only real while the QuPath that opened it is alive.
+test("the bridge address is only real while its QuPath is running", () => {
+  const body = server.slice(server.indexOf("    def bridge_url"),
+                            server.indexOf("    # -- results"));
+  assert.match(body, /if not self\.alive\(\):\s*\n\s*return None/,
+    "bridge_url must refuse every action once the run that opened the bridge is gone");
+  const guard = body.indexOf("self.alive()");
+  assert.ok(guard >= 0 && guard < body.indexOf("self.discover_bridge()"),
+    "the check has to come before REPORT.html is read, or a dead port is returned anyway");
+  assert.ok(guard < body.indexOf('action == "gate"'),
+    "gate falls through to REPORT.html when gate.json is gone, so it needs the same check");
+  // Catching the refusal and writing the file instead would hide a bridge that died under a
+  // run that is still going, which is a different fault and has to stay visible.
+  assert.ok(!/ECONNREFUSED|errno 111/i.test(server),
+    "liveness is the question, not the shape of the failure");
+});
+
+// Saving into a waiting run and saving to a file are different outcomes for the reader: one
+// is applied at the gate in front of them, the other sits on disk until somebody runs again.
+// The screen looks the same either way, so the page has to say which happened.
+test("a save that went to the file rather than to a run says so", () => {
+  assert.ok(server.includes('"via": "file"') && server.includes('answer["via"] = "bridge"'),
+    "the server must name which of the two paths it took");
+  assert.ok(page.includes('savedVia === "file"'),
+    "the page must read that back rather than reporting every save the same way");
+  const dictionaries = ["EN", "TH"].map((name) => {
+    const start = page.indexOf(`var ${name} = {`);
+    return page.slice(start, page.indexOf("\n};", start));
+  });
+  for (const key of ["savedAnglesForNextRun", "savedCoresForNextRun"]) {
+    for (const [index, dictionary] of dictionaries.entries()) {
+      assert.ok(dictionary.includes(`${key}:`),
+        `${key} is missing from the ${["EN", "TH"][index]} dictionary`);
+    }
+  }
 });
 
 // Selecting every channel is what a run did before the question existed. Saying so

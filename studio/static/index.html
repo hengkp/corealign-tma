@@ -1130,6 +1130,7 @@ var EN = {
   saving:"Saving...",
   saveFailed:"Could not save",
   savedAngles:"Saved angle edits for {0} cores",
+  savedAnglesForNextRun:"Saved angle edits for {0} cores · run again to process only those cores",
   savedPositions:"Saved {0} positions",
   unsavedPositions:"{0} positions not saved",
   editedPositions:"Edited {0} positions",
@@ -1140,6 +1141,7 @@ var EN = {
   applyGridEdits:"Apply edits and review the grid again",
   continue:"Continue",
   savedCores:"Saved {0} cores",
+  savedCoresForNextRun:"Saved {0} cores · waiting for the next run",
   unsavedCores:"{0} cores not saved",
   reviewRemaining:"{0} cores have not been checked",
   reviewComplete:"All flagged cores have been checked",
@@ -1373,6 +1375,7 @@ var TH = {
   saving:"กำลังบันทึก...",
   saveFailed:"บันทึกไม่สำเร็จ",
   savedAngles:"บันทึกมุมที่ปรับแล้ว {0} core",
+  savedAnglesForNextRun:"บันทึกมุมที่ปรับแล้ว {0} core · รันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้",
   savedPositions:"บันทึกแล้ว {0} ตำแหน่ง",
   unsavedPositions:"ยังไม่ได้บันทึก {0} ตำแหน่ง",
   editedPositions:"แก้ไว้ {0} ตำแหน่ง",
@@ -1383,6 +1386,7 @@ var TH = {
   applyGridEdits:"ใส่การแก้ แล้วดูกริดอีกครั้ง",
   continue:"ไปต่อ",
   savedCores:"บันทึกไว้แล้ว {0} core",
+  savedCoresForNextRun:"บันทึกไว้แล้ว {0} core · รอการรันครั้งถัดไป",
   unsavedCores:"ยังไม่ได้บันทึก {0} core",
   reviewRemaining:"เหลืออีก {0} core ที่ยังไม่ได้ดู",
   reviewComplete:"ดูครบทุก core ที่ระบบทักแล้ว",
@@ -1828,7 +1832,8 @@ var visible = [];
 var expandedBands = {};
 var edits = {};        // core -> cumulative web adjustment in degrees
 var checked = {};      // core -> true
-var savedEdits = {};   // what the bridge already holds
+var savedEdits = {};   // angles already saved, in the waiting run or in the file
+var savedVia = "";     // "bridge" or "file", from the last save this page made
 
 function storeKey(){ return "corealign-studio:" + (model ? model.baseRun : "none"); }
 function loadLocal(){
@@ -1919,6 +1924,7 @@ function drawReview(fresh){
     // show a save button with nothing to save, and pressing it would cost one more
     // reprocess pass that changes nothing.
     savedEdits = {};
+    savedVia = "";
     var applied = {};
     model.cores.forEach(function(core){ applied[core.core] = Number(core.adjustmentDeg || 0); });
     Object.keys(model.corrections || {}).forEach(function(name){
@@ -2249,8 +2255,14 @@ $("saveEdits").addEventListener("click", function(){
     }
     savedEdits = {};
     payload.forEach(function(item){ savedEdits[item.core] = item.rotationAdjustmentDeg; });
+    // The server posts the angles into the run when one is waiting and writes them to
+    // corealign-review-corrections.json when none is. Those are different outcomes for the
+    // person who pressed the button: one is applied at the gate in front of them, the other
+    // sits on disk until somebody runs again. The screen looks the same either way, so it
+    // has to say which happened.
+    savedVia = res.body.via || "";
     drawActionBar();
-    toast(t("savedAngles", payload.length));
+    toast(t(savedVia === "file" ? "savedAnglesForNextRun" : "savedAngles", payload.length));
   });
 });
 
@@ -2316,7 +2328,8 @@ function drawActionBar(){
 
   save.hidden = changes === 0 && synced;
   save.disabled = synced;
-  if (changes && synced) setSaveState(t("savedCores", changes), "ok");
+  if (changes && synced) setSaveState(
+    t(savedVia === "file" ? "savedCoresForNextRun" : "savedCores", changes), "ok");
   else if (changes) setSaveState(t("unsavedCores", changes), "");
   else setSaveState("");
 

@@ -31,6 +31,16 @@ browser  ->  Studio (compute node, app port)  ->  CoreAlign bridge (127.0.0.1, s
 The bridge token stays on the node and is never sent to the browser, which makes this less
 exposed than the desktop arrangement, not more.
 
+**The bridge only exists while the QuPath that opened it does.** Both places its address is
+written down outlive the run: `REPORT.html` stays in the project for good, and `gate.json`
+survives any kill that skips CoreAlign's finally block. A project that finished hours ago
+therefore still names a loopback port, and posting to it fails with a bare *Connection
+refused* that reads like a network fault. Studio resolves that address only while its own
+QuPath is running and treats it as absent otherwise, which is what sends a saved angle edit
+into `corealign-review-corrections.json` on a finished project rather than into an error, and
+what makes the controls say *CoreAlign is not listening for that right now*. A bridge that
+dies under a run that is still going is a different fault and still shows up as one.
+
 ## The review screen is Studio's own
 
 The first version embedded `REPORT.html` in an iframe. That was wrong: the report carries its own

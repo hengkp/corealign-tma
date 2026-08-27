@@ -532,6 +532,19 @@ class Run:
             self.message = "Stopped from the Studio page."
             self.finished_at = time.time()
 
+    def alive(self) -> bool:
+        """Whether the QuPath this Studio started is still running.
+
+        Only this Studio's own QuPath can be waiting for anything: it is a child of this
+        process. Once it is gone, everything it left in the project describes a question
+        nobody is listening for, and every address it wrote down belongs to a process that
+        no longer exists. One check, so a caller cannot answer that question differently
+        from the rest of the file.
+        """
+        with self.lock:
+            process = self.process
+        return process is not None and process.poll() is None
+
     def poll(self) -> None:
         """Refresh derived state. Cheap enough to call on every status request."""
         with self.lock:
@@ -589,10 +602,7 @@ class Run:
         Only this Studio's own QuPath can be waiting: it is a child of this process. If it
         is not running, whatever is on disk is a leftover, not a question.
         """
-        with self.lock:
-            process = self.process
-            alive = process is not None and process.poll() is None
-        if not alive:
+        if not self.alive():
             return None
         return self.stale_gate()
 
@@ -662,6 +672,15 @@ class Run:
         a port nothing was listening on any more. These are rare, deliberate clicks, so
         reading the current answer costs nothing worth saving.
         """
+        # Both places this address is read from outlive the JVM that wrote them. REPORT.html
+        # stays in the project for good, and gate.json survives any kill that skips the
+        # finally block, so a finished project still names a port that nothing is listening
+        # on. Handing that back is worse than returning nothing: the caller cannot tell a
+        # dead bridge from a live one and posts to it, and the reviewer is shown a bare
+        # "Connection refused" for a run that ended hours ago. There is no bridge without a
+        # live QuPath, and saying so is what lets save_corrections write its file instead.
+        if not self.alive():
+            return None
         # gate.json is written by the gate that is open right now, so for a gate decision it
         # is the most current thing on disk.
         if action == "gate":
