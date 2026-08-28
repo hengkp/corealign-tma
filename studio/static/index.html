@@ -3239,15 +3239,18 @@ function arrangeColFallback(index){ return String(index + 1); }
 // The eye is poor at ranking two dim panels, and this screen exists to compare cores. Step 8
 // measures every core on the raw pixels, so put that number where the comparison is happening
 // and let the reader check what they think they are seeing.
-function arrangeCoreValue(coreName, figure){
-  var visible = (figure.channels || []).filter(function(config){ return config.visible; });
-  if (!visible.length) return null;
+function arrangeCoreStat(coreName, channelIndex){
   var core = ((arrangeManifest && arrangeManifest.cores) || []).filter(function(item){
     return item.core === coreName;
   })[0];
-  var stats = core && core.stats && core.stats[String(visible[0].index)];
+  var stats = core && core.stats && core.stats[String(channelIndex)];
   var value = stats && Number(stats.p99);
   return Number.isFinite(value) ? value : null;
+}
+function arrangeCoreValue(coreName, figure){
+  var visible = (figure.channels || []).filter(function(config){ return config.visible; });
+  if (!visible.length) return null;
+  return arrangeCoreStat(coreName, visible[0].index);
 }
 function arrangeRowText(figure, index){
   var label = figure.rows[index] && figure.rows[index].label;
@@ -3666,7 +3669,15 @@ function makeArrangeLayer(channel){
     fit.textContent = t("arrangeFitWindow");
     fit.addEventListener("click", function(){
       var span = Number(channel.displayHigh) - Number(channel.displayLow);
-      var low = Number(channel.coreP99Low), high = Number(channel.coreP99High);
+      // Fit to the cores in THIS figure when it has any. The spread across all 117 cores of a
+      // run is nearly the whole scale, so windowing to it concentrates nothing; the six or
+      // twelve cores a person actually put side by side span a narrow band, and that is the
+      // band worth spending the output on. Fall back to the run when the figure is empty.
+      var placed = (figure.cells || []).map(function(cell){
+        return arrangeCoreStat(cell.core, channel.index);
+      }).filter(function(value){ return value != null; });
+      var low = placed.length >= 2 ? Math.min.apply(null, placed) : Number(channel.coreP99Low);
+      var high = placed.length >= 2 ? Math.max.apply(null, placed) : Number(channel.coreP99High);
       if (!Number.isFinite(low) || !Number.isFinite(high) || !(span > 0) || high <= low) {
         toast(t("arrangeNoSpread"));
         return;
