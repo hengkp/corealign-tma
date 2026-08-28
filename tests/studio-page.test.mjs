@@ -225,6 +225,21 @@ test("a tile is ready when it loads, not when it decodes", () => {
     "onload must resolve the promise on its own");
 });
 
+// A nuclear stain outshines most markers, so the useful companion to a combined panel is one
+// figure per marker with nothing else in it. Built from the manifest rather than from a list of
+// this experiment's stains, so it works on any slide, and each marker gets its own colour.
+test("the arrange screen can split a figure into one per marker", () => {
+  assert.ok(page.includes('id="arrangeSplitMarkers"'), "the control has to exist in the markup");
+  const body = page.slice(page.indexOf('$("arrangeSplitMarkers")'),
+                          page.indexOf('$("arrangeAddRow")'));
+  assert.match(body, /kind === "marker"/,
+    "the markers come from the manifest, not from a hardcoded list of stains");
+  assert.match(body, /ARRANGE_SOLO_COLOURS\[index % ARRANGE_SOLO_COLOURS\.length\]/,
+    "each figure needs its own colour or two markers become indistinguishable");
+  assert.ok(!/DAPI|nuclear/i.test(body),
+    "a split figure carries its marker alone, with no nuclear channel added back");
+});
+
 // Saving into a waiting run and saving to a file are different outcomes for the reader: one
 // is applied at the gate in front of them, the other sits on disk until somebody runs again.
 // The screen looks the same either way, so the page has to say which happened.

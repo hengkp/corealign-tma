@@ -1057,6 +1057,7 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
               <select id="arrangeFigureSelect"></select>
               <button class="btn quiet" id="arrangeAddFigure" type="button" data-i18n="arrangeAddFigure"></button>
               <button class="btn quiet" id="arrangeDuplicateFigure" type="button" data-i18n="arrangeDuplicateFigure"></button>
+              <button class="btn quiet" id="arrangeSplitMarkers" type="button" data-i18n="arrangeSplitMarkers"></button>
             </div>
             <input class="arrangeTitle" id="arrangeTitle" type="text" data-i18n-placeholder="arrangeFigureTitle" data-i18n-aria-label="arrangeFigureTitle">
             <div class="arrangeFigureTools">
@@ -1238,6 +1239,9 @@ var EN = {
   arrangeFigure:"Figure",
   arrangeAddFigure:"Add figure",
   arrangeDuplicateFigure:"Duplicate figure",
+  arrangeSplitMarkers:"One figure per marker",
+  arrangeSplitMade:"Made {0} figures, one marker each, with no nuclear stain",
+  arrangeNoMarkers:"This run has no marker channels to split",
   arrangeFigureTitle:"Figure title",
   arrangeAddRow:"Add row",
   arrangeAddColumn:"Add column",
@@ -1525,6 +1529,9 @@ var TH = {
   arrangeFigure:"รูป",
   arrangeAddFigure:"เพิ่มรูป",
   arrangeDuplicateFigure:"ทำสำเนารูป",
+  arrangeSplitMarkers:"แยกทีละมาร์กเกอร์",
+  arrangeSplitMade:"สร้าง {0} รูป มาร์กเกอร์ละรูป ไม่มีสีย้อมนิวเคลียส",
+  arrangeNoMarkers:"การรันนี้ไม่มีแชนเนลมาร์กเกอร์ให้แยก",
   arrangeFigureTitle:"ชื่อรูป",
   arrangeAddRow:"เพิ่มแถว",
   arrangeAddColumn:"เพิ่มคอลัมน์",
@@ -3934,6 +3941,40 @@ $("arrangeDuplicateFigure").addEventListener("click", function(){
   arrangeChannelSelected = null;
   arrangeRenderVersion++;
   drawArrange();
+});
+// A nuclear stain is brighter than most markers, so in a combined panel it dominates and the
+// marker underneath is hard to judge. This makes the other half of the pair: the same cores in
+// the same cells, one marker per figure with nothing else in the frame. Each gets its own
+// colour, because two markers drawn the same colour are indistinguishable once the reader puts
+// their figures side by side.
+var ARRANGE_SOLO_COLOURS = ["#FF4D4D", "#FFD166", "#3DDC84", "#F78C6B", "#00D0D0", "#E86BD0",
+                            "#B980F0", "#7BD3F7"];
+$("arrangeSplitMarkers").addEventListener("click", function(){
+  var source = arrangeFigure();
+  if (!source) return;
+  var markers = ((arrangeManifest && arrangeManifest.channels) || []).filter(function(channel){
+    return channel.kind === "marker";
+  });
+  if (!markers.length) { toast(t("arrangeNoMarkers")); return; }
+  var made = 0;
+  markers.forEach(function(channel, index){
+    var copy = arrangeClone(source);
+    copy.id = arrangeUniqueId(String(channel.name || ("channel-" + channel.index))
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+    copy.title = String(channel.name || "");
+    copy.channels = [{index:channel.index, visible:true,
+                      colour:ARRANGE_SOLO_COLOURS[index % ARRANGE_SOLO_COLOURS.length]}];
+    arrangeDocument.figures.push(copy);
+    made++;
+  });
+  arrangeFigureIndex = arrangeDocument.figures.length - markers.length;
+  arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
+  arrangeShowAllChannels = false;
+  arrangeChannelSelected = null;
+  arrangeRenderVersion++;
+  drawArrange();
+  arrangeChanged();
+  toast(t("arrangeSplitMade", made));
 });
 $("arrangeAddRow").addEventListener("click", function(){
   arrangeFigure().rows.push({label:""});
