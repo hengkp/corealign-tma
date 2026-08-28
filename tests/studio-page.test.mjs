@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 
 const root = new URL("../", import.meta.url);
 const page = await readFile(new URL("studio/static/index.html", root), "utf8");
@@ -238,6 +239,56 @@ test("the arrange screen can split a figure into one per marker", () => {
     "each figure needs its own colour or two markers become indistinguishable");
   assert.ok(!/DAPI|nuclear/i.test(body),
     "a split figure carries its marker alone, with no nuclear channel added back");
+});
+
+// The tile window used to run from the slide median to its 99.8th percentile, and measured on
+// the reference run the range over which conditions actually differed sat ABOVE that ceiling
+// for five of six markers. Every panel saturated to white and a scientist correctly reported
+// seeing no difference. The tail has to survive the cut, and the page has to be able to window
+// into it: a gain multiplies from a fixed floor and can never do that.
+test("the arrange display is a window, not a gain", () => {
+  assert.match(page, /function arrangeChannelWindow\(config\)/,
+    "the channel needs a black point and a white point");
+  const body = page.slice(page.indexOf("function arrangeChannelWindow"),
+                          page.indexOf("function arrangeChannelGain"));
+  assert.match(body, /255 \/ gain/,
+    "an arrangement saved with a gain must still open and look the same");
+  assert.match(page, /\(pixels\.data\[pixel\] - black\) \* 255 \/ span/,
+    "compositing has to apply the window, not just multiply");
+  assert.ok(page.includes("coreP99Low") && page.includes("coreP99High"),
+    "fitting the window needs the per-core spread the manifest carries");
+  assert.ok(!/black *= *[0-9]+ *; *\n? *white *= *[0-9]+/.test(page),
+    "the fitted window comes from the manifest, never from a constant");
+});
+
+// The eye cannot rank two dim panels, and this screen exists to compare cores. Step 8 measures
+// every core on the raw pixels, before any display scaling, so the number means the same thing
+// whatever window is chosen. The export has to carry it too or the preview answers a different
+// question from the one on screen.
+test("a core carries its measured value on screen and in the export", () => {
+  assert.match(page, /function arrangeCoreValue\(coreName, figure\)/,
+    "the value comes from the manifest stats, per core");
+  assert.ok(page.includes("arrangeCellValue"), "the screen has to show it");
+  const exporter = page.slice(page.indexOf("function buildArrangeFigureCanvas"),
+                              page.indexOf("function exportArrangementPng"));
+  assert.match(exporter, /arrangeCoreValue\(item\.cell\.core, figure\)/,
+    "the exported figure must show the same number as the screen");
+});
+
+// The exporter measures every core while its pixels are already in hand, and it has to do it
+// on the inscribed circle: the tile is cut square and 1.45x wider than the core, so its corners
+// hold the neighbouring cores and bare slide, and a number taken over the square would be
+// describing the wrong tissue.
+test("step 8 measures each core inside its own circle", () => {
+  const groovy = readFileSync(new URL("workflow/embedded/08_export_arrange_tiles.groovy.src", root), "utf8");
+  assert.match(groovy, /highPercentile \?: 99\.99d/,
+    "the ceiling has to keep the tail the differences live in");
+  assert.match(groovy, /dx \* dx \+ dy \* dy <= radius \* radius/,
+    "statistics come from the inscribed circle, not the square tile");
+  assert.ok(groovy.includes("coreP99Low") && groovy.includes("coreP99High"),
+    "the manifest carries the range the cores span, which is what the page fits its window to");
+  assert.match(groovy, /stats: statsByCore\[core\.core\]/,
+    "each core carries its own measurements");
 });
 
 // Saving into a waiting run and saving to a file are different outcomes for the reader: one

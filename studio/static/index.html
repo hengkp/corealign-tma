@@ -716,6 +716,12 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 .arrangeLayerName{flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:700}
 .arrangeSwatch{width:26px;height:26px;flex:0 0 auto;border:2px solid var(--surface);border-radius:8px;box-shadow:0 0 0 1px var(--line-strong)}
 .arrangeLayerDetail{display:grid;gap:10px;padding:10px 12px 12px;border-top:1px solid var(--line);background:var(--surface-2)}
+.arrangeCellValue{
+  position:absolute;right:6px;bottom:6px;z-index:2;padding:1px 6px;border-radius:6px;
+  background:rgba(0,0,0,.55);color:#fff;font-size:11px;font-weight:750;
+  font-variant-numeric:tabular-nums
+}
+.arrangeValuesToggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .arrangeGain{display:grid;grid-template-columns:auto minmax(120px,1fr) 48px;align-items:center;gap:10px;font-size:12.5px}
 .arrangeGain input{width:100%;accent-color:var(--accent)}
 .arrangeGain output{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
@@ -1064,6 +1070,7 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
               <button class="btn" id="arrangeAddRow" type="button" data-i18n="arrangeAddRow"></button>
               <button class="btn" id="arrangeAddCol" type="button" data-i18n="arrangeAddColumn"></button>
               <button class="btn quiet" id="arrangeFill" type="button" data-i18n="arrangeFillLayout"></button>
+              <label class="arrangeValuesToggle"><input type="checkbox" id="arrangeValuesToggle" checked><span data-i18n="arrangeShowValues"></span></label>
             </div>
             <section class="arrangeChannels">
               <div class="arrangeChannelsHead">
@@ -1269,6 +1276,14 @@ var EN = {
   arrangePlacedCore:"Cell {0} · core {1}",
   arrangePlaceCore:"Place core {0} into figure cell {1}",
   arrangeGain:"Gain",
+  arrangeBlackPoint:"Black point",
+  arrangeWhitePoint:"White point",
+  arrangeWindow:"Display window",
+  arrangeFitWindow:"Fit to how the cores differ",
+  arrangeFittedWindow:"{0} windowed to {1} to {2}, the range these cores span",
+  arrangeNoSpread:"This run has no per-core measurements to fit to",
+  arrangeCoreValue:"Measured {0}",
+  arrangeShowValues:"Show measured values",
   arrangeColourHex:"Colour hex value",
   arrangeUseColour:"Use colour {0}",
   arrangeFillReport:"Filled {0} cells · could not fill {1}.",
@@ -1559,6 +1574,14 @@ var TH = {
   arrangePlacedCore:"ช่องที่ {0} · core {1}",
   arrangePlaceCore:"ใส่ core {0} ในช่องรูปที่ {1}",
   arrangeGain:"ความสว่าง",
+  arrangeBlackPoint:"จุดดำ",
+  arrangeWhitePoint:"จุดขาว",
+  arrangeWindow:"ช่วงที่แสดง",
+  arrangeFitWindow:"ปรับช่วงตามที่ core ต่างกันจริง",
+  arrangeFittedWindow:"ตั้งช่วงของ {0} เป็น {1} ถึง {2} ตามที่ core เหล่านี้กระจายอยู่",
+  arrangeNoSpread:"การรันนี้ไม่มีค่าที่วัดรายcoreให้ใช้ปรับช่วง",
+  arrangeCoreValue:"วัดได้ {0}",
+  arrangeShowValues:"แสดงค่าที่วัดได้",
   arrangeColourHex:"รหัสสีแบบ hex",
   arrangeUseColour:"ใช้สี {0}",
   arrangeFillReport:"เติมได้ {0} ช่อง · หา core ไม่ได้ {1} ช่อง",
@@ -2993,6 +3016,7 @@ var arrangeTileVersion = "";
 var arrangeFigureIndex = 0;
 var arrangeTarget = 0;
 var arrangeShowAllChannels = false;
+var arrangeShowValues = true;
 var arrangeChannelSelected = null;
 var arrangeSaving = false;
 var arrangeRenderVersion = 0;
@@ -3212,6 +3236,19 @@ function arrangeRowFallback(index){
   return name;
 }
 function arrangeColFallback(index){ return String(index + 1); }
+// The eye is poor at ranking two dim panels, and this screen exists to compare cores. Step 8
+// measures every core on the raw pixels, so put that number where the comparison is happening
+// and let the reader check what they think they are seeing.
+function arrangeCoreValue(coreName, figure){
+  var visible = (figure.channels || []).filter(function(config){ return config.visible; });
+  if (!visible.length) return null;
+  var core = ((arrangeManifest && arrangeManifest.cores) || []).filter(function(item){
+    return item.core === coreName;
+  })[0];
+  var stats = core && core.stats && core.stats[String(visible[0].index)];
+  var value = stats && Number(stats.p99);
+  return Number.isFinite(value) ? value : null;
+}
 function arrangeRowText(figure, index){
   var label = figure.rows[index] && figure.rows[index].label;
   return String(label || "").trim() || arrangeRowFallback(index);
@@ -3301,6 +3338,14 @@ function drawArrangeTable(){
         badge.className = "arrangeBadge arrangeCellNumber";
         badge.textContent = flat + 1;
         button.appendChild(badge);
+        var measured = arrangeCoreValue(cell.core, figure);
+        if (arrangeShowValues && measured != null) {
+          var value = document.createElement("span");
+          value.className = "arrangeCellValue";
+          value.textContent = Math.round(measured);
+          value.title = t("arrangeCoreValue", Math.round(measured));
+          button.appendChild(value);
+        }
         var clear = arrangeIconButton(t("arrangeClearCell"),
           "M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z",
           function(event){
@@ -3484,6 +3529,20 @@ function arrangeEnsureChannel(figure, index){
 function arrangeChannelColour(config, manifest){
   return String((config && config.colour) || manifest.colour || "#FFFFFF").toUpperCase();
 }
+// A gain is a multiplier from a fixed floor, which can only ever brighten what survived the
+// cut. A window is the floor and the ceiling, so it can put the whole output across the narrow
+// band where the cores actually differ, which is the thing a gain could never do. An
+// arrangement saved by an older version still carries a gain, so convert it rather than
+// silently ignoring it and changing how somebody's saved figure looks.
+function arrangeChannelWindow(config){
+  var black = Number(config && config.black);
+  var white = Number(config && config.white);
+  if (Number.isFinite(black) && Number.isFinite(white) && white > black)
+    return {black:black, white:white};
+  var gain = Number(config && config.gain);
+  if (Number.isFinite(gain) && gain > 0) return {black:0, white:255 / gain};
+  return {black:0, white:255};
+}
 function arrangeChannelGain(config){
   var gain = Number(config && config.gain);
   return Number.isFinite(gain) ? gain : 1;
@@ -3558,25 +3617,76 @@ function makeArrangeLayer(channel){
     config = arrangeChannelConfig(figure, channel.index);
     var detail = document.createElement("div");
     detail.className = "arrangeLayerDetail";
-    var gainLine = document.createElement("label");
-    gainLine.className = "arrangeGain";
-    var gainLabel = document.createElement("span");
-    gainLabel.textContent = t("arrangeGain");
-    var gain = document.createElement("input");
-    gain.type = "range"; gain.min = "0"; gain.max = "3"; gain.step = "0.05";
-    gain.value = String(arrangeChannelGain(config));
-    gain.setAttribute("aria-label", t("arrangeGain") + " " + channel.name);
-    var output = document.createElement("output");
-    output.textContent = Number(gain.value).toFixed(2) + "×";
-    gain.addEventListener("input", function(){
+    var current = arrangeChannelWindow(config);
+    var readout = document.createElement("output");
+    function paintReadout(){
+      readout.textContent = Math.round(current.black) + " to " + Math.round(current.white);
+    }
+    function slider(key, labelKey){
+      var line = document.createElement("label");
+      line.className = "arrangeGain";
+      var caption = document.createElement("span");
+      caption.textContent = t(labelKey);
+      var input = document.createElement("input");
+      input.type = "range"; input.min = "0"; input.max = "255"; input.step = "1";
+      input.value = String(Math.round(current[key]));
+      input.setAttribute("aria-label", t(labelKey) + " " + channel.name);
+      input.addEventListener("input", function(){
+        var item = arrangeEnsureChannel(figure, channel.index);
+        current[key] = Number(this.value);
+        // A window with the ceiling at or below the floor renders nothing at all, which
+        // looks like a broken screen rather than a setting the person can undo.
+        if (current.white <= current.black) {
+          if (key === "black") current.black = current.white - 1;
+          else current.white = current.black + 1;
+          this.value = String(Math.round(current[key]));
+        }
+        item.black = current.black; item.white = current.white;
+        delete item.gain;
+        paintReadout();
+        refreshArrangeCanvases();
+        arrangeChanged();
+      });
+      line.appendChild(caption); line.appendChild(input);
+      return line;
+    }
+    detail.appendChild(slider("black", "arrangeBlackPoint"));
+    detail.appendChild(slider("white", "arrangeWhitePoint"));
+    var windowLine = document.createElement("div");
+    windowLine.className = "arrangeGain";
+    var windowLabel = document.createElement("span");
+    windowLabel.textContent = t("arrangeWindow");
+    paintReadout();
+    // The one control that turns a wall of identical panels into a picture with a result in
+    // it: the manifest knows the lowest and highest per-core value in this run, so windowing
+    // to that pair spends the whole output on the range where the cores actually differ. The
+    // same window goes on every core, so they stay comparable and only the mapping changes.
+    var fit = document.createElement("button");
+    fit.type = "button"; fit.className = "btn quiet";
+    fit.textContent = t("arrangeFitWindow");
+    fit.addEventListener("click", function(){
+      var span = Number(channel.displayHigh) - Number(channel.displayLow);
+      var low = Number(channel.coreP99Low), high = Number(channel.coreP99High);
+      if (!Number.isFinite(low) || !Number.isFinite(high) || !(span > 0) || high <= low) {
+        toast(t("arrangeNoSpread"));
+        return;
+      }
+      var toTile = function(raw){
+        return Math.max(0, Math.min(255, 255 * (raw - Number(channel.displayLow)) / span));
+      };
+      current.black = toTile(low);
+      current.white = Math.max(toTile(high), current.black + 1);
       var item = arrangeEnsureChannel(figure, channel.index);
-      item.gain = Number(this.value);
-      output.textContent = Number(this.value).toFixed(2) + "×";
-      refreshArrangeCanvases();
+      item.black = current.black; item.white = current.white;
+      delete item.gain;
+      arrangeRenderVersion++;
+      drawArrange();
       arrangeChanged();
+      toast(t("arrangeFittedWindow", channel.name,
+        Math.round(current.black), Math.round(current.white)));
     });
-    gainLine.appendChild(gainLabel); gainLine.appendChild(gain); gainLine.appendChild(output);
-    detail.appendChild(gainLine);
+    windowLine.appendChild(windowLabel); windowLine.appendChild(readout); windowLine.appendChild(fit);
+    detail.appendChild(windowLine);
     var palette = document.createElement("div");
     palette.className = "arrangePalette";
     ["#3D7BFF", "#FF4D4D", "#2FD477", "#E65CFF", "#31D9E8", "#FFD84D", "#FF943D", "#FFFFFF"]
@@ -3657,7 +3767,7 @@ function arrangeComposite(canvas, coreName, size, figure, token){
   }).map(function(config){
     var manifest = arrangeChannelManifest(config.index);
     return {index:config.index, colour:arrangeChannelColour(config, manifest),
-            gain:arrangeChannelGain(config)};
+            window:arrangeChannelWindow(config)};
   });
   var jobs = visibleChannels.map(function(config){
     return arrangeTile(coreName, config.index).then(function(image){
@@ -3681,8 +3791,10 @@ function arrangeComposite(canvas, coreName, size, figure, token){
       context.setTransform(1, 0, 0, 1, 0, 0);
       var pixels = context.getImageData(0, 0, size, size);
       var rgb = arrangeRgb(config.colour);
+      var black = config.window.black;
+      var span = Math.max(config.window.white - black, 1);
       for (var pixel = 0; pixel < pixels.data.length; pixel += 4) {
-        var strength = Math.min(255, pixels.data[pixel] * config.gain);
+        var strength = Math.max(0, Math.min(255, (pixels.data[pixel] - black) * 255 / span));
         pixels.data[pixel] = Math.round(strength * rgb.r / 255);
         pixels.data[pixel + 1] = Math.round(strength * rgb.g / 255);
         pixels.data[pixel + 2] = Math.round(strength * rgb.b / 255);
@@ -3859,6 +3971,24 @@ function buildArrangeFigureCanvas(){
       context.fillRect(x, y, cellSize, cellSize);
       if (item.cell) context.drawImage(item.canvas, x, y);
       context.strokeRect(x + .5, y + .5, cellSize - 1, cellSize - 1);
+      // The same number the screen shows. A preview that drops it would be answering a
+      // different question from the one the reader was looking at when they pressed the button.
+      if (item.cell && arrangeShowValues) {
+        var measured = arrangeCoreValue(item.cell.core, figure);
+        if (measured != null) {
+          context.save();
+          context.font = "700 15px " + face;
+          context.fillStyle = "rgba(0,0,0,.55)";
+          var text = String(Math.round(measured));
+          var pad = 6, wide = context.measureText(text).width + pad * 2;
+          context.fillRect(x + cellSize - wide - 8, y + cellSize - 30, wide, 22);
+          context.fillStyle = "#ffffff";
+          context.textAlign = "right";
+          context.textBaseline = "middle";
+          context.fillText(text, x + cellSize - 8 - pad, y + cellSize - 19);
+          context.restore();
+        }
+      }
     });
     return canvas;
   });
@@ -3975,6 +4105,11 @@ $("arrangeSplitMarkers").addEventListener("click", function(){
   drawArrange();
   arrangeChanged();
   toast(t("arrangeSplitMade", made));
+});
+$("arrangeValuesToggle").addEventListener("change", function(){
+  arrangeShowValues = this.checked;
+  arrangeRenderVersion++;
+  drawArrange();
 });
 $("arrangeAddRow").addEventListener("click", function(){
   arrangeFigure().rows.push({label:""});

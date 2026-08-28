@@ -68,7 +68,12 @@ int tilePx = ((arrange.tilePx ?: 256) as Number).intValue()
 // the core itself back in the frame.
 double rotationSupport = ((arrange.rotationSupport ?: 1.45) as Number).doubleValue()
 double lowPercentile = ((arrange.lowPercentile ?: 50.0d) as Number).doubleValue()
-double highPercentile = ((arrange.highPercentile ?: 99.8d) as Number).doubleValue()
+// 99.8 threw away the only part of the picture that carried the answer. Measured on the
+// 117-core reference slide, the range over which experimental conditions actually differ sat
+// ABOVE that ceiling for five of six markers, and for CPD every condition saturated to pure
+// white, so the screen showed a scientist six identical panels and they correctly reported
+// seeing no difference. The tail has to survive the cut; the page windows into it afterwards.
+double highPercentile = ((arrange.highPercentile ?: 99.99d) as Number).doubleValue()
 double tileDownsample = ((arrange.downsample ?: 8) as Number).doubleValue()
 // The range is measured off a coarse view of the whole slide rather than the tiles, because a
 // core cut from a bright row and one cut from a dim row have to stay comparable. Measuring per
@@ -230,6 +235,7 @@ overview.flush()
 
 // ---------------------------------------------------------------- cut the tiles
 def present = cores.findAll { !it.missing }
+def statsByCore = [:]
 println "ARRANGE: cutting ${present.size()} cores x ${channelCount} channels at 1/${(int) tileDownsample}"
 long started = System.currentTimeMillis()
 int written = 0
@@ -255,8 +261,39 @@ present.eachWithIndex { core, position ->
     File coreDir = new File(tilesDir, core.core)
     coreDir.mkdirs()
 
+    // The tile is cut square and 1.45x wider than the core, so its corners hold the
+    // neighbouring cores and bare slide. Statistics have to come from the inscribed circle
+    // or every number is diluted by whatever happened to sit beside this core.
+    double radius = Math.min(iw, ih) / 2.0d
+    double centreX = iw / 2.0d, centreY = ih / 2.0d
+    boolean[] inside = new boolean[iw * ih]
+    int insideCount = 0
+    for (int row = 0; row < ih; row++) {
+        double dy = row - centreY
+        for (int column = 0; column < iw; column++) {
+            double dx = column - centreX
+            if (dx * dx + dy * dy <= radius * radius) { inside[row * iw + column] = true; insideCount++ }
+        }
+    }
+    def coreStats = [:]
+
     for (int channel = 0; channel < channelCount; channel++) {
         raster.getSamples(0, 0, iw, ih, channel, samples)
+
+        // Measured on the raw values, before any display scaling, so the number under a core
+        // on screen means the same thing whatever window the reader has chosen.
+        int[] circle = new int[insideCount]
+        int at = 0
+        double total = 0.0d
+        for (int i = 0; i < samples.length; i++) {
+            if (inside[i]) { circle[at++] = samples[i]; total += samples[i] }
+        }
+        Arrays.sort(circle)
+        coreStats[String.valueOf(channel)] = [
+            mean: Math.round((total / Math.max(insideCount, 1)) * 100.0d) / 100.0d,
+            p99: (double) circle[Math.min((int) Math.round(0.99d * (circle.length - 1)), circle.length - 1)],
+            max: (double) circle[circle.length - 1]
+        ]
         double low = lows[channel], span = highs[channel] - lows[channel]
         def gray = new BufferedImage(tilePx, tilePx, BufferedImage.TYPE_BYTE_GRAY)
         def graphics = gray.createGraphics()
@@ -278,6 +315,7 @@ present.eachWithIndex { core, position ->
         gray.flush()
         written++
     }
+    statsByCore[core.core] = coreStats
     img.flush()
     if ((position + 1) % 20 == 0)
         println "ARRANGE: ${position + 1}/${present.size()} cores"
@@ -286,6 +324,16 @@ present.eachWithIndex { core, position ->
 // ---------------------------------------------------------------- the manifest
 def stamp = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 stamp.setTimeZone(TimeZone.getTimeZone('UTC'))
+// The range over which cores actually differ, one pair per channel. A window set to this puts
+// the whole 8-bit output across exactly the part of the scale where the experiment lives, which
+// is what turns a wall of identical white panels into a picture with a result in it.
+channelsOut.each { entry ->
+    def key = String.valueOf(entry.index)
+    def values = statsByCore.values().collect { it[key]?.p99 }.findAll { it != null }
+    entry.coreP99Low = values.isEmpty() ? 0.0d : values.min()
+    entry.coreP99High = values.isEmpty() ? 0.0d : values.max()
+}
+
 def manifest = [
     schemaVersion: 1,
     image: server.getMetadata().getName(),
@@ -300,7 +348,8 @@ def manifest = [
     cores: cores.collect { core ->
         [index: core.index, core: core.core, row: core.row, col: core.col,
          missing: core.missing,
-         rotationDeg: Math.round((rotation[core.core] ?: 0.0d) * 1000.0d) / 1000.0d]
+         rotationDeg: Math.round((rotation[core.core] ?: 0.0d) * 1000.0d) / 1000.0d,
+         stats: statsByCore[core.core] ?: [:]]
     }
 ]
 // Write the manifest last and atomically. Studio decides the whole screen is available from
