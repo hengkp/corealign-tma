@@ -1071,6 +1071,15 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
               <button class="btn" id="arrangeAddCol" type="button" data-i18n="arrangeAddColumn"></button>
               <button class="btn quiet" id="arrangeFill" type="button" data-i18n="arrangeFillLayout"></button>
               <label class="arrangeValuesToggle"><input type="checkbox" id="arrangeValuesToggle" checked><span data-i18n="arrangeShowValues"></span></label>
+              <label class="arrangeValuesToggle"><span data-i18n="arrangeCrop"></span>
+                <select id="arrangeCropMode">
+                  <option value="core" data-i18n="arrangeCropCore"></option>
+                  <option value="epidermis" data-i18n="arrangeCropEpidermis"></option>
+                </select>
+              </label>
+              <label class="arrangeValuesToggle" id="arrangeCropDepthLine" hidden><span data-i18n="arrangeCropDepth"></span>
+                <input type="number" id="arrangeCropDepth" min="20" max="600" step="10" value="100">
+              </label>
             </div>
             <section class="arrangeChannels">
               <div class="arrangeChannelsHead">
@@ -1284,6 +1293,10 @@ var EN = {
   arrangeNoSpread:"This run has no per-core measurements to fit to",
   arrangeCoreValue:"Measured {0}",
   arrangeShowValues:"Show measured values",
+  arrangeCrop:"Show",
+  arrangeCropCore:"The whole core",
+  arrangeCropEpidermis:"The epidermis only",
+  arrangeCropDepth:"Depth, microns",
   arrangeColourHex:"Colour hex value",
   arrangeUseColour:"Use colour {0}",
   arrangeFillReport:"Filled {0} cells · could not fill {1}.",
@@ -1582,6 +1595,10 @@ var TH = {
   arrangeNoSpread:"การรันนี้ไม่มีค่าที่วัดรายcoreให้ใช้ปรับช่วง",
   arrangeCoreValue:"วัดได้ {0}",
   arrangeShowValues:"แสดงค่าที่วัดได้",
+  arrangeCrop:"แสดง",
+  arrangeCropCore:"ทั้ง core",
+  arrangeCropEpidermis:"เฉพาะหนังกำพร้า",
+  arrangeCropDepth:"ความลึก ไมครอน",
   arrangeColourHex:"รหัสสีแบบ hex",
   arrangeUseColour:"ใช้สี {0}",
   arrangeFillReport:"เติมได้ {0} ช่อง · หา core ไม่ได้ {1} ช่อง",
@@ -3193,6 +3210,12 @@ function drawArrange(){
   $("arrangeWorkspace").hidden = false;
   drawArrangeSwitcher();
   $("arrangeTitle").value = arrangeFigure().title;
+  // The crop belongs to the figure, so the controls have to follow whichever figure is on
+  // screen rather than keeping whatever the last one was set to.
+  var figure = arrangeFigure();
+  $("arrangeCropMode").value = figure.crop === "epidermis" ? "epidermis" : "core";
+  $("arrangeCropDepthLine").hidden = figure.crop !== "epidermis";
+  $("arrangeCropDepth").value = String(Number(figure.cropDepthUm) || 100);
   drawArrangeTable();
   drawArrangeChannelRail();
   drawArrangeMap();
@@ -3769,6 +3792,32 @@ function arrangeRgb(hex){
   return {r:parseInt(clean.slice(0, 2), 16), g:parseInt(clean.slice(2, 4), 16),
           b:parseInt(clean.slice(4, 6), 16)};
 }
+// How many tile pixels a depth in microns comes to. The manifest carries the slide's
+// calibration and the downsample the tiles were cut at; without a calibration there is no
+// honest answer, so the caller falls back to a fraction of the core instead of inventing one.
+function arrangeTilePixelsForMicrons(microns){
+  var perPixel = Number(arrangeManifest && arrangeManifest.tileMicronsPerPixel);
+  if (!Number.isFinite(perPixel) || perPixel <= 0) return null;
+  return microns / perPixel;
+}
+// CoreAlign has already turned every core so its epidermis is at the top, which makes "depth
+// below the surface" a straight vertical distance and the band a horizontal crop. Finding the
+// surface per column and taking the median keeps a torn or folded edge from dragging the whole
+// crop off: one bad column cannot move a median the way it moves a minimum.
+function arrangeSurfaceRow(layer, size){
+  var context = layer.getContext("2d", {willReadFrequently:true});
+  var data = context.getImageData(0, 0, size, size).data;
+  var tops = [];
+  for (var column = 0; column < size; column += 2) {
+    for (var row = 0; row < size; row++) {
+      var at = (row * size + column) * 4;
+      if (data[at] + data[at + 1] + data[at + 2] > 40) { tops.push(row); break; }
+    }
+  }
+  if (!tops.length) return null;
+  tops.sort(function(a, b){ return a - b; });
+  return tops[Math.floor(tops.length / 2)];
+}
 function arrangeComposite(canvas, coreName, size, figure, token){
   var core = ((arrangeManifest && arrangeManifest.cores) || []).filter(function(item){
     return item.core === coreName;
@@ -3823,6 +3872,7 @@ function arrangeComposite(canvas, coreName, size, figure, token){
     context.globalCompositeOperation = "screen";
     layers.forEach(function(layer){ if (layer) context.drawImage(layer, 0, 0); });
     context.globalCompositeOperation = "source-over";
+    if (figure.crop === "epidermis") arrangeCropToBand(canvas, size, figure);
     return canvas;
   });
 }
@@ -3850,6 +3900,37 @@ function scheduleArrangeSweep(){
   if (arrangeSweepPending) return;
   arrangeSweepPending = true;
   setTimeout(renderArrangeInView, 60);
+}
+// The dermis is four fifths of a core and carries little of what these stains are about, so it
+// dominates the frame and the eye judges the wrong thing. Cropping to the band and filling the
+// cell with it is the difference between comparing two cores and comparing two pink circles.
+function arrangeCropToBand(canvas, size, figure){
+  var band = document.createElement("canvas");
+  band.width = size; band.height = size;
+  band.getContext("2d").drawImage(canvas, 0, 0);
+  var surface = arrangeSurfaceRow(band, size);
+  var depth = arrangeTilePixelsForMicrons(Number(figure.cropDepthUm) || 100);
+  // No calibration on the slide, so fall back to a fixed share of the core rather than
+  // claiming a depth in microns that nothing measured.
+  if (depth == null) depth = size * 0.22;
+  depth = Math.max(8, Math.min(size, Math.round(depth)));
+  if (surface == null) surface = 0;
+  var top = Math.max(0, Math.min(size - depth, surface));
+  var context = canvas.getContext("2d");
+  context.fillStyle = arrangeCss("--stage-bg");
+  context.fillRect(0, 0, size, size);
+  // Removing the dermis is most of the point: it is four fifths of a core and the eye spends
+  // itself on it. Enlarging helps too, but only up to the resolution that is actually there.
+  // The tiles are cut at the run's downsample, so a 100 micron band is about fourteen tile
+  // pixels tall, and stretching that to fill a cell is an eighteen times blow-up that returns
+  // mush. Cap the enlargement and letterbox the rest: a sharp strip beats a blurred rectangle,
+  // and a run that wants finer detail should cut its tiles at a smaller arrange.downsample.
+  var scale = Math.min((size * 0.8) / depth, 2);
+  var sourceWidth = Math.min(size, size / scale);
+  var sourceLeft = Math.round((size - sourceWidth) / 2);
+  var drawHeight = Math.round(depth * scale);
+  context.drawImage(band, sourceLeft, top, Math.round(sourceWidth), depth,
+                    0, Math.round((size - drawHeight) / 2), size, drawHeight);
 }
 function queueArrangeCanvas(canvas, core, size){
   canvas._arrangeCore = core;
@@ -4116,6 +4197,23 @@ $("arrangeSplitMarkers").addEventListener("click", function(){
   drawArrange();
   arrangeChanged();
   toast(t("arrangeSplitMade", made));
+});
+$("arrangeCropMode").addEventListener("change", function(){
+  var figure = arrangeFigure();
+  if (!figure) return;
+  figure.crop = this.value === "epidermis" ? "epidermis" : "core";
+  arrangeRenderVersion++;
+  drawArrange();
+  arrangeChanged();
+});
+$("arrangeCropDepth").addEventListener("change", function(){
+  var figure = arrangeFigure();
+  if (!figure) return;
+  figure.cropDepthUm = Math.max(20, Math.min(600, Number(this.value) || 100));
+  this.value = String(figure.cropDepthUm);
+  arrangeRenderVersion++;
+  drawArrange();
+  arrangeChanged();
 });
 $("arrangeValuesToggle").addEventListener("change", function(){
   arrangeShowValues = this.checked;

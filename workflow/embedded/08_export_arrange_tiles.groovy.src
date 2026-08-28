@@ -179,6 +179,15 @@ if (orientationReport.isFile()) {
 }
 
 // ---------------------------------------------------------------- channels and their range
+// Microns per pixel at full resolution. A slide with no calibration reports zero and the page
+// falls back to a fraction of the core rather than pretending it knows a depth in microns.
+double pixelMicrons = 0.0d
+try {
+    def cal = server.getPixelCalibration()
+    if (cal != null && cal.hasPixelSizeMicrons()) pixelMicrons = cal.getAveragedPixelSizeMicrons()
+} catch (Throwable ignored) { }
+println "ARRANGE: pixel size ${pixelMicrons > 0 ? String.format('%.4f', pixelMicrons) + ' um' : 'not calibrated'}"
+
 int channelCount = server.nChannels()
 def channelNames = (0..<channelCount).collect { server.getChannel(it).getName() ?: "Channel ${it + 1}" }
 
@@ -341,6 +350,12 @@ def manifest = [
     gridCols: cores.collect { it.col }.max() ?: 0,
     tilePx: tilePx,
     rotationSupport: rotationSupport,
+    // The page crops the epidermis by depth in microns, which it cannot work out from pixels
+    // alone. Carry the calibration rather than making the browser guess it from the core size.
+    micronsPerPixel: pixelMicrons,
+    tileMicronsPerPixel: pixelMicrons > 0 ? Math.round(pixelMicrons * tileDownsample *
+        (2.0d * Math.round(cores[0].diameter * rotationSupport / 2.0d / tileDownsample) / tilePx)
+        * 100000.0d) / 100000.0d : 0.0d,
     sourceDownsample: tileDownsample,
     gridHash: gridHash,
     createdAt: stamp.format(new Date()),

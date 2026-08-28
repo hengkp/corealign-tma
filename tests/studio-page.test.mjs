@@ -291,6 +291,26 @@ test("step 8 measures each core inside its own circle", () => {
     "each core carries its own measurements");
 });
 
+// The dermis is four fifths of a core and carries little of what these stains are about, so it
+// dominates the frame and the eye judges the wrong thing. CoreAlign already stands every core
+// up with its epidermis at the top, which makes the band a horizontal crop.
+test("the arrange screen can crop to the epidermis", () => {
+  assert.match(page, /function arrangeCropToBand\(canvas, size, figure\)/,
+    "the crop has to exist");
+  const body = page.slice(page.indexOf("function arrangeCropToBand"),
+                          page.indexOf("function queueArrangeCanvas"));
+  // A torn or folded edge gives one column a surface far above the rest; a median survives
+  // that where a minimum would drag the whole crop off the tissue.
+  assert.match(page, /tops\[Math\.floor\(tops\.length \/ 2\)\]/,
+    "the surface is the median column, not the highest one");
+  assert.match(body, /Math\.min\(\(size \* 0\.8\) \/ depth, 2\)/,
+    "enlargement is capped: the tiles do not carry the detail an unbounded blow-up implies");
+  assert.match(page, /function arrangeTilePixelsForMicrons\(microns\)/,
+    "a depth in microns needs the calibration, not a guess from the core size");
+  assert.ok(page.includes("tileMicronsPerPixel"),
+    "the calibration comes from the manifest the exporter writes");
+});
+
 // Saving into a waiting run and saving to a file are different outcomes for the reader: one
 // is applied at the gate in front of them, the other sits on disk until somebody runs again.
 // The screen looks the same either way, so the page has to say which happened.
