@@ -15,6 +15,7 @@ const sources = [
   ["5", "05_finalize_orientation_review.groovy"],
   ["6", "06_export_presentation_package.groovy"],
   ["7", "07_build_qupath_analysis_project.groovy"],
+  ["8", "08_export_arrange_tiles.groovy"],
 ];
 
 const wrapBase64 = (value) => value.match(/.{1,76}/g).join("\n");

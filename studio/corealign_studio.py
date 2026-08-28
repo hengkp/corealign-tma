@@ -928,6 +928,167 @@ class Run:
             "corrections": corrections,
         }
 
+    # -- arrange ------------------------------------------------------------
+    def arrange(self) -> dict:
+        """The tile manifest and the figure arrangement beside the attached slide."""
+        if not self.project:
+            return {"available": False, "reason": "project"}
+        manifest_path = self.project / "qc" / "03-arrange" / "manifest.json"
+        if not manifest_path.is_file():
+            return {"available": False, "reason": "tiles"}
+        try:
+            manifest = json.loads(manifest_path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return {"available": False, "reason": "tiles"}
+
+        arrangement = self._read_json("corealign-arrangement.json")
+        if not isinstance(arrangement, dict):
+            nuclear = next((channel for channel in (manifest.get("channels") or [])
+                            if channel.get("kind") == "nuclear"), None)
+            arrangement = {
+                "schemaVersion": 1,
+                "image": manifest.get("image") or (self.slide.name if self.slide else ""),
+                "slideLayout": {"columns": [], "rowBands": []},
+                "figures": [{
+                    "id": "figure-1",
+                    "title": "Figure 1",
+                    "rows": [{"label": ""}],
+                    "cols": [{"label": ""}, {"label": ""}, {"label": ""}],
+                    "channels": ([{"index": nuclear["index"], "visible": True}]
+                                 if nuclear else []),
+                    "cells": [],
+                }],
+            }
+        return {
+            "available": True,
+            "manifest": manifest,
+            "arrangement": arrangement,
+            "tileBase": "qc/03-arrange/tiles",
+        }
+
+    @staticmethod
+    def _arrange_string(value, item: str) -> str | None:
+        if not isinstance(value, str):
+            return f"{item} must be a string."
+        return None
+
+    def save_arrangement(self, arrangement: object) -> dict:
+        """Validate and atomically replace the arrangement for the attached project."""
+        available = self.arrange()
+        if not available.get("available"):
+            reason = available.get("reason")
+            sentence = ("No project is attached." if reason == "project"
+                        else "The core image tiles have not been cut yet.")
+            return {"ok": False, "error": sentence}
+        if not isinstance(arrangement, dict):
+            return {"ok": False, "error": "The arrangement must be a JSON object."}
+
+        manifest = available["manifest"]
+        channel_indices = {channel.get("index") for channel in (manifest.get("channels") or [])
+                           if isinstance(channel, dict)}
+        manifest_cores = {str(core.get("core") or ""): core
+                          for core in (manifest.get("cores") or []) if isinstance(core, dict)}
+        figures = arrangement.get("figures")
+        if not isinstance(figures, list):
+            return {"ok": False, "error": "Figures must be a list."}
+
+        slide_layout = arrangement.get("slideLayout") or {}
+        if not isinstance(slide_layout, dict):
+            return {"ok": False, "error": "The slide layout must be an object."}
+        for index, column in enumerate(slide_layout.get("columns") or []):
+            if not isinstance(column, dict):
+                return {"ok": False, "error": f"Slide column {index + 1} must be an object."}
+            error = self._arrange_string(column.get("label"), f"Slide column {index + 1} label")
+            if error:
+                return {"ok": False, "error": error}
+        for index, band in enumerate(slide_layout.get("rowBands") or []):
+            if not isinstance(band, dict):
+                return {"ok": False, "error": f"Slide row band {index + 1} must be an object."}
+            error = self._arrange_string(band.get("label"), f"Slide row band {index + 1} label")
+            if error:
+                return {"ok": False, "error": error}
+
+        clean = json.loads(json.dumps(arrangement))
+        seen_ids: set[str] = set()
+        for figure_index, figure in enumerate(figures):
+            number = figure_index + 1
+            if not isinstance(figure, dict):
+                return {"ok": False, "error": f"Figure {number} must be an object."}
+            figure_id = figure.get("id")
+            if not isinstance(figure_id, str) or not figure_id.strip():
+                return {"ok": False, "error": f"Figure {number} has an empty id."}
+            if figure_id in seen_ids:
+                return {"ok": False, "error": f"Figure id {figure_id} is used more than once."}
+            seen_ids.add(figure_id)
+            error = self._arrange_string(figure.get("title"), f"Figure {figure_id} title")
+            if error:
+                return {"ok": False, "error": error}
+
+            rows, cols = figure.get("rows"), figure.get("cols")
+            if not isinstance(rows, list) or not isinstance(cols, list):
+                return {"ok": False,
+                        "error": f"Figure {figure_id} rows and columns must be lists."}
+            for row_index, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    return {"ok": False,
+                            "error": f"Figure {figure_id} row {row_index + 1} must be an object."}
+                error = self._arrange_string(
+                    row.get("label"), f"Figure {figure_id} row {row_index + 1} label")
+                if error:
+                    return {"ok": False, "error": error}
+            for col_index, column in enumerate(cols):
+                if not isinstance(column, dict):
+                    return {"ok": False,
+                            "error": f"Figure {figure_id} column {col_index + 1} must be an object."}
+                error = self._arrange_string(
+                    column.get("label"), f"Figure {figure_id} column {col_index + 1} label")
+                if error:
+                    return {"ok": False, "error": error}
+
+            channels = figure.get("channels") or []
+            if not isinstance(channels, list):
+                return {"ok": False, "error": f"Figure {figure_id} channels must be a list."}
+            for channel in channels:
+                if not isinstance(channel, dict):
+                    return {"ok": False,
+                            "error": f"Figure {figure_id} has a channel that is not an object."}
+                index = channel.get("index")
+                if isinstance(index, bool) or index not in channel_indices:
+                    return {"ok": False,
+                            "error": f"Figure {figure_id} names unknown channel {index}."}
+
+            cells = figure.get("cells") or []
+            if not isinstance(cells, list):
+                return {"ok": False, "error": f"Figure {figure_id} cells must be a list."}
+            for cell_index, cell in enumerate(cells):
+                item = f"Figure {figure_id} cell {cell_index + 1}"
+                if not isinstance(cell, dict):
+                    return {"ok": False, "error": f"{item} must be an object."}
+                row, col = cell.get("row"), cell.get("col")
+                if (isinstance(row, bool) or not isinstance(row, int)
+                        or isinstance(col, bool) or not isinstance(col, int)
+                        or not 0 <= row < len(rows) or not 0 <= col < len(cols)):
+                    return {"ok": False,
+                            "error": f"{item} is outside its figure rows or columns."}
+                core_name = cell.get("core")
+                if not isinstance(core_name, str) or core_name not in manifest_cores:
+                    return {"ok": False,
+                            "error": f"{item} names core {core_name or 'without a name'}, which does not exist."}
+                if manifest_cores[core_name].get("missing"):
+                    return {"ok": False,
+                            "error": f"{item} names core {core_name}, which is marked missing."}
+
+        clean["image"] = manifest.get("image") or (self.slide.name if self.slide else "")
+        clean["createdAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        target = self.project / "corealign-arrangement.json"
+        temporary = target.with_name("." + target.name + ".tmp")
+        try:
+            temporary.write_text(json.dumps(clean, indent=2, ensure_ascii=False) + "\n", "utf-8")
+            os.replace(temporary, target)
+        except OSError as error:
+            return {"ok": False, "error": f"Could not write the arrangement: {error}"}
+        return {"ok": True, "arrangement": clean}
+
     GRID_ACTIONS = ("move", "restore", "mark_missing")
 
     def save_grid_corrections(self, edits: list) -> dict:
@@ -1139,12 +1300,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers ------------------------------------------------------------
     def _send(self, status: int, body: bytes, content_type: str, extra: dict | None = None) -> None:
+        extra = extra or {}
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", extra.get("Cache-Control", "no-store"))
         self.send_header("X-Content-Type-Options", "nosniff")
-        for key, value in (extra or {}).items():
+        for key, value in extra.items():
+            if key == "Cache-Control":
+                continue
             self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
@@ -1197,6 +1361,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out({"results": RUN.results()})
             if route == "/api/review":
                 return self.json_out(RUN.review())
+            if route == "/api/arrange":
+                return self.json_out(RUN.arrange())
             if route == "/api/download":
                 return self.download_file(query.get("path", [""])[0])
             if route == "/api/download-zip":
@@ -1242,6 +1408,10 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/corrections":
                 body = self.read_json()
                 answer = RUN.save_corrections(body.get("corrections") or [])
+                return self.json_out(answer, 200 if answer.get("ok") else 409)
+            if route == "/api/arrange":
+                body = self.read_json()
+                answer = RUN.save_arrangement(body.get("arrangement"))
                 return self.json_out(answer, 200 if answer.get("ok") else 409)
             if route.startswith("/api/bridge/"):
                 return self.proxy_bridge(route[len("/api/bridge/"):])
@@ -1481,7 +1651,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out({"error": "not found"}, 404)
         kind = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
         try:
-            return self._send(200, resolved.read_bytes(), kind)
+            extra = None
+            if relative.startswith("qc/03-arrange/tiles/"):
+                # Tiles are immutable for one prepared run. This map redraws 117 cores across
+                # 19 channels repeatedly, so making the browser fetch them again is wasteful.
+                extra = {"Cache-Control": "public, max-age=31536000, immutable"}
+            return self._send(200, resolved.read_bytes(), kind, extra)
         except OSError as error:
             return self.json_out({"error": str(error)}, 500)
 

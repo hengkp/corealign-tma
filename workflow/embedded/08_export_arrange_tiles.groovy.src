@@ -1,0 +1,319 @@
+/**
+ * STEP 8 - Cut one grayscale tile per core per channel, for the Arrange screen.
+ *
+ * Studio draws its figure builder from these. It is a standard-library-only Python server and
+ * cannot read a pixel of an OME-TIFF, so the only place this cut can happen is here, inside the
+ * JVM that already has the slide open. The page then tints and composites the tiles in the
+ * browser, which is what lets a person change channel and colour without coming back to a
+ * 30 GB slide for every click.
+ *
+ * Nothing here re-runs detection or orientation. It reads the grid that was approved and the
+ * angles that were measured, and writes pictures.
+ */
+
+import static qupath.lib.scripting.QP.*
+
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import qupath.fx.dialogs.Dialogs
+import qupath.lib.regions.RegionRequest
+
+import javax.imageio.ImageIO
+import java.awt.image.BufferedImage
+import java.io.File
+import java.text.SimpleDateFormat
+
+def json = new GsonBuilder().setPrettyPrinting().create()
+def imageData = getCurrentImageData()
+if (imageData == null) {
+    Dialogs.showErrorMessage('TMA arrange tiles', 'No image is open.')
+    System.setProperty('tma.arrange.status', 'BLOCKED_NO_IMAGE')
+    return
+}
+def server = imageData.getServer()
+
+File workflowDir = null
+try {
+    def fileUri = server.getURIs().find { it != null && it.getScheme() == 'file' }
+    if (fileUri != null) workflowDir = new File(fileUri).getParentFile()
+} catch (Throwable ignored) {}
+if (workflowDir == null) workflowDir = new File(System.getProperty('user.home'), 'QuPath-TMA-export')
+
+String imageStem = server.getMetadata().getName()
+if (imageStem == null || imageStem.trim().isEmpty()) imageStem = 'image'
+imageStem = imageStem.replaceFirst(/\.ome\.tiff?$/, '').replaceFirst(/\.[^.]+$/, '')
+
+// ---------------------------------------------------------------- configuration
+def config = [:]
+File configFile = new File(workflowDir, 'corealign.config.json')
+if (configFile.isFile()) {
+    try { config = new Gson().fromJson(configFile.getText('UTF-8'), Map.class) ?: [:] }
+    catch (Throwable ignored) { config = [:] }
+}
+def profiles = config.profiles instanceof Map ? config.profiles : [:]
+def profile = profiles[(config.activeProfile ?: 'automatic')?.toString()]
+if (!(profile instanceof Map)) profile = [:]
+def arrange = profile.arrange instanceof Map ? profile.arrange : [:]
+
+if (arrange.enabled == false) {
+    println 'ARRANGE: disabled in the config, no tiles cut.'
+    System.setProperty('tma.arrange.status', 'DISABLED')
+    return
+}
+
+int tilePx = ((arrange.tilePx ?: 256) as Number).intValue()
+// The tile is cut wider than the core so the page can stand the core up without the corners
+// coming off. A rotated square needs at most |cos|+|sin| = 1.414 of its own width, so 1.45
+// covers every angle with a little to spare, and the page enlarges by the same factor to put
+// the core itself back in the frame.
+double rotationSupport = ((arrange.rotationSupport ?: 1.45) as Number).doubleValue()
+double lowPercentile = ((arrange.lowPercentile ?: 50.0d) as Number).doubleValue()
+double highPercentile = ((arrange.highPercentile ?: 99.8d) as Number).doubleValue()
+double tileDownsample = ((arrange.downsample ?: 8) as Number).doubleValue()
+// The range is measured off a coarse view of the whole slide rather than the tiles, because a
+// core cut from a bright row and one cut from a dim row have to stay comparable. Measuring per
+// core would flatten every core to look the same and hide the difference the figure exists
+// to show.
+double rangeDownsample = ((arrange.rangeDownsample ?: 32) as Number).doubleValue()
+
+File outDir = new File(new File(workflowDir, 'qc'), '03-arrange')
+File tilesDir = new File(outDir, 'tiles')
+tilesDir.mkdirs()
+
+// ---------------------------------------------------------------- the grid
+def parseCsvLine = { String line ->
+    def values = []
+    StringBuilder field = new StringBuilder()
+    boolean quoted = false
+    for (int i = 0; i < line.length(); i++) {
+        char ch = line.charAt(i)
+        if (quoted) {
+            if (ch == '"' as char && i + 1 < line.length() && line.charAt(i + 1) == ('"' as char)) {
+                field.append('"'); i++
+            } else if (ch == ('"' as char)) quoted = false
+            else field.append(ch)
+        } else if (ch == ('"' as char)) quoted = true
+        else if (ch == (',' as char)) { values << field.toString(); field.setLength(0) }
+        else field.append(ch)
+    }
+    values << field.toString()
+    return values
+}
+
+File gridDir = new File(new File(workflowDir, 'qc'), '01-grid')
+def cores = []
+String gridHash = ''
+// The geometry file is written every time the grid gate opens, so it always describes the grid
+// that is actually on the slide. The CSV is the fallback for a project that predates it.
+File geometry = gridDir.isDirectory() ?
+    (gridDir.listFiles()?.findAll { it.getName().endsWith('_grid_geometry.json') }?.sort { it.getName() }?.find { true }) : null
+if (geometry != null && geometry.isFile()) {
+    def parsed = new Gson().fromJson(geometry.getText('UTF-8'), Map.class) ?: [:]
+    gridHash = parsed.gridHash?.toString() ?: ''
+    (parsed.cores ?: []).each { item ->
+        cores << [
+            index: ((item.index ?: 0) as Number).intValue(),
+            core: item.core?.toString() ?: '',
+            row: ((item.row ?: 0) as Number).intValue(),
+            col: ((item.column ?: item.col ?: 0) as Number).intValue(),
+            centerX: ((item.centerX ?: 0) as Number).doubleValue(),
+            centerY: ((item.centerY ?: 0) as Number).doubleValue(),
+            diameter: ((item.diameter ?: 0) as Number).doubleValue(),
+            missing: item.missing == true
+        ]
+    }
+}
+if (cores.isEmpty() && gridDir.isDirectory()) {
+    File csv = gridDir.listFiles()?.findAll { it.getName().endsWith('_grid_coordinates_latest.csv') }
+        ?.sort { it.getName() }?.find { true }
+    if (csv != null && csv.isFile()) {
+        def lines = csv.readLines('UTF-8').findAll { !it.trim().isEmpty() }
+        def headers = parseCsvLine(lines[0])
+        lines.drop(1).each { line ->
+            def values = parseCsvLine(line)
+            def row = [:]
+            headers.eachWithIndex { h, i -> row[h] = i < values.size() ? values[i] : '' }
+            gridHash = row.current_grid_hash?.toString() ?: gridHash
+            cores << [
+                index: (row.index ?: '0') as int,
+                core: row.core?.toString() ?: '',
+                row: (row.row ?: '0') as int,
+                col: (row.column ?: '0') as int,
+                centerX: (row.center_x_px ?: '0') as double,
+                centerY: (row.center_y_px ?: '0') as double,
+                diameter: (row.diameter_px ?: '0') as double,
+                missing: 'true'.equalsIgnoreCase(row.missing?.toString())
+            ]
+        }
+    }
+}
+if (cores.isEmpty()) {
+    println 'ARRANGE: no grid on disk, nothing to cut.'
+    System.setProperty('tma.arrange.status', 'BLOCKED_NO_GRID')
+    return
+}
+
+// ---------------------------------------------------------------- the angles
+// A core is only worth looking at standing up, and the angle lives in the orientation report
+// rather than in the grid. A run that has not been oriented yet leaves this empty and the
+// page shows the cores as they sit on the slide, which is honest rather than wrong.
+def rotation = [:]
+File orientationReport = new File(new File(new File(workflowDir, 'qc'), '02-orientation'), 'run_report.json')
+if (orientationReport.isFile()) {
+    try {
+        def report = new Gson().fromJson(orientationReport.getText('UTF-8'), Map.class) ?: [:]
+        (report.cores ?: []).each { entry ->
+            def base = entry.rotateToTopDeg
+            if (base instanceof Number) {
+                def adjust = entry.webRotationAdjustmentDeg
+                rotation[entry.core?.toString() ?: ''] =
+                    base.doubleValue() + (adjust instanceof Number ? adjust.doubleValue() : 0.0d)
+            }
+        }
+    } catch (Throwable ignored) { }
+}
+
+// ---------------------------------------------------------------- channels and their range
+int channelCount = server.nChannels()
+def channelNames = (0..<channelCount).collect { server.getChannel(it).getName() ?: "Channel ${it + 1}" }
+
+def kindOf = { String name ->
+    String lower = (name ?: '').toLowerCase()
+    if (lower ==~ /^(dapi|hoechst|nuclei).*/) return 'nuclear'
+    if (lower ==~ /^af\d*$/ || lower.contains('autofluor')) return 'autofluorescence'
+    return 'marker'
+}
+def NUCLEAR_COLOUR = '#3D7BFF'
+def AUTOFLUORESCENCE_COLOUR = '#8A8A8A'
+def MARKER_COLOURS = ['#FF4D4D', '#3DDC84', '#FFD166', '#F78C6B', '#B980F0', '#00D0D0']
+
+def percentileOf = { int[] sorted, double percentile ->
+    if (sorted.length == 0) return 0.0d
+    int at = (int) Math.round((percentile / 100.0d) * (sorted.length - 1))
+    if (at < 0) at = 0
+    if (at >= sorted.length) at = sorted.length - 1
+    return (double) sorted[at]
+}
+
+println "ARRANGE: measuring ${channelCount} channels on a 1/${(int) rangeDownsample} view of the slide"
+def overviewRequest = RegionRequest.createInstance(server.getPath(), rangeDownsample,
+    0, 0, server.getWidth(), server.getHeight())
+def overview = server.readRegion(overviewRequest)
+def overviewRaster = overview.getRaster()
+int overviewW = overview.getWidth(), overviewH = overview.getHeight()
+int[] overviewBuffer = new int[overviewW * overviewH]
+
+def channelsOut = []
+double[] lows = new double[channelCount]
+double[] highs = new double[channelCount]
+int markerSeen = 0
+for (int channel = 0; channel < channelCount; channel++) {
+    overviewRaster.getSamples(0, 0, overviewW, overviewH, channel, overviewBuffer)
+    int[] sorted = overviewBuffer.clone()
+    Arrays.sort(sorted)
+    double low = percentileOf(sorted, lowPercentile)
+    double high = percentileOf(sorted, highPercentile)
+    if (high - low < 1.0d) high = low + 1.0d
+    lows[channel] = low
+    highs[channel] = high
+
+    String name = channelNames[channel]
+    String kind = kindOf(name)
+    String colour = kind == 'nuclear' ? NUCLEAR_COLOUR :
+        (kind == 'autofluorescence' ? AUTOFLUORESCENCE_COLOUR :
+            MARKER_COLOURS[(markerSeen++) % MARKER_COLOURS.size()])
+    channelsOut << [index: channel, name: name, kind: kind, colour: colour,
+                    displayLow: Math.round(low * 1000.0d) / 1000.0d,
+                    displayHigh: Math.round(high * 1000.0d) / 1000.0d]
+}
+overview.flush()
+
+// ---------------------------------------------------------------- cut the tiles
+def present = cores.findAll { !it.missing }
+println "ARRANGE: cutting ${present.size()} cores x ${channelCount} channels at 1/${(int) tileDownsample}"
+long started = System.currentTimeMillis()
+int written = 0
+present.eachWithIndex { core, position ->
+    double side = core.diameter * rotationSupport
+    int x = (int) Math.round(core.centerX - side / 2.0d)
+    int y = (int) Math.round(core.centerY - side / 2.0d)
+    int w = (int) Math.round(side)
+    int h = w
+    // A core at the very edge of the slide would ask for pixels that are not there. Clamp the
+    // request and let the tile carry the black margin rather than refusing the core.
+    if (x < 0) x = 0
+    if (y < 0) y = 0
+    if (x + w > server.getWidth()) w = server.getWidth() - x
+    if (y + h > server.getHeight()) h = server.getHeight() - y
+    if (w <= 0 || h <= 0) return
+
+    def request = RegionRequest.createInstance(server.getPath(), tileDownsample, x, y, w, h)
+    def img = server.readRegion(request)
+    def raster = img.getRaster()
+    int iw = img.getWidth(), ih = img.getHeight()
+    int[] samples = new int[iw * ih]
+    File coreDir = new File(tilesDir, core.core)
+    coreDir.mkdirs()
+
+    for (int channel = 0; channel < channelCount; channel++) {
+        raster.getSamples(0, 0, iw, ih, channel, samples)
+        double low = lows[channel], span = highs[channel] - lows[channel]
+        def gray = new BufferedImage(tilePx, tilePx, BufferedImage.TYPE_BYTE_GRAY)
+        def graphics = gray.createGraphics()
+        def source = new BufferedImage(iw, ih, BufferedImage.TYPE_BYTE_GRAY)
+        def sourceRaster = source.getRaster()
+        int[] scaled = new int[iw * ih]
+        for (int i = 0; i < samples.length; i++) {
+            double value = ((samples[i] - low) / span) * 255.0d
+            scaled[i] = value < 0 ? 0 : (value > 255 ? 255 : (int) Math.round(value))
+        }
+        sourceRaster.setSamples(0, 0, iw, ih, 0, scaled)
+        graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+            java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        graphics.drawImage(source, 0, 0, tilePx, tilePx, null)
+        graphics.dispose()
+        String padded = channel < 10 ? "0${channel}" : "${channel}"
+        ImageIO.write(gray, 'png', new File(coreDir, "${padded}.png"))
+        source.flush()
+        gray.flush()
+        written++
+    }
+    img.flush()
+    if ((position + 1) % 20 == 0)
+        println "ARRANGE: ${position + 1}/${present.size()} cores"
+}
+
+// ---------------------------------------------------------------- the manifest
+def stamp = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+stamp.setTimeZone(TimeZone.getTimeZone('UTC'))
+def manifest = [
+    schemaVersion: 1,
+    image: server.getMetadata().getName(),
+    gridRows: cores.collect { it.row }.max() ?: 0,
+    gridCols: cores.collect { it.col }.max() ?: 0,
+    tilePx: tilePx,
+    rotationSupport: rotationSupport,
+    sourceDownsample: tileDownsample,
+    gridHash: gridHash,
+    createdAt: stamp.format(new Date()),
+    channels: channelsOut,
+    cores: cores.collect { core ->
+        [index: core.index, core: core.core, row: core.row, col: core.col,
+         missing: core.missing,
+         rotationDeg: Math.round((rotation[core.core] ?: 0.0d) * 1000.0d) / 1000.0d]
+    }
+]
+// Write the manifest last and atomically. Studio decides the whole screen is available from
+// this one file, so a half-written manifest beside a half-cut tile set would show a person a
+// figure builder with holes in it.
+File manifestFile = new File(outDir, 'manifest.json')
+File temporary = new File(outDir, '.manifest.json.tmp')
+temporary.setText(json.toJson(manifest) + '\n', 'UTF-8')
+java.nio.file.Files.move(temporary.toPath(), manifestFile.toPath(),
+    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+    java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+
+double seconds = (System.currentTimeMillis() - started) / 1000.0d
+println "ARRANGE: wrote ${written} tiles for ${present.size()} cores in ${String.format('%.1f', seconds)} s"
+println "ARRANGE: ${manifestFile.getAbsolutePath()}"
+System.setProperty('tma.arrange.status', 'OK')

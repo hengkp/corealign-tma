@@ -47,6 +47,57 @@ test("every route the page calls is answered by the server", () => {
   }
 });
 
+// Arrange is a real workflow destination, not a dialog layered over Review. Keeping the
+// registration and panel together catches the two one-sided wiring mistakes that leave a
+// tab with nowhere to go, or a screen nobody can reach.
+test("the arrange stage is registered and has its own panel", () => {
+  assert.match(page,
+    /\{key:"review",\s*labelKey:"stageReview"\},\s*\{key:"arrange",\s*labelKey:"stageArrange"\},\s*\{key:"export"/,
+    "Arrange must sit between Review and Results");
+  assert.match(page, /<section class="panel arrange" data-panel="arrange"/,
+    "the Arrange tab needs a matching panel");
+});
+
+// English and Thai are selected at runtime by the same key. A missing translation silently
+// falls back to English, which makes a partly translated editor look finished in tests.
+test("the English and Thai dictionaries have exactly the same keys", () => {
+  function keys(name) {
+    const start = page.indexOf(`var ${name} = {`);
+    const body = page.slice(start, page.indexOf("\n};", start));
+    return [...body.matchAll(/^\s{2}([A-Za-z0-9]+):/gm)].map((match) => match[1]).sort();
+  }
+  assert.deepEqual(keys("EN"), keys("TH"));
+});
+
+test("the arrange API is answered by the server", () => {
+  assert.ok(server.includes('if route == "/api/arrange"'),
+    "GET and POST need an /api/arrange dispatch");
+  assert.ok(server.includes("RUN.arrange()"), "GET must return the attached arrangement");
+  assert.ok(server.includes("RUN.save_arrangement"), "POST must validate and save it");
+});
+
+// Fluorescence channels contribute light. Drawing one opaque layer after another would leave
+// only the last stain visible, so the browser must use a light-adding composite operation.
+test("arrange channel compositing adds light instead of alpha covering", () => {
+  const body = page.slice(page.indexOf("function arrangeComposite"),
+                          page.indexOf("function queueArrangeCanvas"));
+  assert.match(body, /globalCompositeOperation = "screen"/,
+    "fluorescence layers must use screen compositing");
+  assert.match(body, /strength \* rgb\.r \/ 255/,
+    "each grayscale tile must be multiplied by its chosen colour");
+});
+
+// An interrupted write must leave either the previous arrangement or the complete next one.
+// This is the same guarantee used by angle corrections beside the same slide.
+test("arrangements use the corrections atomic replace pattern", () => {
+  const body = server.slice(server.indexOf("    def save_arrangement"),
+                            server.indexOf("    GRID_ACTIONS"));
+  assert.match(body, /temporary = target\.with_name\("\." \+ target\.name \+ "\.tmp"\)/,
+    "the temporary arrangement must be dot-prefixed and beside its target");
+  assert.match(body, /temporary\.write_text[\s\S]*os\.replace\(temporary, target\)/,
+    "the complete temporary file must replace the arrangement atomically");
+});
+
 // Studio is the only place these two gates can be answered in a headless run, so the ids have
 // to match what CoreAlign writes into gate.json.
 test("the page handles both review gates by name", () => {
@@ -179,6 +230,36 @@ test("a save that went to the file rather than to a run says so", () => {
         `${key} is missing from the ${["EN", "TH"][index]} dictionary`);
     }
   }
+});
+
+// An IntersectionObserver only delivers callbacks while the document is being rendered, so a
+// tab that is still in the background when the arrange stage opens hears nothing and every
+// core stays black until the person scrolls. Found the hard way: in a browser pane reporting
+// visibilityState "hidden", 35 of 117 cores drew and no amount of scrolling added one more,
+// while calling the geometric sweep by hand drew all 117.
+test("the slide map draws what is on screen without waiting for an observer", () => {
+  assert.match(page, /function renderArrangeInView\(\)/,
+    "a direct geometric sweep has to exist alongside the observer");
+  assert.match(page, /getBoundingClientRect\(\)[\s\S]{0,400}?renderArrangeCanvas\(canvas\)/,
+    "the sweep must decide from the element's own box, not from an intersection callback");
+  for (const event of ["scroll", "visibilitychange", "resize"]) {
+    assert.ok(page.includes(`"${event}"`), `nothing sweeps again on ${event}`);
+  }
+  // Scroll does not bubble, so a listener without capture never hears an inner pane move.
+  assert.match(page, /addEventListener\("scroll",[\s\S]{0,120}?\}, true\)/,
+    "the scroll listener has to run in the capture phase to hear the panes");
+});
+
+// The tiles are served immutable for a year. Without a version in the URL a browser that has
+// seen one cut keeps it for ever, which is exactly what happened when the tiles were re-cut
+// with a corrected display range and the page went on serving the washed-out ones.
+test("a tile URL changes when the tiles are cut again", () => {
+  assert.match(page, /arrangeTileVersion/,
+    "the tile URL needs a version token taken from the manifest");
+  assert.match(page, /encodeURIComponent\(arrangeManifest\.createdAt\)/,
+    "the token has to come from the manifest stamp, so a fresh cut is a fresh URL");
+  assert.match(server, /immutable/,
+    "the long cache header is right once the URL carries a version");
 });
 
 // Selecting every channel is what a run did before the question existed. Saying so

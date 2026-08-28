@@ -5,7 +5,7 @@ const runner = await readFile(new URL("workflow/CoreAlign.groovy", root), "utf8"
 const names = ["01_build_tma_grid.groovy","02_auto_orient_epidermis.groovy",
   "03_review_correct_and_approve_grid.groovy","04_restore_approved_grid.groovy",
   "05_finalize_orientation_review.groovy","06_export_presentation_package.groovy",
-  "07_build_qupath_analysis_project.groovy"];
+  "07_build_qupath_analysis_project.groovy","08_export_arrange_tiles.groovy"];
 let bad = 0;
 for (const [i, name] of names.entries()) {
   const re = new RegExp(`def step${i+1} = new EmbeddedWorkflowScript\\(name: '${name.replaceAll(".","\\.")}', payload: '''\\n([\\s\\S]*?)\\n'''\\)`);

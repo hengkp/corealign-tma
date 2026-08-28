@@ -7,8 +7,8 @@
 <!--
   CoreAlign Studio.
 
-  One screen, five stages, one question per stage. Everything is drawn from Studio's own
-  API (/api/status, /api/review, /api/results); the page does not embed REPORT.html and
+  One screen, six stages, one question per stage. Everything is drawn from Studio's own
+  API (/api/status, /api/review, /api/arrange, /api/results); the page does not embed REPORT.html and
   never sees the bridge token.
 
   Layout patterns taken from shipped products, via Mobbin:
@@ -35,6 +35,13 @@
   --bad:#d44c47; --bad-soft:#fdebec;
   --none:#8a8a86; --none-soft:#eeeeec;
   --stage-bg:#0d0d0f;
+  /* One stack for the page and for the labels burned into an exported figure. It has to
+     start with the platform's own UI face, because that is the only one guaranteed to be
+     installed and the only one that carries Thai and Latin with matching metrics. A bare
+     "sans-serif" resolves to Helvetica on macOS, which has no Thai at all and drew every
+     Thai label in the exported PNG as empty boxes. */
+  --font-ui:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","IBM Plex Sans Thai",
+    "Noto Sans Thai","Sarabun",Roboto,"Helvetica Neue",sans-serif;
   --radius-lg:16px;
   --shadow:0 1px 2px rgba(15,15,15,.06); --shadow-lg:0 8px 28px rgba(15,15,15,.14);
   color-scheme:light;
@@ -73,8 +80,7 @@
 html,body{height:100%;margin:0;overflow:hidden}
 body{
   background:var(--bg); color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","IBM Plex Sans Thai","Noto Sans Thai",
-    "Sarabun",Roboto,"Helvetica Neue",system-ui,sans-serif;
+  font-family:var(--font-ui);
   font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
 }
 button,input,select{font:inherit;color:inherit}
@@ -597,6 +603,154 @@ kbd{
 .resultDialogFoot{display:flex;align-items:center;gap:9px;padding:12px 16px;border-top:1px solid var(--line)}
 .resultDialogPosition{color:var(--faint);font-size:12.5px;font-variant-numeric:tabular-nums}
 
+/* ---------------------------------------------------------------- arrange */
+.arrange{min-width:0;min-height:0;background:var(--bg)}
+.arrangeUnavailable{place-self:center;max-width:560px;padding:28px;text-align:center;color:var(--muted)}
+.arrangeWorkspace{display:grid;grid-template-columns:minmax(470px,.9fr) minmax(590px,1.1fr);min-width:0;min-height:0}
+.arrangePane{min-width:0;min-height:0;overflow:auto;background:var(--surface)}
+.arrangeMapPane{border-right:1px solid var(--line);background:var(--surface-2)}
+.arrangePaneHead{
+  position:sticky;top:0;z-index:5;display:flex;align-items:flex-start;gap:12px;
+  padding:16px 18px;border-bottom:1px solid var(--line);background:var(--surface)
+}
+.arrangePaneHead > div{min-width:0;flex:1 1 auto}
+.arrangeMapScroll{min-width:0;overflow:auto;padding:18px}
+.arrangeMap{
+  display:grid;gap:6px;width:max-content;min-width:100%;align-items:stretch;
+  padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)
+}
+.arrangeColumnLabel{
+  align-self:end;min-width:64px;padding:0 4px 7px;color:var(--muted);font-size:11.5px;
+  font-weight:750;line-height:1.25;text-align:center;overflow-wrap:anywhere
+}
+.arrangeBandLabel{
+  display:grid;place-items:center;width:86px;padding:5px 7px;border-right:2px solid var(--line-strong);
+  color:var(--muted);font-size:11.5px;font-weight:750;line-height:1.25;text-align:right
+}
+.arrangeRowNumber{display:grid;place-items:center;color:var(--faint);font-size:11.5px;font-weight:750}
+.arrangeSeat{
+  position:relative;display:grid;place-items:center;
+  width:var(--seat,68px);height:var(--seat,68px);padding:4px;
+  overflow:hidden;border:1px solid var(--line);border-radius:11px;background:var(--stage-bg)
+}
+button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.arrangeSeat canvas{
+  display:block;width:calc(var(--seat,68px) - 10px);height:calc(var(--seat,68px) - 10px);
+  border-radius:8px
+}
+.arrangeSeatMissing{background:var(--sunk);border-color:var(--line-strong)}
+.arrangeSeatMissing::before,.arrangeSeatMissing::after{
+  content:"";position:absolute;left:9px;right:9px;top:50%;height:2px;background:var(--bad)
+}
+.arrangeSeatMissing::before{transform:rotate(45deg)}
+.arrangeSeatMissing::after{transform:rotate(-45deg)}
+.arrangeBadge{
+  position:absolute;right:3px;top:3px;z-index:2;display:grid;place-items:center;min-width:20px;height:20px;
+  padding:0 5px;border:2px solid var(--surface);border-radius:999px;background:var(--accent);
+  color:var(--on-accent);font-size:10px;font-weight:850;font-variant-numeric:tabular-nums
+}
+.arrangeOtherDot{
+  position:absolute;right:7px;top:7px;z-index:2;width:8px;height:8px;border:2px solid var(--surface);
+  border-radius:50%;background:var(--faint)
+}
+.arrangeEditor{display:grid;gap:18px;align-content:start;padding:18px;min-width:0}
+.arrangeSwitch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arrangeSwitch select{
+  min-width:180px;max-width:320px;height:38px;padding:0 34px 0 11px;border:1px solid var(--line);
+  border-radius:9px;background:var(--surface)
+}
+.arrangeTitle{
+  width:100%;padding:2px 0 8px;border:0;border-bottom:1px solid var(--line);background:transparent;
+  font-size:23px;font-weight:800;letter-spacing:-.015em
+}
+.arrangeFigureTools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arrangeFigureTools .btn,.arrangeSwitch .btn{min-height:36px;padding:0 12px;font-size:12.5px}
+.arrangeTableWrap{max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:13px;background:var(--surface)}
+.arrangeTable{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
+.arrangeTable th,.arrangeTable td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.arrangeTable tr:last-child > *{border-bottom:0}
+.arrangeTable tr > *:last-child{border-right:0}
+.arrangeTable th{background:var(--surface-2)}
+.arrangeCorner{width:178px;min-width:178px}
+.arrangeColHead{width:220px;min-width:220px;padding:8px;vertical-align:top}
+.arrangeLabelLine{display:flex;align-items:center;gap:5px;min-width:0}
+.arrangeLabelInput{
+  width:100%;min-width:0;height:34px;padding:5px 8px;border:1px solid var(--line);
+  border-radius:8px;background:var(--surface);font-size:12.5px;font-weight:700
+}
+.arrangeMini{
+  width:28px;height:28px;flex:0 0 auto;display:grid;place-items:center;border-radius:7px;color:var(--muted)
+}
+.arrangeMini:hover:not(:disabled){background:var(--sunk);color:var(--text)}
+.arrangeMini:disabled{opacity:.35;cursor:default}
+.arrangeRowHead{width:178px;min-width:178px;padding:8px;vertical-align:middle}
+.arrangeRowActions{display:flex;justify-content:flex-end;gap:2px;margin-top:5px}
+.arrangeFigureCell{position:relative;width:220px;min-width:220px;height:220px;padding:8px;background:var(--stage-bg)}
+.arrangeCellButton{
+  position:relative;display:grid;place-items:center;width:100%;height:100%;padding:0;overflow:hidden;
+  border:1px dashed var(--line-strong);border-radius:10px;background:var(--stage-bg);color:var(--faint)
+}
+.arrangeCellButton[data-filled="true"]{border-style:solid;border-color:var(--line)}
+.arrangeCellButton[data-current="true"]{outline:3px solid var(--accent);outline-offset:-3px}
+.arrangeCellButton canvas{display:block;width:100%;height:100%;object-fit:contain}
+.arrangeCellNumber{right:7px;top:7px;min-width:24px;height:24px;font-size:11px}
+.arrangeClear{
+  position:absolute;left:7px;top:7px;z-index:3;width:28px;height:28px;display:grid;place-items:center;
+  border-radius:8px;background:var(--surface);color:var(--bad);box-shadow:var(--shadow)
+}
+.arrangeClear:hover{background:var(--bad-soft)}
+.arrangeChannels{display:grid;gap:10px;padding-top:2px}
+.arrangeChannelsHead{display:flex;align-items:baseline;gap:10px}
+.arrangeChannelsHead .lede{margin:0}
+.arrangeChannelRail{display:grid;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.arrangeChannelGroup + .arrangeChannelGroup{border-top:1px solid var(--line-strong)}
+.arrangeChannelGroupTitle{
+  padding:7px 12px;background:var(--surface-2);color:var(--muted);font-size:11.5px;
+  font-weight:800;text-transform:uppercase;letter-spacing:.04em
+}
+.arrangeLayer{border-top:1px solid var(--line)}
+.arrangeLayer:first-of-type{border-top:0}
+.arrangeLayerMain{display:flex;align-items:center;gap:10px;padding:9px 11px;cursor:pointer}
+.arrangeLayerMain:hover,.arrangeLayer[data-selected="true"] .arrangeLayerMain{background:var(--surface-2)}
+.arrangeLayerMain input{width:17px;height:17px;flex:0 0 auto;margin:0;accent-color:var(--accent)}
+.arrangeLayerName{flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:700}
+.arrangeSwatch{width:26px;height:26px;flex:0 0 auto;border:2px solid var(--surface);border-radius:8px;box-shadow:0 0 0 1px var(--line-strong)}
+.arrangeLayerDetail{display:grid;gap:10px;padding:10px 12px 12px;border-top:1px solid var(--line);background:var(--surface-2)}
+.arrangeGain{display:grid;grid-template-columns:auto minmax(120px,1fr) 48px;align-items:center;gap:10px;font-size:12.5px}
+.arrangeGain input{width:100%;accent-color:var(--accent)}
+.arrangeGain output{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.arrangePalette{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.arrangePalette button{width:24px;height:24px;border:2px solid var(--surface);border-radius:7px;box-shadow:0 0 0 1px var(--line-strong)}
+.arrangeHex{width:96px;height:30px;padding:4px 7px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.arrangeChannelToggle{justify-self:start;color:var(--accent-dark);font-size:12.5px;font-weight:750}
+.arrangePreviewDialog{
+  width:min(94vw,1180px);max-height:92vh;padding:0;border:1px solid var(--line);
+  border-radius:var(--radius-lg);background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg)
+}
+.arrangePreviewDialog::backdrop{background:rgba(10,10,12,.62)}
+.arrangePreviewHead{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)
+}
+.arrangePreviewHead h2{margin:0;font-size:16px}
+.arrangePreviewSize{
+  margin-left:auto;color:var(--muted);font-size:12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+/* The figure is drawn on a dark stage, so give it one to sit on rather than floating the
+   cores on the page surface where their black backgrounds look like holes. */
+.arrangePreviewBody{
+  overflow:auto;max-height:calc(92vh - 132px);padding:16px;background:var(--sunk)
+}
+.arrangePreviewBody canvas{display:block;border-radius:10px;box-shadow:var(--shadow)}
+.arrangePreviewFoot{
+  display:flex;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)
+}
+.arrangeSaveRow{
+  position:sticky;bottom:0;z-index:4;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 0;border-top:1px solid var(--line);background:var(--surface)
+}
+.arrangeSaveRow .saveState{margin-left:auto}
+
 /* ---------------------------------------------------------------- log drawer */
 .logDrawer{background:var(--surface);border-top:1px solid var(--line)}
 .logToggle{display:flex;align-items:center;gap:9px;width:100%;padding:9px 20px;font-size:13px;font-weight:700;color:var(--muted)}
@@ -624,6 +778,11 @@ kbd{
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+@media (max-width:1100px){
+  .arrangeWorkspace{grid-template-columns:1fr;grid-template-rows:minmax(430px,52vh) minmax(560px,1fr);overflow-y:auto}
+  .arrangeMapPane{border-right:0;border-bottom:1px solid var(--line)}
+}
+
 @media (max-width:900px){
   /* The severity headers need to stay readable at a narrow width. A bounded queue keeps
      its own scroll without taking the viewing area away from the selected core. */
@@ -641,6 +800,7 @@ kbd{
   .resultCompare{grid-template-columns:1fr}
   .resultDialogInfo{grid-column:1}
   .resultFacts{grid-template-columns:1fr}
+
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -876,7 +1036,57 @@ kbd{
       </div>
     </section>
 
-    <!-- 5 ------------------------------------------------------------------- export -->
+    <!-- 5 ----------------------------------------------------------------- arrange -->
+    <section class="panel arrange" data-panel="arrange" data-i18n-aria-label="stageArrange">
+      <p class="arrangeUnavailable" id="arrangeUnavailable" data-i18n="arrangeTilesUnavailable"></p>
+      <div class="arrangeWorkspace" id="arrangeWorkspace" hidden>
+        <section class="arrangePane arrangeMapPane">
+          <header class="arrangePaneHead">
+            <div>
+              <h2 data-i18n="arrangeSlideMap"></h2>
+              <p class="lede" data-i18n="arrangeSlideMapHint"></p>
+            </div>
+          </header>
+          <div class="arrangeMapScroll"><div class="arrangeMap" id="arrangeMap"></div></div>
+        </section>
+
+        <section class="arrangePane">
+          <div class="arrangeEditor">
+            <div class="arrangeSwitch">
+              <label for="arrangeFigureSelect" data-i18n="arrangeFigure"></label>
+              <select id="arrangeFigureSelect"></select>
+              <button class="btn quiet" id="arrangeAddFigure" type="button" data-i18n="arrangeAddFigure"></button>
+              <button class="btn quiet" id="arrangeDuplicateFigure" type="button" data-i18n="arrangeDuplicateFigure"></button>
+            </div>
+            <input class="arrangeTitle" id="arrangeTitle" type="text" data-i18n-placeholder="arrangeFigureTitle" data-i18n-aria-label="arrangeFigureTitle">
+            <div class="arrangeFigureTools">
+              <button class="btn" id="arrangeAddRow" type="button" data-i18n="arrangeAddRow"></button>
+              <button class="btn" id="arrangeAddCol" type="button" data-i18n="arrangeAddColumn"></button>
+              <button class="btn quiet" id="arrangeFill" type="button" data-i18n="arrangeFillLayout"></button>
+            </div>
+            <section class="arrangeChannels">
+              <div class="arrangeChannelsHead">
+                <h2 data-i18n="arrangeChannels"></h2>
+                <p class="lede" data-i18n="arrangeChannelsHint"></p>
+              </div>
+              <div class="arrangeChannelRail" id="arrangeChannelRail"></div>
+              <button class="arrangeChannelToggle" id="arrangeChannelToggle" type="button" data-i18n="arrangeShowAllChannels"></button>
+            </section>
+
+            <div class="arrangeTableWrap"><table class="arrangeTable" id="arrangeTable"></table></div>
+
+            <div class="arrangeSaveRow">
+              <button class="btn" id="previewArrange" type="button" data-i18n="arrangePreviewPng"></button>
+              <button class="btn" id="exportArrange" type="button" data-i18n="arrangeExportPng"></button>
+              <span class="saveState" id="arrangeSaveState"></span>
+              <button class="btn primary" id="saveArrange" type="button" data-i18n="arrangeSave"></button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- 6 ------------------------------------------------------------------- export -->
     <section class="panel export" data-panel="export" data-i18n-aria-label="results">
       <div class="exportInner">
         <div>
@@ -919,6 +1129,20 @@ kbd{
           <button class="btn quiet" id="newRun" data-i18n="newSlide"></button>
         </div>
       </div>
+
+      <dialog class="arrangePreviewDialog" id="arrangePreviewDialog" aria-labelledby="arrangePreviewTitle">
+        <header class="arrangePreviewHead">
+          <h2 id="arrangePreviewTitle" data-i18n="arrangePreviewTitle"></h2>
+          <span class="arrangePreviewSize" id="arrangePreviewSize"></span>
+          <button class="iconBtn" id="closeArrangePreview" data-i18n-aria-label="closeDetails">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
+          </button>
+        </header>
+        <div class="arrangePreviewBody" id="arrangePreviewBody"></div>
+        <footer class="arrangePreviewFoot">
+          <button class="btn primary" id="arrangePreviewDownload" type="button" data-i18n="arrangeExportPng"></button>
+        </footer>
+      </dialog>
 
       <dialog class="resultDialog" id="exportDialog" aria-labelledby="exportDialogTitle">
         <div class="resultDialogLayout">
@@ -1006,7 +1230,49 @@ var EN = {
   stageSetup:"Set up",
   stageRun:"Processing",
   stageReview:"Review",
+  stageArrange:"Arrange",
   stageExport:"Results",
+  arrangeTilesUnavailable:"The core images for this run have not been cut yet.",
+  arrangeSlideMap:"Slide map",
+  arrangeSlideMapHint:"Choose a core on the left to place it in the selected figure cell.",
+  arrangeFigure:"Figure",
+  arrangeAddFigure:"Add figure",
+  arrangeDuplicateFigure:"Duplicate figure",
+  arrangeFigureTitle:"Figure title",
+  arrangeAddRow:"Add row",
+  arrangeAddColumn:"Add column",
+  arrangeFillLayout:"Fill from the slide layout",
+  arrangeChannels:"Channels and colour",
+  arrangeChannelsHint:"Choose the stains and how they combine in this figure.",
+  arrangeShowAllChannels:"Show all channels",
+  arrangeShowFigureChannels:"Show figure channels only",
+  arrangeExportPng:"Export figure PNG",
+  arrangePreviewPng:"Preview figure",
+  arrangePreviewTitle:"Figure preview",
+  arrangeSave:"Save arrangement",
+  arrangeUntitledFigure:"Untitled figure",
+  arrangeNewFigure:"Figure {0}",
+  arrangeCopySuffix:"Copy",
+  arrangeRowLabel:"Row label",
+  arrangeColumnLabel:"Column label",
+  arrangeRemoveRow:"Remove this row",
+  arrangeRemoveColumn:"Remove this column",
+  arrangeMoveRowUp:"Move this row up",
+  arrangeMoveRowDown:"Move this row down",
+  arrangeEmptyCell:"Empty",
+  arrangeClearCell:"Empty this cell",
+  arrangeFigureCell:"Figure cell {0}",
+  arrangePlacedCore:"Cell {0} · core {1}",
+  arrangePlaceCore:"Place core {0} into figure cell {1}",
+  arrangeGain:"Gain",
+  arrangeColourHex:"Colour hex value",
+  arrangeUseColour:"Use colour {0}",
+  arrangeFillReport:"Filled {0} cells · could not fill {1}.",
+  arrangeSaved:"Arrangement saved",
+  arrangeUnsaved:"Unsaved changes",
+  arrangeSavedToast:"Saved the figure arrangement",
+  arrangeLoading:"Loading the figure arrangement...",
+  arrangeExportFailed:"Could not export the figure PNG",
   pickTitle:"Choose a slide to align",
   pickHint:"Choose an .ome.tif or .tif file from a folder you can access.",
   setupPanel:"Set up the run",
@@ -1251,7 +1517,49 @@ var TH = {
   stageSetup:"ตั้งค่า",
   stageRun:"ประมวลผล",
   stageReview:"ตรวจผล",
+  stageArrange:"จัดภาพ",
   stageExport:"ผลลัพธ์",
+  arrangeTilesUnavailable:"ยังไม่ได้ตัดภาพ core สำหรับการรันนี้",
+  arrangeSlideMap:"แผนผังสไลด์",
+  arrangeSlideMapHint:"เลือก core ทางซ้ายเพื่อใส่ในช่องรูปที่กำลังเลือก",
+  arrangeFigure:"รูป",
+  arrangeAddFigure:"เพิ่มรูป",
+  arrangeDuplicateFigure:"ทำสำเนารูป",
+  arrangeFigureTitle:"ชื่อรูป",
+  arrangeAddRow:"เพิ่มแถว",
+  arrangeAddColumn:"เพิ่มคอลัมน์",
+  arrangeFillLayout:"เติมจากผังสไลด์",
+  arrangeChannels:"แชนเนลและสี",
+  arrangeChannelsHint:"เลือกสีย้อมและวิธีผสมสีที่ใช้ในรูปนี้",
+  arrangeShowAllChannels:"แสดงทุกแชนเนล",
+  arrangeShowFigureChannels:"แสดงเฉพาะแชนเนลในรูป",
+  arrangeExportPng:"ส่งออกรูป PNG",
+  arrangePreviewPng:"ดูตัวอย่างรูป",
+  arrangePreviewTitle:"ตัวอย่างรูปที่จะได้",
+  arrangeSave:"บันทึกการจัดภาพ",
+  arrangeUntitledFigure:"รูปที่ยังไม่ได้ตั้งชื่อ",
+  arrangeNewFigure:"รูปที่ {0}",
+  arrangeCopySuffix:"สำเนา",
+  arrangeRowLabel:"ป้ายชื่อแถว",
+  arrangeColumnLabel:"ป้ายชื่อคอลัมน์",
+  arrangeRemoveRow:"ลบแถวนี้",
+  arrangeRemoveColumn:"ลบคอลัมน์นี้",
+  arrangeMoveRowUp:"ย้ายแถวนี้ขึ้น",
+  arrangeMoveRowDown:"ย้ายแถวนี้ลง",
+  arrangeEmptyCell:"ว่าง",
+  arrangeClearCell:"เอา core ออกจากช่องนี้",
+  arrangeFigureCell:"ช่องรูปที่ {0}",
+  arrangePlacedCore:"ช่องที่ {0} · core {1}",
+  arrangePlaceCore:"ใส่ core {0} ในช่องรูปที่ {1}",
+  arrangeGain:"ความสว่าง",
+  arrangeColourHex:"รหัสสีแบบ hex",
+  arrangeUseColour:"ใช้สี {0}",
+  arrangeFillReport:"เติมได้ {0} ช่อง · หา core ไม่ได้ {1} ช่อง",
+  arrangeSaved:"บันทึกการจัดภาพแล้ว",
+  arrangeUnsaved:"มีการแก้ที่ยังไม่ได้บันทึก",
+  arrangeSavedToast:"บันทึกการจัดรูปแล้ว",
+  arrangeLoading:"กำลังอ่านการจัดรูป...",
+  arrangeExportFailed:"ส่งออกรูป PNG ไม่สำเร็จ",
   pickTitle:"เลือกสไลด์ที่จะจัดเรียง",
   pickHint:"เลือกไฟล์ .ome.tif หรือ .tif ในโฟลเดอร์ที่คุณเข้าถึงได้",
   setupPanel:"ตั้งค่าก่อนเริ่ม",
@@ -1506,7 +1814,7 @@ function applyStaticTranslations(){
   document.querySelectorAll("[data-i18n]").forEach(function(node){
     node.textContent = t(node.dataset.i18n);
   });
-  ["aria-label", "title", "alt"].forEach(function(attribute){
+  ["aria-label", "title", "alt", "placeholder"].forEach(function(attribute){
     var dataName = "i18n" + attribute.split("-").map(function(part){
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join("");
@@ -1560,6 +1868,7 @@ var STAGES = [
   {key:"setup",  labelKey:"stageSetup"},
   {key:"run",    labelKey:"stageRun"},
   {key:"review", labelKey:"stageReview"},
+  {key:"arrange", labelKey:"stageArrange"},
   {key:"export", labelKey:"stageExport"}
 ];
 var stage = "slide";
@@ -1593,7 +1902,8 @@ function paintStages(){
 function setStage(next){
   if (next !== "export" && $("exportDialog").open) $("exportDialog").close();
   stage = next;
-  reached[next === "grid" ? "review" : next] = true;
+  if (next !== "arrange" || arrangeAvailable)
+    reached[next === "grid" ? "review" : next] = true;
   document.querySelectorAll(".panel").forEach(function(panel){
     panel.classList.toggle("is-active", panel.dataset.panel === next);
   });
@@ -1745,7 +2055,11 @@ function pick(slide){
   // than making a person run it again to find out.
   model = null; reviewKey = ""; lastGateId = "";
   api("/api/attach", {method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({slide:slide.path})}).then(function(){ poll(); });
+    body:JSON.stringify({slide:slide.path})}).then(function(){
+      arrangeProject = "";
+      loadArrange();
+      poll();
+    });
 }
 
 function reasonWords(reason){
@@ -1819,6 +2133,7 @@ $("stopBtn").addEventListener("click", function(){
 $("newRun").addEventListener("click", function(){
   api("/api/reset", {method:"POST"}).then(function(){
     chosenSlide = null; model = null; reviewKey = ""; lastGateId = "";
+    resetArrange();
     reached = {slide:true};
     setStage("slide"); browse("");
   });
@@ -2238,8 +2553,8 @@ function editsMatchSaved(){
     return saved != null && Math.abs(Number(saved) - item.rotationAdjustmentDeg) < 0.05;
   });
 }
-function setSaveState(text, tone){
-  var el = $("saveState");
+function setSaveState(text, tone, el){
+  el = el || $("saveState");
   el.textContent = text || "";
   el.dataset.tone = tone || "";
 }
@@ -2658,6 +2973,1010 @@ function metric(value, label, tone){
   return div.outerHTML;
 }
 
+/* ------------------------------------------------------------------ arrange */
+var arrangeAvailable = false;
+var arrangeLoading = false;
+var arrangeProject = "";
+var arrangeLastCheck = 0;
+var arrangeManifest = null;
+var arrangeDocument = null;
+var arrangeSaved = null;
+var arrangeTileBase = "";
+var arrangeTileVersion = "";
+var arrangeFigureIndex = 0;
+var arrangeTarget = 0;
+var arrangeShowAllChannels = false;
+var arrangeChannelSelected = null;
+var arrangeSaving = false;
+var arrangeRenderVersion = 0;
+var arrangeTileCache = new Map();
+var arrangeObserver = window.IntersectionObserver ? new IntersectionObserver(function(entries){
+  entries.forEach(function(entry){
+    if (entry.isIntersecting) renderArrangeCanvas(entry.target);
+  });
+}, {rootMargin:"180px"}) : null;
+
+function arrangeClone(value){ return JSON.parse(JSON.stringify(value)); }
+function attachedProjectKey(){
+  var path = chosenSlide && chosenSlide.path ? String(chosenSlide.path) : "";
+  if (path) return path.replace(/[/\\][^/\\]+$/, "");
+  return lastStatus && lastStatus.project ? lastStatus.project : "";
+}
+function resetArrange(){
+  arrangeAvailable = false;
+  arrangeLoading = false;
+  arrangeProject = "";
+  arrangeLastCheck = 0;
+  arrangeManifest = null;
+  arrangeDocument = null;
+  arrangeSaved = null;
+  arrangeTileBase = "";
+  arrangeTileVersion = "";
+  arrangeFigureIndex = 0;
+  arrangeTarget = 0;
+  arrangeShowAllChannels = false;
+  arrangeChannelSelected = null;
+  arrangeSaving = false;
+  arrangeTileCache = new Map();
+  reached.arrange = false;
+  $("arrangeWorkspace").hidden = true;
+  $("arrangeUnavailable").hidden = false;
+  $("arrangeUnavailable").textContent = t("arrangeTilesUnavailable");
+}
+function loadArrange(project){
+  if (arrangeLoading) return;
+  arrangeLoading = true;
+  arrangeLastCheck = Date.now();
+  var requestedProject = project || attachedProjectKey();
+  var projectChanged = !!requestedProject && requestedProject !== arrangeProject;
+  if (projectChanged) reached.arrange = false;
+  $("arrangeUnavailable").hidden = false;
+  $("arrangeUnavailable").textContent = t("arrangeLoading");
+  api("/api/arrange").then(function(res){
+    arrangeLoading = false;
+    arrangeLastCheck = Date.now();
+    arrangeProject = requestedProject;
+    var data = res.body || {};
+    if (!res.ok || !data.available) {
+      arrangeAvailable = false;
+      reached.arrange = false;
+      $("arrangeWorkspace").hidden = true;
+      $("arrangeUnavailable").hidden = false;
+      $("arrangeUnavailable").textContent = t("arrangeTilesUnavailable");
+      paintStages();
+      return;
+    }
+    arrangeAvailable = true;
+    if (projectChanged) arrangeTileCache = new Map();
+    arrangeManifest = data.manifest || {};
+    arrangeDocument = arrangeClone(data.arrangement || {});
+    if (!Array.isArray(arrangeDocument.figures)) arrangeDocument.figures = [];
+    if (!arrangeDocument.figures.length) arrangeDocument.figures.push(arrangeNewFigureObject());
+    if (!arrangeDocument.slideLayout || typeof arrangeDocument.slideLayout !== "object")
+      arrangeDocument.slideLayout = {columns:[], rowBands:[]};
+    arrangeDocument.figures.forEach(function(figure){
+      if (!Array.isArray(figure.rows)) figure.rows = [];
+      if (!Array.isArray(figure.cols)) figure.cols = [];
+      if (!Array.isArray(figure.channels)) figure.channels = [];
+      if (!Array.isArray(figure.cells)) figure.cells = [];
+      if (typeof figure.title !== "string") figure.title = "";
+    });
+    arrangeSaved = arrangeClone(arrangeDocument);
+    arrangeTileBase = String(data.tileBase || "qc/03-arrange/tiles");
+    arrangeTileVersion = arrangeManifest && arrangeManifest.createdAt
+      ? "?v=" + encodeURIComponent(arrangeManifest.createdAt) : "";
+    arrangeFigureIndex = 0;
+    arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
+    arrangeShowAllChannels = false;
+    arrangeChannelSelected = null;
+    reached.arrange = true;
+    $("arrangeUnavailable").hidden = true;
+    $("arrangeWorkspace").hidden = false;
+    paintStages();
+    drawArrange();
+  });
+}
+function arrangeFigure(){
+  var figures = arrangeDocument && arrangeDocument.figures;
+  return figures && figures[arrangeFigureIndex] ? figures[arrangeFigureIndex] : null;
+}
+function arrangeChannelManifest(index){
+  var channels = (arrangeManifest && arrangeManifest.channels) || [];
+  for (var i = 0; i < channels.length; i++)
+    if (Number(channels[i].index) === Number(index)) return channels[i];
+  return null;
+}
+function arrangeDefaultChannels(){
+  var channels = (arrangeManifest && arrangeManifest.channels) || [];
+  for (var i = 0; i < channels.length; i++) {
+    if (channels[i].kind === "nuclear")
+      return [{index:channels[i].index, visible:true}];
+  }
+  return [];
+}
+function arrangeUniqueId(base){
+  var used = {};
+  ((arrangeDocument && arrangeDocument.figures) || []).forEach(function(figure){
+    used[String(figure.id || "")] = true;
+  });
+  var candidate = base || "figure";
+  var suffix = 2;
+  while (used[candidate]) { candidate = (base || "figure") + "-" + suffix; suffix++; }
+  return candidate;
+}
+function arrangeNewFigureObject(){
+  var count = ((arrangeDocument && arrangeDocument.figures) || []).length + 1;
+  return {
+    id:arrangeUniqueId("figure-" + count),
+    title:t("arrangeNewFigure", count),
+    rows:[{label:""}],
+    cols:[{label:""}, {label:""}, {label:""}],
+    channels:arrangeDefaultChannels(),
+    cells:[]
+  };
+}
+function arrangeCellAt(figure, row, col){
+  var cells = (figure && figure.cells) || [];
+  for (var i = 0; i < cells.length; i++)
+    if (Number(cells[i].row) === row && Number(cells[i].col) === col) return cells[i];
+  return null;
+}
+function arrangeCellCount(figure){
+  return figure ? figure.rows.length * figure.cols.length : 0;
+}
+function arrangeFirstEmpty(figure, after){
+  var total = arrangeCellCount(figure);
+  if (!total) return 0;
+  for (var offset = 1; offset <= total; offset++) {
+    var flat = (after + offset + total) % total;
+    var row = Math.floor(flat / figure.cols.length), col = flat % figure.cols.length;
+    if (!arrangeCellAt(figure, row, col)) return flat;
+  }
+  return Math.max(0, Math.min(after, total - 1));
+}
+function arrangeSetCell(figure, row, col, core){
+  figure.cells = (figure.cells || []).filter(function(cell){
+    return Number(cell.row) !== row || Number(cell.col) !== col;
+  });
+  if (core) figure.cells.push({row:row, col:col, core:core});
+  figure.cells.sort(function(a, b){
+    return Number(a.row) - Number(b.row) || Number(a.col) - Number(b.col);
+  });
+}
+function arrangeFingerprint(value){ return JSON.stringify(value || {}); }
+function arrangeEditsMatchSaved(){
+  return arrangeFingerprint(arrangeDocument) === arrangeFingerprint(arrangeSaved);
+}
+function drawArrangeSaveState(){
+  if (!arrangeAvailable) return;
+  var synced = arrangeEditsMatchSaved();
+  $("saveArrange").disabled = arrangeSaving || synced;
+  if (arrangeSaving) setSaveState(t("saving"), "busy", $("arrangeSaveState"));
+  else setSaveState(t(synced ? "arrangeSaved" : "arrangeUnsaved"), synced ? "ok" : "",
+                    $("arrangeSaveState"));
+}
+function arrangeChanged(){ drawArrangeSaveState(); }
+function drawArrange(){
+  if (!arrangeAvailable || !arrangeFigure()) return;
+  $("arrangeUnavailable").hidden = true;
+  $("arrangeWorkspace").hidden = false;
+  drawArrangeSwitcher();
+  $("arrangeTitle").value = arrangeFigure().title;
+  drawArrangeTable();
+  drawArrangeChannelRail();
+  drawArrangeMap();
+  drawArrangeSaveState();
+}
+function drawArrangeSwitcher(){
+  var select = $("arrangeFigureSelect");
+  select.textContent = "";
+  arrangeDocument.figures.forEach(function(figure, index){
+    var option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = figure.title || t("arrangeUntitledFigure");
+    option.selected = index === arrangeFigureIndex;
+    select.appendChild(option);
+  });
+}
+function arrangeIconButton(label, path, handler){
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "arrangeMini";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="' + path + '"/></svg>';
+  button.addEventListener("click", handler);
+  return button;
+}
+function arrangeReleaseCanvases(container){
+  if (!arrangeObserver) return;
+  container.querySelectorAll("canvas.arrangeCoreCanvas").forEach(function(canvas){
+    arrangeObserver.unobserve(canvas);
+  });
+}
+// Rows fall back to A, B, C and columns to 1, 2, 3 so a figure is readable the moment it
+// exists. Ple asked for labels to be optional, and an unnamed cell that says nothing at all
+// is worse than one that says which row it is.
+function arrangeRowFallback(index){
+  var name = "", n = index;
+  do { name = String.fromCharCode(65 + (n % 26)) + name; n = Math.floor(n / 26) - 1; }
+  while (n >= 0);
+  return name;
+}
+function arrangeColFallback(index){ return String(index + 1); }
+function arrangeRowText(figure, index){
+  var label = figure.rows[index] && figure.rows[index].label;
+  return String(label || "").trim() || arrangeRowFallback(index);
+}
+function arrangeColText(figure, index){
+  var label = figure.cols[index] && figure.cols[index].label;
+  return String(label || "").trim() || arrangeColFallback(index);
+}
+function drawArrangeTable(){
+  var figure = arrangeFigure(), table = $("arrangeTable");
+  arrangeReleaseCanvases(table);
+  table.textContent = "";
+  var head = document.createElement("thead"), header = document.createElement("tr");
+  var corner = document.createElement("th");
+  corner.className = "arrangeCorner";
+  header.appendChild(corner);
+  figure.cols.forEach(function(column, colIndex){
+    var th = document.createElement("th");
+    th.className = "arrangeColHead";
+    var line = document.createElement("div");
+    line.className = "arrangeLabelLine";
+    var input = document.createElement("input");
+    input.className = "arrangeLabelInput";
+    input.type = "text";
+    input.value = column.label;
+    input.placeholder = arrangeColFallback(colIndex);
+    input.setAttribute("aria-label", t("arrangeColumnLabel") + " " + (colIndex + 1));
+    input.addEventListener("input", function(){ column.label = this.value; arrangeChanged(); });
+    var remove = arrangeIconButton(t("arrangeRemoveColumn"),
+      "M17 6h5v2h-2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8H2V6h5V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3zm1 2H6v12h12V8zm-8 3h2v6h-2v-6zm4 0h2v6h-2v-6zM9 4v2h6V4H9z", function(){
+        removeArrangeColumn(colIndex);
+      });
+    remove.disabled = figure.cols.length <= 1;
+    line.appendChild(input); line.appendChild(remove); th.appendChild(line); header.appendChild(th);
+  });
+  head.appendChild(header); table.appendChild(head);
+
+  var body = document.createElement("tbody");
+  figure.rows.forEach(function(row, rowIndex){
+    var tr = document.createElement("tr"), rowHead = document.createElement("th");
+    rowHead.className = "arrangeRowHead";
+    var input = document.createElement("input");
+    input.className = "arrangeLabelInput";
+    input.type = "text";
+    input.value = row.label;
+    input.placeholder = arrangeRowFallback(rowIndex);
+    input.setAttribute("aria-label", t("arrangeRowLabel") + " " + (rowIndex + 1));
+    input.addEventListener("input", function(){ row.label = this.value; arrangeChanged(); });
+    rowHead.appendChild(input);
+    var actions = document.createElement("div");
+    actions.className = "arrangeRowActions";
+    var up = arrangeIconButton(t("arrangeMoveRowUp"),
+      "M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414L13 7.828z",
+      function(){ moveArrangeRow(rowIndex, rowIndex - 1); });
+    up.disabled = rowIndex === 0;
+    var down = arrangeIconButton(t("arrangeMoveRowDown"),
+      "M13 16.172l5.364-5.364 1.414 1.414L12 20l-7.778-7.778 1.414-1.414L11 16.172V4h2v12.172z",
+      function(){ moveArrangeRow(rowIndex, rowIndex + 1); });
+    down.disabled = rowIndex === figure.rows.length - 1;
+    var remove = arrangeIconButton(t("arrangeRemoveRow"),
+      "M17 6h5v2h-2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8H2V6h5V3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3zm1 2H6v12h12V8zm-8 3h2v6h-2v-6zm4 0h2v6h-2v-6zM9 4v2h6V4H9z",
+      function(){ removeArrangeRow(rowIndex); });
+    remove.disabled = figure.rows.length <= 1;
+    actions.appendChild(up); actions.appendChild(down); actions.appendChild(remove);
+    rowHead.appendChild(actions); tr.appendChild(rowHead);
+
+    figure.cols.forEach(function(_, colIndex){
+      var flat = rowIndex * figure.cols.length + colIndex;
+      var cell = arrangeCellAt(figure, rowIndex, colIndex);
+      var td = document.createElement("td");
+      td.className = "arrangeFigureCell";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "arrangeCellButton";
+      button.dataset.arrangeFlat = String(flat);
+      button.dataset.current = String(flat === arrangeTarget);
+      button.dataset.filled = String(!!cell);
+      button.setAttribute("aria-label", cell
+        ? t("arrangePlacedCore", flat + 1, cell.core)
+        : t("arrangeFigureCell", flat + 1));
+      if (cell) {
+        var canvas = document.createElement("canvas");
+        canvas.className = "arrangeCoreCanvas";
+        button.appendChild(canvas);
+        queueArrangeCanvas(canvas, cell.core, 256);
+        var badge = document.createElement("span");
+        badge.className = "arrangeBadge arrangeCellNumber";
+        badge.textContent = flat + 1;
+        button.appendChild(badge);
+        var clear = arrangeIconButton(t("arrangeClearCell"),
+          "M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z",
+          function(event){
+            event.stopPropagation();
+            arrangeSetCell(figure, rowIndex, colIndex, "");
+            arrangeTarget = flat;
+            drawArrangeCellsChanged();
+          });
+        clear.className = "arrangeClear";
+        td.appendChild(clear);
+      } else {
+        var empty = document.createElement("span");
+        empty.textContent = t("arrangeEmptyCell");
+        button.appendChild(empty);
+      }
+      button.addEventListener("click", function(){
+        arrangeTarget = flat;
+        paintArrangeTarget();
+      });
+      td.appendChild(button); tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+}
+function paintArrangeTarget(){
+  $("arrangeTable").querySelectorAll(".arrangeCellButton").forEach(function(button){
+    button.dataset.current = String(Number(button.dataset.arrangeFlat) === arrangeTarget);
+  });
+}
+function drawArrangeCellsChanged(){
+  arrangeRenderVersion++;
+  drawArrangeTable();
+  drawArrangeMap();
+  arrangeChanged();
+}
+function removeArrangeRow(index){
+  var figure = arrangeFigure();
+  if (!figure || figure.rows.length <= 1) return;
+  figure.rows.splice(index, 1);
+  figure.cells = figure.cells.filter(function(cell){ return Number(cell.row) !== index; });
+  figure.cells.forEach(function(cell){ if (Number(cell.row) > index) cell.row--; });
+  arrangeTarget = arrangeFirstEmpty(figure, -1);
+  drawArrangeCellsChanged();
+}
+function removeArrangeColumn(index){
+  var figure = arrangeFigure();
+  if (!figure || figure.cols.length <= 1) return;
+  figure.cols.splice(index, 1);
+  figure.cells = figure.cells.filter(function(cell){ return Number(cell.col) !== index; });
+  figure.cells.forEach(function(cell){ if (Number(cell.col) > index) cell.col--; });
+  arrangeTarget = arrangeFirstEmpty(figure, -1);
+  drawArrangeCellsChanged();
+}
+function moveArrangeRow(from, to){
+  var figure = arrangeFigure();
+  if (!figure || to < 0 || to >= figure.rows.length || from === to) return;
+  var moved = figure.rows.splice(from, 1)[0];
+  figure.rows.splice(to, 0, moved);
+  figure.cells.forEach(function(cell){
+    if (Number(cell.row) === from) cell.row = to;
+    else if (from < to && Number(cell.row) > from && Number(cell.row) <= to) cell.row--;
+    else if (from > to && Number(cell.row) >= to && Number(cell.row) < from) cell.row++;
+  });
+  arrangeTarget = arrangeFirstEmpty(figure, -1);
+  drawArrangeCellsChanged();
+}
+function drawArrangeMap(){
+  var map = $("arrangeMap"), figure = arrangeFigure();
+  arrangeReleaseCanvases(map);
+  map.textContent = "";
+  var rows = Number(arrangeManifest.gridRows || 0), cols = Number(arrangeManifest.gridCols || 0);
+  // The map is a picture of one slide and only reads as one when the whole slide is in
+  // view, so size the seat to the pane instead of pinning it at 68px and pushing the last
+  // two columns off the right. Below the floor the container scrolls, which is the right
+  // answer on a phone rather than shrinking a core to a speck.
+  var scroller = map.parentElement;
+  var usable = (scroller ? scroller.clientWidth : 560) - 36 - 24 - 2 - 86 - 26 - (cols + 1) * 6;
+  var seat = Math.max(44, Math.min(68, Math.floor(usable / Math.max(cols, 1))));
+  map.style.setProperty("--seat", seat + "px");
+  map.style.gridTemplateColumns = "86px 26px repeat(" + cols + ",var(--seat))";
+  map.style.gridTemplateRows = "auto repeat(" + rows + ",var(--seat))";
+  var layout = arrangeDocument.slideLayout || {};
+  var columnLabels = {};
+  (layout.columns || []).forEach(function(column){ columnLabels[Number(column.col)] = column.label; });
+  for (var col = 1; col <= cols; col++) {
+    var label = document.createElement("div");
+    label.className = "arrangeColumnLabel";
+    label.style.gridColumn = String(col + 2);
+    label.style.gridRow = "1";
+    label.textContent = columnLabels[col] || t("column", col);
+    map.appendChild(label);
+  }
+  (layout.rowBands || []).forEach(function(band){
+    var bandRows = Array.isArray(band.rows) ? band.rows.map(Number).sort(function(a, b){ return a - b; }) : [];
+    if (!bandRows.length) return;
+    var label = document.createElement("div");
+    label.className = "arrangeBandLabel";
+    label.style.gridColumn = "1";
+    label.style.gridRow = String(bandRows[0] + 1) + " / span " + bandRows.length;
+    label.textContent = band.label;
+    map.appendChild(label);
+  });
+  var byPosition = {};
+  ((arrangeManifest && arrangeManifest.cores) || []).forEach(function(core){
+    byPosition[Number(core.row) + ":" + Number(core.col)] = core;
+  });
+  var currentPlacements = {}, otherPlacements = {};
+  (figure.cells || []).forEach(function(cell){
+    var position = Number(cell.row) * figure.cols.length + Number(cell.col) + 1;
+    // A core may legitimately appear more than once in a figure, so keep every cell it
+    // occupies. Showing only the first would say the second placement had not happened.
+    (currentPlacements[cell.core] = currentPlacements[cell.core] || []).push(position);
+  });
+  arrangeDocument.figures.forEach(function(other, index){
+    if (index === arrangeFigureIndex) return;
+    (other.cells || []).forEach(function(cell){ otherPlacements[cell.core] = true; });
+  });
+  for (var row = 1; row <= rows; row++) {
+    var number = document.createElement("div");
+    number.className = "arrangeRowNumber";
+    number.style.gridColumn = "2";
+    number.style.gridRow = String(row + 1);
+    number.textContent = row;
+    map.appendChild(number);
+    for (var col = 1; col <= cols; col++) {
+      var core = byPosition[row + ":" + col];
+      var missing = !core || !!core.missing;
+      var seat = document.createElement(missing ? "div" : "button");
+      seat.className = "arrangeSeat" + (missing ? " arrangeSeatMissing" : "");
+      seat.style.gridColumn = String(col + 2);
+      seat.style.gridRow = String(row + 1);
+      if (!missing) {
+        seat.type = "button";
+        seat.setAttribute("aria-label", t("arrangePlaceCore", core.core, arrangeTarget + 1));
+        var canvas = document.createElement("canvas");
+        canvas.className = "arrangeCoreCanvas";
+        seat.appendChild(canvas);
+        queueArrangeCanvas(canvas, core.core, 88);
+        if (currentPlacements[core.core] != null) {
+          var badge = document.createElement("span");
+          badge.className = "arrangeBadge";
+          var spots = currentPlacements[core.core].sort(function(a, b){ return a - b; });
+          badge.textContent = spots.length > 2 ? spots.length + "\u00d7" : spots.join(",");
+          seat.appendChild(badge);
+        } else if (otherPlacements[core.core]) {
+          var dot = document.createElement("span");
+          dot.className = "arrangeOtherDot";
+          seat.appendChild(dot);
+        }
+        seat.addEventListener("click", function(chosen){
+          return function(){ placeArrangeCore(chosen.core); };
+        }(core));
+      }
+      map.appendChild(seat);
+    }
+  }
+}
+function placeArrangeCore(core){
+  var figure = arrangeFigure(), total = arrangeCellCount(figure);
+  if (!figure || !total) return;
+  arrangeTarget = Math.max(0, Math.min(arrangeTarget, total - 1));
+  var row = Math.floor(arrangeTarget / figure.cols.length), col = arrangeTarget % figure.cols.length;
+  arrangeSetCell(figure, row, col, core);
+  arrangeTarget = arrangeFirstEmpty(figure, arrangeTarget);
+  drawArrangeCellsChanged();
+}
+
+function arrangeChannelConfig(figure, index){
+  for (var i = 0; i < figure.channels.length; i++)
+    if (Number(figure.channels[i].index) === Number(index)) return figure.channels[i];
+  return null;
+}
+function arrangeEnsureChannel(figure, index){
+  var config = arrangeChannelConfig(figure, index);
+  if (config) return config;
+  config = {index:index, visible:false};
+  figure.channels.push(config);
+  return config;
+}
+function arrangeChannelColour(config, manifest){
+  return String((config && config.colour) || manifest.colour || "#FFFFFF").toUpperCase();
+}
+function arrangeChannelGain(config){
+  var gain = Number(config && config.gain);
+  return Number.isFinite(gain) ? gain : 1;
+}
+function drawArrangeChannelRail(){
+  var rail = $("arrangeChannelRail"), figure = arrangeFigure();
+  rail.textContent = "";
+  var named = {};
+  figure.channels.forEach(function(config){ named[String(config.index)] = true; });
+  var kinds = [
+    {key:"nuclear", label:"roleNuclear"},
+    {key:"marker", label:"roleMarker"},
+    {key:"autofluorescence", label:"roleAutofluorescence"}
+  ];
+  kinds.forEach(function(kind){
+    var channels = (arrangeManifest.channels || []).filter(function(channel){
+      return channel.kind === kind.key && (arrangeShowAllChannels || named[String(channel.index)]);
+    });
+    if (!channels.length) return;
+    var group = document.createElement("section");
+    group.className = "arrangeChannelGroup";
+    var title = document.createElement("div");
+    title.className = "arrangeChannelGroupTitle";
+    title.textContent = t(kind.label);
+    group.appendChild(title);
+    channels.forEach(function(channel){ group.appendChild(makeArrangeLayer(channel)); });
+    rail.appendChild(group);
+  });
+  $("arrangeChannelToggle").textContent = t(arrangeShowAllChannels
+    ? "arrangeShowFigureChannels" : "arrangeShowAllChannels");
+}
+function makeArrangeLayer(channel){
+  var figure = arrangeFigure(), config = arrangeChannelConfig(figure, channel.index);
+  var layer = document.createElement("div");
+  layer.className = "arrangeLayer";
+  layer.dataset.selected = String(Number(arrangeChannelSelected) === Number(channel.index));
+  var main = document.createElement("div");
+  main.className = "arrangeLayerMain";
+  var visibility = document.createElement("input");
+  visibility.type = "checkbox";
+  visibility.checked = !!(config && config.visible);
+  visibility.setAttribute("aria-label", channel.name);
+  visibility.addEventListener("click", function(event){ event.stopPropagation(); });
+  visibility.addEventListener("change", function(){
+    var item = arrangeEnsureChannel(figure, channel.index);
+    item.visible = this.checked;
+    arrangeChannelSelected = channel.index;
+    drawArrangeChannelRail();
+    refreshArrangeCanvases();
+    arrangeChanged();
+  });
+  var name = document.createElement("span");
+  name.className = "arrangeLayerName";
+  name.textContent = channel.name;
+  var swatch = document.createElement("button");
+  swatch.type = "button";
+  swatch.className = "arrangeSwatch";
+  swatch.style.background = arrangeChannelColour(config, channel);
+  swatch.setAttribute("aria-label", t("arrangeColourHex"));
+  swatch.addEventListener("click", function(event){
+    event.stopPropagation();
+    arrangeChannelSelected = channel.index;
+    drawArrangeChannelRail();
+  });
+  main.appendChild(visibility); main.appendChild(name); main.appendChild(swatch);
+  main.addEventListener("click", function(){
+    arrangeChannelSelected = channel.index;
+    drawArrangeChannelRail();
+  });
+  layer.appendChild(main);
+  if (Number(arrangeChannelSelected) === Number(channel.index)) {
+    config = arrangeChannelConfig(figure, channel.index);
+    var detail = document.createElement("div");
+    detail.className = "arrangeLayerDetail";
+    var gainLine = document.createElement("label");
+    gainLine.className = "arrangeGain";
+    var gainLabel = document.createElement("span");
+    gainLabel.textContent = t("arrangeGain");
+    var gain = document.createElement("input");
+    gain.type = "range"; gain.min = "0"; gain.max = "3"; gain.step = "0.05";
+    gain.value = String(arrangeChannelGain(config));
+    gain.setAttribute("aria-label", t("arrangeGain") + " " + channel.name);
+    var output = document.createElement("output");
+    output.textContent = Number(gain.value).toFixed(2) + "×";
+    gain.addEventListener("input", function(){
+      var item = arrangeEnsureChannel(figure, channel.index);
+      item.gain = Number(this.value);
+      output.textContent = Number(this.value).toFixed(2) + "×";
+      refreshArrangeCanvases();
+      arrangeChanged();
+    });
+    gainLine.appendChild(gainLabel); gainLine.appendChild(gain); gainLine.appendChild(output);
+    detail.appendChild(gainLine);
+    var palette = document.createElement("div");
+    palette.className = "arrangePalette";
+    ["#3D7BFF", "#FF4D4D", "#2FD477", "#E65CFF", "#31D9E8", "#FFD84D", "#FF943D", "#FFFFFF"]
+      .forEach(function(colour){
+        var choice = document.createElement("button");
+        choice.type = "button";
+        choice.style.background = colour;
+        choice.setAttribute("aria-label", t("arrangeUseColour", colour));
+        choice.addEventListener("click", function(){
+          arrangeEnsureChannel(figure, channel.index).colour = colour;
+          drawArrangeChannelRail();
+          refreshArrangeCanvases();
+          arrangeChanged();
+        });
+        palette.appendChild(choice);
+      });
+    var hex = document.createElement("input");
+    hex.className = "arrangeHex";
+    hex.type = "text";
+    hex.maxLength = 7;
+    hex.value = arrangeChannelColour(config, channel);
+    hex.setAttribute("aria-label", t("arrangeColourHex"));
+    hex.addEventListener("input", function(){
+      var value = this.value.trim();
+      if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+      arrangeEnsureChannel(figure, channel.index).colour = value.toUpperCase();
+      swatch.style.background = value;
+      refreshArrangeCanvases();
+      arrangeChanged();
+    });
+    palette.appendChild(hex); detail.appendChild(palette); layer.appendChild(detail);
+  }
+  return layer;
+}
+
+function arrangeTile(core, channel){
+  var key = core + "/" + channel;
+  if (arrangeTileCache.has(key)) return arrangeTileCache.get(key);
+  var promise = new Promise(function(resolve){
+    var image = new Image();
+    image.onload = function(){
+      if (image.decode) image.decode().then(function(){ resolve(image); }).catch(function(){ resolve(image); });
+      else resolve(image);
+    };
+    image.onerror = function(){ resolve(null); };
+    var padded = String(channel);
+    while (padded.length < 2) padded = "0" + padded;
+    // The tiles are served immutable for a year, which is right for a file that never
+    // changes under a given URL and wrong the moment they are cut again. Carrying the
+    // manifest stamp in the query makes a fresh cut a fresh URL, so a browser that holds
+    // last week's washed-out tiles asks for the new ones instead of keeping the old.
+    image.src = projectUrl(arrangeTileBase + "/" + core + "/" + padded + ".png") +
+      arrangeTileVersion;
+  });
+  arrangeTileCache.set(key, promise);
+  return promise;
+}
+function arrangeCss(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function arrangeRgb(hex){
+  var clean = String(hex || "#FFFFFF").replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(clean)) clean = "FFFFFF";
+  return {r:parseInt(clean.slice(0, 2), 16), g:parseInt(clean.slice(2, 4), 16),
+          b:parseInt(clean.slice(4, 6), 16)};
+}
+function arrangeComposite(canvas, coreName, size, figure, token){
+  var core = ((arrangeManifest && arrangeManifest.cores) || []).filter(function(item){
+    return item.core === coreName;
+  })[0];
+  var visibleChannels = (figure.channels || []).filter(function(config){
+    return config.visible && arrangeChannelManifest(config.index);
+  }).map(function(config){
+    var manifest = arrangeChannelManifest(config.index);
+    return {index:config.index, colour:arrangeChannelColour(config, manifest),
+            gain:arrangeChannelGain(config)};
+  });
+  var jobs = visibleChannels.map(function(config){
+    return arrangeTile(coreName, config.index).then(function(image){
+      if (!image) return null;
+      var layer = document.createElement("canvas");
+      layer.width = size; layer.height = size;
+      var context = layer.getContext("2d", {willReadFrequently:true});
+      context.translate(size / 2, size / 2);
+      var angle = Number(core && core.rotationDeg) || 0;
+      var radians = angle * Math.PI / 180;
+      context.rotate(radians);
+      // The tile is cut 1.45x wider than the core so a rotation has corners to draw from,
+      // which also means the core itself only covers about 69% of it. Draw the tile
+      // enlarged by that same factor and the core fills the frame, which is what a figure
+      // panel wants. It stays safe at every angle because a rotated square needs at most
+      // |cos|+|sin| = 1.414 of its own width and the cut gives 1.45.
+      var support = Math.max(Number(arrangeManifest && arrangeManifest.rotationSupport) || 1,
+        Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians)));
+      var span = size * support;
+      context.drawImage(image, -span / 2, -span / 2, span, span);
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      var pixels = context.getImageData(0, 0, size, size);
+      var rgb = arrangeRgb(config.colour);
+      for (var pixel = 0; pixel < pixels.data.length; pixel += 4) {
+        var strength = Math.min(255, pixels.data[pixel] * config.gain);
+        pixels.data[pixel] = Math.round(strength * rgb.r / 255);
+        pixels.data[pixel + 1] = Math.round(strength * rgb.g / 255);
+        pixels.data[pixel + 2] = Math.round(strength * rgb.b / 255);
+      }
+      context.putImageData(pixels, 0, 0);
+      return layer;
+    });
+  });
+  return Promise.all(jobs).then(function(layers){
+    if (token && canvas._arrangeToken !== token) return canvas;
+    canvas.width = size; canvas.height = size;
+    var context = canvas.getContext("2d");
+    context.fillStyle = arrangeCss("--stage-bg");
+    context.fillRect(0, 0, size, size);
+    context.globalCompositeOperation = "screen";
+    layers.forEach(function(layer){ if (layer) context.drawImage(layer, 0, 0); });
+    context.globalCompositeOperation = "source-over";
+    return canvas;
+  });
+}
+function arrangeWantedToken(canvas){
+  return arrangeRenderVersion + ":" + canvas._arrangeCore + ":" + canvas._arrangeSize;
+}
+// An IntersectionObserver only speaks while the document is being rendered, so a tab that is
+// still in the background when this stage opens never hears about the cores that are already
+// on screen and every one of them stays black until the person scrolls. Reading the geometry
+// directly costs one layout pass over about a hundred small elements and does not care
+// whether the page has been painted yet, so it is the honest belt to the observer's braces.
+var arrangeSweepPending = false;
+function renderArrangeInView(){
+  arrangeSweepPending = false;
+  var margin = 180, limit = window.innerHeight || 800;
+  document.querySelectorAll("canvas.arrangeCoreCanvas").forEach(function(canvas){
+    if (canvas._arrangeToken === arrangeWantedToken(canvas)) return;
+    var box = canvas.getBoundingClientRect();
+    if (!box.width && !box.height) return;
+    if (box.bottom < -margin || box.top > limit + margin) return;
+    renderArrangeCanvas(canvas);
+  });
+}
+function scheduleArrangeSweep(){
+  if (arrangeSweepPending) return;
+  arrangeSweepPending = true;
+  setTimeout(renderArrangeInView, 60);
+}
+function queueArrangeCanvas(canvas, core, size){
+  canvas._arrangeCore = core;
+  canvas._arrangeSize = size;
+  if (arrangeObserver) arrangeObserver.observe(canvas);
+  scheduleArrangeSweep();
+}
+// Scroll does not bubble, so the capture phase is the only way to hear either pane without
+// hunting down the scrolling element. All three of these are moments when a core that was
+// never drawn can be on screen: the pane moved, the tab came forward, the layout reflowed.
+document.addEventListener("scroll", function(){
+  if (arrangeAvailable) scheduleArrangeSweep();
+}, true);
+document.addEventListener("visibilitychange", function(){
+  if (!document.hidden && arrangeAvailable) scheduleArrangeSweep();
+});
+window.addEventListener("resize", function(){
+  if (!arrangeAvailable) return;
+  scheduleArrangeSweep();
+  if (stage === "arrange" && arrangeManifest) drawArrangeMap();
+});
+function renderArrangeCanvas(canvas){
+  if (!canvas.isConnected || !arrangeFigure()) return;
+  var token = arrangeRenderVersion + ":" + canvas._arrangeCore + ":" + canvas._arrangeSize;
+  canvas._arrangeToken = token;
+  arrangeComposite(canvas, canvas._arrangeCore, canvas._arrangeSize, arrangeFigure(), token);
+}
+function refreshArrangeCanvases(){
+  arrangeRenderVersion++;
+  document.querySelectorAll("canvas.arrangeCoreCanvas").forEach(function(canvas){
+    if (arrangeObserver) {
+      arrangeObserver.unobserve(canvas);
+      arrangeObserver.observe(canvas);
+    } else renderArrangeCanvas(canvas);
+  });
+  scheduleArrangeSweep();
+}
+
+function fillArrangeFromLayout(){
+  var figure = arrangeFigure(), filled = 0, failed = 0;
+  var cores = (arrangeManifest && arrangeManifest.cores) || [];
+  figure.rows.forEach(function(row, rowIndex){
+    figure.cols.forEach(function(column, colIndex){
+      if (arrangeCellAt(figure, rowIndex, colIndex)) return;
+      if (!Array.isArray(row.slideRows) || column.slideCol == null) return;
+      var found = null;
+      for (var i = 0; i < cores.length; i++) {
+        if (!cores[i].missing && row.slideRows.map(Number).indexOf(Number(cores[i].row)) >= 0 &&
+            Number(cores[i].col) === Number(column.slideCol)) { found = cores[i]; break; }
+      }
+      if (found) { arrangeSetCell(figure, rowIndex, colIndex, found.core); filled++; }
+      else failed++;
+    });
+  });
+  arrangeTarget = arrangeFirstEmpty(figure, -1);
+  drawArrangeCellsChanged();
+  toast(t("arrangeFillReport", filled, failed));
+}
+function saveArrangement(){
+  if (arrangeSaving || arrangeEditsMatchSaved()) return;
+  var sent = arrangeClone(arrangeDocument);
+  var sentFingerprint = arrangeFingerprint(sent);
+  arrangeSaving = true;
+  drawArrangeSaveState();
+  api("/api/arrange", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({arrangement:sent})}).then(function(res){
+      arrangeSaving = false;
+      if (!res.ok || !res.body.ok) {
+        setSaveState(res.body.error || t("saveFailed"), "bad", $("arrangeSaveState"));
+        $("saveArrange").disabled = false;
+        return;
+      }
+      arrangeSaved = arrangeClone(res.body.arrangement || sent);
+      if (arrangeFingerprint(arrangeDocument) === sentFingerprint)
+        arrangeDocument = arrangeClone(arrangeSaved);
+      drawArrangeSaveState();
+      toast(t("arrangeSavedToast"));
+    });
+}
+function drawArrangeLabel(context, text, x, y, maxWidth, align){
+  context.textAlign = align || "left";
+  context.textBaseline = "middle";
+  context.fillText(String(text || ""), x, y, maxWidth);
+}
+// Rendering the figure and doing something with it are two different jobs. Preview and
+// export must show the same pixels or the preview is worse than none, so they share this.
+function buildArrangeFigureCanvas(){
+  var figure = arrangeFigure();
+  if (!figure) return Promise.reject(new Error("no figure"));
+  var cellSize = 256, rowLabelWidth = 190, titleHeight = 70, colLabelHeight = 70;
+  var cells = [], jobs = [];
+  figure.rows.forEach(function(_, row){
+    figure.cols.forEach(function(_, col){
+      var item = arrangeCellAt(figure, row, col), canvas = document.createElement("canvas");
+      canvas.width = cellSize; canvas.height = cellSize;
+      cells.push({row:row, col:col, cell:item, canvas:canvas});
+      if (item) jobs.push(arrangeComposite(canvas, item.core, cellSize, figure, ""));
+    });
+  });
+  return Promise.all(jobs).then(function(){
+    var canvas = document.createElement("canvas");
+    canvas.width = rowLabelWidth + figure.cols.length * cellSize;
+    canvas.height = titleHeight + colLabelHeight + figure.rows.length * cellSize;
+    var context = canvas.getContext("2d");
+    // The same stack the page uses. A bare sans-serif resolves to a face with no Thai and
+    // burns empty boxes into the file, which is only discovered after it is sent to somebody.
+    var face = arrangeCss("--font-ui") || "system-ui, sans-serif";
+    context.fillStyle = arrangeCss("--surface");
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = arrangeCss("--text");
+    context.font = "800 28px " + face;
+    drawArrangeLabel(context, figure.title, 20, titleHeight / 2, canvas.width - 40, "left");
+    context.font = "700 17px " + face;
+    figure.cols.forEach(function(column, col){
+      drawArrangeLabel(context, arrangeColText(figure, col),
+        rowLabelWidth + col * cellSize + cellSize / 2,
+        titleHeight + colLabelHeight / 2, cellSize - 24, "center");
+    });
+    figure.rows.forEach(function(row, index){
+      drawArrangeLabel(context, arrangeRowText(figure, index), rowLabelWidth - 18,
+        titleHeight + colLabelHeight + index * cellSize + cellSize / 2,
+        rowLabelWidth - 32, "right");
+    });
+    context.strokeStyle = arrangeCss("--line-strong");
+    context.lineWidth = 1;
+    cells.forEach(function(item){
+      var x = rowLabelWidth + item.col * cellSize;
+      var y = titleHeight + colLabelHeight + item.row * cellSize;
+      context.fillStyle = arrangeCss("--stage-bg");
+      context.fillRect(x, y, cellSize, cellSize);
+      if (item.cell) context.drawImage(item.canvas, x, y);
+      context.strokeRect(x + .5, y + .5, cellSize - 1, cellSize - 1);
+    });
+    return canvas;
+  });
+}
+function exportArrangementPng(){
+  var figure = arrangeFigure();
+  if (!figure) return;
+  var button = $("exportArrange");
+  button.disabled = true;
+  buildArrangeFigureCanvas().then(function(canvas){
+    canvas.toBlob(function(blob){
+      button.disabled = false;
+      if (!blob) { toast(t("arrangeExportFailed")); return; }
+      var link = document.createElement("a");
+      var url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = String(figure.id || "figure").replace(/[^a-z0-9_-]+/gi, "-") + ".png";
+      link.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    }, "image/png");
+  }).catch(function(){
+    button.disabled = false;
+    toast(t("arrangeExportFailed"));
+  });
+}
+function previewArrangementPng(){
+  var button = $("previewArrange");
+  button.disabled = true;
+  buildArrangeFigureCanvas().then(function(canvas){
+    button.disabled = false;
+    var holder = $("arrangePreviewBody");
+    holder.textContent = "";
+    // Hand over the canvas itself rather than a data URL: it is already in memory, it can be
+    // several megabytes at print resolution, and encoding it twice buys the reader nothing.
+    canvas.style.width = "100%";
+    canvas.style.height = "auto";
+    holder.appendChild(canvas);
+    $("arrangePreviewSize").textContent = canvas.width + " x " + canvas.height;
+    $("arrangePreviewDialog").showModal();
+  }).catch(function(){
+    button.disabled = false;
+    toast(t("arrangeExportFailed"));
+  });
+}
+
+$("arrangeFigureSelect").addEventListener("change", function(){
+  arrangeFigureIndex = Number(this.value) || 0;
+  arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
+  arrangeShowAllChannels = false;
+  arrangeChannelSelected = null;
+  arrangeRenderVersion++;
+  drawArrange();
+});
+$("arrangeTitle").addEventListener("input", function(){
+  var figure = arrangeFigure();
+  if (!figure) return;
+  figure.title = this.value;
+  drawArrangeSwitcher();
+  arrangeChanged();
+});
+$("arrangeAddFigure").addEventListener("click", function(){
+  arrangeDocument.figures.push(arrangeNewFigureObject());
+  arrangeFigureIndex = arrangeDocument.figures.length - 1;
+  arrangeTarget = 0;
+  arrangeShowAllChannels = false;
+  arrangeChannelSelected = null;
+  arrangeRenderVersion++;
+  drawArrange();
+});
+$("arrangeDuplicateFigure").addEventListener("click", function(){
+  var source = arrangeFigure();
+  if (!source) return;
+  var copy = arrangeClone(source);
+  copy.id = arrangeUniqueId(String(source.id || "figure") + "-copy");
+  copy.title = (source.title || t("arrangeUntitledFigure")) + " · " + t("arrangeCopySuffix");
+  arrangeDocument.figures.push(copy);
+  arrangeFigureIndex = arrangeDocument.figures.length - 1;
+  arrangeTarget = arrangeFirstEmpty(copy, -1);
+  arrangeShowAllChannels = false;
+  arrangeChannelSelected = null;
+  arrangeRenderVersion++;
+  drawArrange();
+});
+$("arrangeAddRow").addEventListener("click", function(){
+  arrangeFigure().rows.push({label:""});
+  arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
+  drawArrangeCellsChanged();
+});
+$("arrangeAddCol").addEventListener("click", function(){
+  arrangeFigure().cols.push({label:""});
+  arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
+  drawArrangeCellsChanged();
+});
+$("arrangeFill").addEventListener("click", fillArrangeFromLayout);
+$("arrangeChannelToggle").addEventListener("click", function(){
+  arrangeShowAllChannels = !arrangeShowAllChannels;
+  drawArrangeChannelRail();
+});
+$("saveArrange").addEventListener("click", saveArrangement);
+$("exportArrange").addEventListener("click", exportArrangementPng);
+$("previewArrange").addEventListener("click", previewArrangementPng);
+$("closeArrangePreview").addEventListener("click", function(){ $("arrangePreviewDialog").close(); });
+$("arrangePreviewDownload").addEventListener("click", function(){
+  $("arrangePreviewDialog").close();
+  exportArrangementPng();
+});
+
+document.addEventListener("keydown", function(event){
+  if (stage !== "arrange" || !arrangeAvailable) return;
+  var target = event.target || {};
+  var tag = (target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || target.isContentEditable) return;
+  var figure = arrangeFigure(), total = arrangeCellCount(figure);
+  if (!figure || !total) return;
+  if (event.key === "ArrowLeft") {
+    event.preventDefault(); arrangeTarget = Math.max(0, arrangeTarget - 1); paintArrangeTarget();
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault(); arrangeTarget = Math.min(total - 1, arrangeTarget + 1); paintArrangeTarget();
+  }
+  if (event.key === "Backspace" || event.key === "Delete") {
+    event.preventDefault();
+    var row = Math.floor(arrangeTarget / figure.cols.length), col = arrangeTarget % figure.cols.length;
+    if (arrangeCellAt(figure, row, col)) {
+      arrangeSetCell(figure, row, col, "");
+      drawArrangeCellsChanged();
+    }
+  }
+});
+
 /* ------------------------------------------------------------------ export */
 var EXPORT_FILTERS = [
   {key:"all",     labelKey:"filterAll",     test:function(){ return true; }},
@@ -3073,6 +4392,9 @@ function paintStatus(status){
     $("slideName").textContent = name;
     if (!chosenSlide) chosenSlide = {name:name, path:status.slide};
   }
+  if (status.project && (status.project !== arrangeProject ||
+      (!arrangeAvailable && Date.now() - arrangeLastCheck > 5000)))
+    loadArrange(status.project);
   paintProgress();
   showAbandoned(status);
 
@@ -3228,7 +4550,7 @@ function route(status, gateId){
   }
   if (status.state === "complete") {
     reached.review = true; reached.export = true;
-    if (stage !== "export" && stage !== "review") setStage("export");
+    if (stage !== "export" && stage !== "review" && stage !== "arrange") setStage("export");
     $("exportTitle").textContent = t("resultsReady");
     drawExport(status);
     drawActionBar();
@@ -3239,7 +4561,8 @@ function route(status, gateId){
     if (model && model.available) {
       reached.review = true;
       // Results exist and nobody has approved them yet: the review screen is the useful one.
-      if (stage !== "review" && stage !== "export" && stage !== "grid") setStage("review");
+      if (stage !== "review" && stage !== "export" && stage !== "grid" && stage !== "arrange")
+        setStage("review");
     }
     if (stage === "export") { $("exportTitle").textContent = t("resultsCurrent"); drawExport(status); }
     drawActionBar();
@@ -3294,6 +4617,7 @@ function renderLanguage(){
       ? t("resultsReady") : t("resultsCurrent");
     drawExport(lastStatus);
   }
+  if (arrangeAvailable) drawArrange();
   if (exportTableLoad === "loading") $("resultTableState").textContent = t("loadingResultTable");
   if (exportTableLoad === "failed") $("resultTableState").textContent = exportTableError === "404"
     ? t("resultTableMissing") : t("resultTableFailed");
