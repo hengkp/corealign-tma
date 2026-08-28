@@ -212,6 +212,19 @@ test("the bridge address is only real while its QuPath is running", () => {
     "liveness is the question, not the shape of the failure");
 });
 
+// HTMLImageElement.decode() is tied to painting, so in a tab that is not being rendered it
+// settles neither way. Gating the cached tile promise on it stranded every tile pending for
+// the life of the page: measured on a real AppHub run, onload true and decode still unsettled
+// 45 seconds later, with all 117 cores black. An image that has fired onload can be drawn.
+test("a tile is ready when it loads, not when it decodes", () => {
+  const body = page.slice(page.indexOf("function arrangeTile("),
+                          page.indexOf("function arrangeCss("));
+  assert.ok(!/decode\(\)\.then\([\s\S]{0,80}?resolve\(/.test(body),
+    "resolving inside decode().then leaves the tile pending in a tab that is not painting");
+  assert.match(body, /image\.onload = function\(\)\{[\s\S]*?resolve\(image\);\s*\};/,
+    "onload must resolve the promise on its own");
+});
+
 // Saving into a waiting run and saving to a file are different outcomes for the reader: one
 // is applied at the gate in front of them, the other sits on disk until somebody runs again.
 // The screen looks the same either way, so the page has to say which happened.

@@ -3611,8 +3611,13 @@ function arrangeTile(core, channel){
   var promise = new Promise(function(resolve){
     var image = new Image();
     image.onload = function(){
-      if (image.decode) image.decode().then(function(){ resolve(image); }).catch(function(){ resolve(image); });
-      else resolve(image);
+      // decode() is a smoothness optimisation, not a precondition: an image that has fired
+      // onload can already be drawn. It is also tied to painting, so in a tab that is not
+      // being rendered it settles neither way, and because this promise is cached that
+      // strands the tile for the life of the page rather than merely delaying it. Measured
+      // on a real run: onload true, decode still unsettled 45 seconds later, 117 cores black.
+      if (image.decode) { try { image.decode().catch(function(){}); } catch (error) { } }
+      resolve(image);
     };
     image.onerror = function(){ resolve(null); };
     var padded = String(channel);
