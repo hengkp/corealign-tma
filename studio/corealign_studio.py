@@ -959,12 +959,15 @@ class Run:
                     "cells": [],
                 }],
             }
-        return {
+        answer = {
             "available": True,
             "manifest": manifest,
             "arrangement": arrangement,
             "tileBase": "qc/03-arrange/tiles",
         }
+        if manifest.get("exportTileBase"):
+            answer["exportTileBase"] = manifest["exportTileBase"]
+        return answer
 
     @staticmethod
     def _arrange_string(value, item: str) -> str | None:
@@ -1652,7 +1655,7 @@ class Handler(BaseHTTPRequestHandler):
         kind = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
         try:
             extra = None
-            if relative.startswith("qc/03-arrange/tiles/"):
+            if relative.startswith("qc/03-arrange/tiles"):
                 # Tiles are immutable for one prepared run. This map redraws 117 cores across
                 # 19 channels repeatedly, so making the browser fetch them again is wasteful.
                 extra = {"Cache-Control": "public, max-age=31536000, immutable"}

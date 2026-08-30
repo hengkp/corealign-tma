@@ -2,10 +2,77 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 
 const root = new URL("../", import.meta.url);
 const page = await readFile(new URL("studio/static/index.html", root), "utf8");
 const server = await readFile(new URL("studio/corealign_studio.py", root), "utf8");
+
+async function buildArrangeFigureInHarness(manifest, options = {}) {
+  const requested = [];
+  const composites = [];
+  const labels = [];
+  const fillRects = [];
+  const strokes = [];
+  const texts = [];
+  const figure = {
+    title: "Figure 1",
+    rows: [{label: "row"}],
+    cols: [{label: "column"}],
+    cells: [{row: 0, col: 0, core: "A1"}],
+  };
+  const context = {
+    fillRect(...args) { fillRects.push({args, font: this.font}); },
+    fillText(...args) { texts.push({args, font: this.font}); },
+    strokeRect(...args) { strokes.push({args, lineWidth: this.lineWidth}); },
+    drawImage() {},
+    measureText() { return {width: 10}; },
+    save() {}, restore() {},
+  };
+  const document = {
+    createElement(name) {
+      assert.equal(name, "canvas");
+      return {width: 0, height: 0, getContext() { return context; }};
+    },
+  };
+  class HarnessImage {
+    decode() { return Promise.resolve(); }
+    set src(value) {
+      requested.push(value);
+      Promise.resolve().then(() => this.onload());
+    }
+  }
+  const sandbox = {
+    Map, Promise, Math, Number, String, Image: HarnessImage, document,
+    arrangeManifest: manifest,
+    arrangeTileBase: "qc/03-arrange/tiles",
+    arrangeExportTileBase: String(manifest.exportTileBase || ""),
+    arrangeTileVersion: "?v=cut-1",
+    arrangeTileCache: new Map(),
+    arrangeShowValues: Boolean(options.showValues),
+    arrangeFigure() { return figure; },
+    arrangeCellAt() { return figure.cells[0]; },
+    arrangeCss() { return "#000000"; },
+    arrangeColText() { return "column"; },
+    arrangeRowText() { return "row"; },
+    arrangeCoreValue() { return options.measuredValue ?? null; },
+    drawArrangeLabel(target, text, x, y, maxWidth, align) {
+      labels.push({text, x, y, maxWidth, align, font: target.font});
+    },
+    projectUrl(path) { return "/project/" + path; },
+  };
+  sandbox.arrangeComposite = function(canvas, core, size, ignored, token, tileBase) {
+    composites.push({size, tileBase});
+    return sandbox.arrangeTile(core, 0, tileBase).then(() => canvas);
+  };
+  const tileLoader = page.slice(page.indexOf("function arrangeTile("),
+                                page.indexOf("function arrangeCss("));
+  const figureBuilder = page.slice(page.indexOf("function arrangeFigureTileSource("),
+                                   page.indexOf("function exportArrangementPng("));
+  runInNewContext(tileLoader + "\n" + figureBuilder, sandbox);
+  const canvas = await sandbox.buildArrangeFigureCanvas();
+  return {requested, composites, canvas, labels, fillRects, strokes, texts};
+}
 
 // The first Studio page embedded CoreAlign's REPORT.html in an iframe. The report brings its
 // own sticky header and review bar, which stacked on top of Studio's own and left a page that
@@ -86,6 +153,59 @@ test("arrange channel compositing adds light instead of alpha covering", () => {
     "fluorescence layers must use screen compositing");
   assert.match(body, /strength \* rgb\.r \/ 255/,
     "each grayscale tile must be multiplied by its chosen colour");
+});
+
+// A print figure needs the second tile set all the way through the shared preview and export
+// builder. Selecting only a larger canvas would still enlarge the 256 px screen tile.
+test("arrange export loads the high-resolution tiles at the larger cell size", async () => {
+  const result = await buildArrangeFigureInHarness({
+    exportTileBase: "qc/03-arrange/tiles-hires",
+    exportTilePx: 1280,
+    rotationSupport: 1.45,
+  });
+  assert.deepEqual(result.requested,
+    ["/project/qc/03-arrange/tiles-hires/A1/00.png?v=cut-1"]);
+  assert.deepEqual(result.composites,
+    [{size: Math.round(1280 / 1.45), tileBase: "qc/03-arrange/tiles-hires"}]);
+  assert.match(server, /answer\["exportTileBase"\] = manifest\["exportTileBase"\]/,
+    "the server must pass the manifest's export directory to the page");
+});
+
+// Existing projects have no export fields, so their button must retain the exact screen-tile
+// URL and 256 px composition instead of assuming files that were never cut.
+test("arrange export falls back to the screen tiles for an older manifest", async () => {
+  const result = await buildArrangeFigureInHarness({rotationSupport: 1.45});
+  assert.deepEqual(result.requested,
+    ["/project/qc/03-arrange/tiles/A1/00.png?v=cut-1"]);
+  assert.deepEqual(result.composites,
+    [{size: 256, tileBase: "qc/03-arrange/tiles"}]);
+});
+
+// Figure chrome was designed around a 256 px cell. Scaling every dimension from that one
+// reference keeps the high-resolution file visually identical when it is reduced for viewing.
+test("arrange export scales labels, borders, and value badges with its cells", async () => {
+  const result = await buildArrangeFigureInHarness({
+    exportTileBase: "qc/03-arrange/tiles-hires",
+    exportTilePx: 512,
+    rotationSupport: 1,
+  }, {showValues: true, measuredValue: 42});
+
+  assert.equal(result.canvas.width, 892);
+  assert.equal(result.canvas.height, 792);
+  assert.deepEqual(result.labels, [
+    {text: "Figure 1", x: 40, y: 70, maxWidth: 812, align: "left",
+      font: "800 56px #000000"},
+    {text: "column", x: 636, y: 210, maxWidth: 464, align: "center",
+      font: "700 34px #000000"},
+    {text: "row", x: 344, y: 536, maxWidth: 316, align: "right",
+      font: "700 34px #000000"},
+  ]);
+  assert.deepEqual(result.strokes,
+    [{args: [381, 281, 510, 510], lineWidth: 2}]);
+  assert.deepEqual(result.fillRects.at(-1),
+    {args: [842, 732, 34, 44], font: "700 30px #000000"});
+  assert.deepEqual(result.texts,
+    [{args: ["42", 864, 754], font: "700 30px #000000"}]);
 });
 
 // An interrupted write must leave either the previous arrangement or the complete next one.
@@ -291,11 +411,29 @@ test("step 8 measures each core inside its own circle", () => {
     "each core carries its own measurements");
 });
 
+// The finer source read is the expensive pass, so it must stay bounded and must reuse the
+// channel ranges already measured for the responsive screen set.
+test("step 8 cuts a bounded high-resolution export tile set", () => {
+  const groovy = readFileSync(
+    new URL("workflow/embedded/08_export_arrange_tiles.groovy.src", root), "utf8");
+  assert.match(groovy, /arrange\.exportTilePx \?: 1280/);
+  assert.match(groovy, /arrange\.exportDownsample \?: 2/);
+  assert.match(groovy, /arrange\.exportEnabled != false/);
+  assert.match(groovy, /Math\.min\(8,[\s\S]{0,120}?availableProcessors/,
+    "the export executor must never use more than eight threads");
+  assert.match(groovy,
+    /writeGrayTile\(samples, iw, ih, exportTilePx, lows\[channel\], highs\[channel\]/,
+    "the export set must use the exact low and high values measured for the screen set");
+  for (const field of ["exportTileBase", "exportTilePx", "exportSourceDownsample"]) {
+    assert.ok(groovy.includes(`manifest.${field}`), `the manifest is missing ${field}`);
+  }
+});
+
 // The dermis is four fifths of a core and carries little of what these stains are about, so it
 // dominates the frame and the eye judges the wrong thing. CoreAlign already stands every core
 // up with its epidermis at the top, which makes the band a horizontal crop.
 test("the arrange screen can crop to the epidermis", () => {
-  assert.match(page, /function arrangeCropToBand\(canvas, size, figure\)/,
+  assert.match(page, /function arrangeCropToBand\(canvas, size, figure, tileBase\)/,
     "the crop has to exist");
   const body = page.slice(page.indexOf("function arrangeCropToBand"),
                           page.indexOf("function queueArrangeCanvas"));
@@ -305,7 +443,7 @@ test("the arrange screen can crop to the epidermis", () => {
     "the surface is the median column, not the highest one");
   assert.match(body, /Math\.min\(\(size \* 0\.8\) \/ depth, 2\)/,
     "enlargement is capped: the tiles do not carry the detail an unbounded blow-up implies");
-  assert.match(page, /function arrangeTilePixelsForMicrons\(microns\)/,
+  assert.match(page, /function arrangeTilePixelsForMicrons\(microns, tileBase\)/,
     "a depth in microns needs the calibration, not a guess from the core size");
   assert.ok(page.includes("tileMicronsPerPixel"),
     "the calibration comes from the manifest the exporter writes");
@@ -359,6 +497,8 @@ test("a tile URL changes when the tiles are cut again", () => {
     "the token has to come from the manifest stamp, so a fresh cut is a fresh URL");
   assert.match(server, /immutable/,
     "the long cache header is right once the URL carries a version");
+  assert.match(server, /relative\.startswith\("qc\/03-arrange\/tiles"\)/,
+    "the shared prefix must cover both the screen and high-resolution tile directories");
 });
 
 // Selecting every channel is what a run did before the question existed. Saying so

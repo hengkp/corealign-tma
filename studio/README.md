@@ -64,6 +64,24 @@ default, and status carried by colour plus icon plus words rather than colour al
 Picking a slide also attaches to whatever is already in that folder, so a finished run can be
 opened and read without running it again.
 
+## 2 Arrange tile sets, 3 export controls, 1 display range
+
+256 px screen tiles live in `qc/03-arrange/tiles` and keep the Arrange grid quick to load.
+1280 px export tiles live in `qc/03-arrange/tiles-hires` and are loaded only by figure preview
+and PNG export. Older projects with only the 256 px set keep their original export behaviour.
+
+The active profile's `arrange` object controls the second set:
+
+| Key | Default | Effect |
+|---|---:|---|
+| `exportTilePx` | `1280` | Sets the saved tile width and height in pixels. |
+| `exportDownsample` | `2` | Sets the source read downsample for the export set. |
+| `exportEnabled` | `true` | Cuts and advertises the export set when enabled. |
+
+1 coarse overview measures each channel's low and high display values. Both tile sets reuse
+those values so the same figure window produces the same intensities at either resolution, and
+the run avoids a second overview read that could cost time and measure a different range.
+
 ## Correcting the grid without QuPath
 
 The grid gate used to say: draw an ellipse over the missed core in QuPath and name it

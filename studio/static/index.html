@@ -3029,6 +3029,7 @@ var arrangeManifest = null;
 var arrangeDocument = null;
 var arrangeSaved = null;
 var arrangeTileBase = "";
+var arrangeExportTileBase = "";
 var arrangeTileVersion = "";
 var arrangeFigureIndex = 0;
 var arrangeTarget = 0;
@@ -3059,6 +3060,7 @@ function resetArrange(){
   arrangeDocument = null;
   arrangeSaved = null;
   arrangeTileBase = "";
+  arrangeExportTileBase = "";
   arrangeTileVersion = "";
   arrangeFigureIndex = 0;
   arrangeTarget = 0;
@@ -3111,6 +3113,7 @@ function loadArrange(project){
     });
     arrangeSaved = arrangeClone(arrangeDocument);
     arrangeTileBase = String(data.tileBase || "qc/03-arrange/tiles");
+    arrangeExportTileBase = String(data.exportTileBase || arrangeManifest.exportTileBase || "");
     arrangeTileVersion = arrangeManifest && arrangeManifest.createdAt
       ? "?v=" + encodeURIComponent(arrangeManifest.createdAt) : "";
     arrangeFigureIndex = 0;
@@ -3756,8 +3759,11 @@ function makeArrangeLayer(channel){
   return layer;
 }
 
-function arrangeTile(core, channel){
-  var key = core + "/" + channel;
+function arrangeTile(core, channel, tileBase){
+  var sourceBase = String(tileBase || arrangeTileBase);
+  // A core and channel can exist in both resolutions, so the directory is part of the key.
+  // Sharing one promise here would quietly hand the export path the already-cached screen tile.
+  var key = sourceBase + ":" + core + "/" + channel;
   if (arrangeTileCache.has(key)) return arrangeTileCache.get(key);
   var promise = new Promise(function(resolve){
     var image = new Image();
@@ -3777,7 +3783,7 @@ function arrangeTile(core, channel){
     // changes under a given URL and wrong the moment they are cut again. Carrying the
     // manifest stamp in the query makes a fresh cut a fresh URL, so a browser that holds
     // last week's washed-out tiles asks for the new ones instead of keeping the old.
-    image.src = projectUrl(arrangeTileBase + "/" + core + "/" + padded + ".png") +
+    image.src = projectUrl(sourceBase + "/" + core + "/" + padded + ".png") +
       arrangeTileVersion;
   });
   arrangeTileCache.set(key, promise);
@@ -3795,9 +3801,17 @@ function arrangeRgb(hex){
 // How many tile pixels a depth in microns comes to. The manifest carries the slide's
 // calibration and the downsample the tiles were cut at; without a calibration there is no
 // honest answer, so the caller falls back to a fraction of the core instead of inventing one.
-function arrangeTilePixelsForMicrons(microns){
+function arrangeTilePixelsForMicrons(microns, tileBase){
   var perPixel = Number(arrangeManifest && arrangeManifest.tileMicronsPerPixel);
   if (!Number.isFinite(perPixel) || perPixel <= 0) return null;
+  if (tileBase && tileBase === arrangeExportTileBase) {
+    var screenPx = Number(arrangeManifest && arrangeManifest.tilePx);
+    var exportPx = Number(arrangeManifest && arrangeManifest.exportTilePx);
+    // Both sets cover the same field, so their physical pixel sizes differ by their output
+    // dimensions. Scaling the depth keeps an epidermis crop at the same number of microns.
+    if (Number.isFinite(screenPx) && screenPx > 0 &&
+        Number.isFinite(exportPx) && exportPx > 0) perPixel *= screenPx / exportPx;
+  }
   return microns / perPixel;
 }
 // CoreAlign has already turned every core so its epidermis is at the top, which makes "depth
@@ -3818,7 +3832,7 @@ function arrangeSurfaceRow(layer, size){
   tops.sort(function(a, b){ return a - b; });
   return tops[Math.floor(tops.length / 2)];
 }
-function arrangeComposite(canvas, coreName, size, figure, token){
+function arrangeComposite(canvas, coreName, size, figure, token, tileBase){
   var core = ((arrangeManifest && arrangeManifest.cores) || []).filter(function(item){
     return item.core === coreName;
   })[0];
@@ -3830,7 +3844,7 @@ function arrangeComposite(canvas, coreName, size, figure, token){
             window:arrangeChannelWindow(config)};
   });
   var jobs = visibleChannels.map(function(config){
-    return arrangeTile(coreName, config.index).then(function(image){
+    return arrangeTile(coreName, config.index, tileBase).then(function(image){
       if (!image) return null;
       var layer = document.createElement("canvas");
       layer.width = size; layer.height = size;
@@ -3872,7 +3886,7 @@ function arrangeComposite(canvas, coreName, size, figure, token){
     context.globalCompositeOperation = "screen";
     layers.forEach(function(layer){ if (layer) context.drawImage(layer, 0, 0); });
     context.globalCompositeOperation = "source-over";
-    if (figure.crop === "epidermis") arrangeCropToBand(canvas, size, figure);
+    if (figure.crop === "epidermis") arrangeCropToBand(canvas, size, figure, tileBase);
     return canvas;
   });
 }
@@ -3904,12 +3918,12 @@ function scheduleArrangeSweep(){
 // The dermis is four fifths of a core and carries little of what these stains are about, so it
 // dominates the frame and the eye judges the wrong thing. Cropping to the band and filling the
 // cell with it is the difference between comparing two cores and comparing two pink circles.
-function arrangeCropToBand(canvas, size, figure){
+function arrangeCropToBand(canvas, size, figure, tileBase){
   var band = document.createElement("canvas");
   band.width = size; band.height = size;
   band.getContext("2d").drawImage(canvas, 0, 0);
   var surface = arrangeSurfaceRow(band, size);
-  var depth = arrangeTilePixelsForMicrons(Number(figure.cropDepthUm) || 100);
+  var depth = arrangeTilePixelsForMicrons(Number(figure.cropDepthUm) || 100, tileBase);
   // No calibration on the slide, so fall back to a fixed share of the core rather than
   // claiming a depth in microns that nothing measured.
   if (depth == null) depth = size * 0.22;
@@ -4017,17 +4031,28 @@ function drawArrangeLabel(context, text, x, y, maxWidth, align){
 }
 // Rendering the figure and doing something with it are two different jobs. Preview and
 // export must show the same pixels or the preview is worse than none, so they share this.
+function arrangeFigureTileSource(){
+  var exportPx = Number(arrangeManifest && arrangeManifest.exportTilePx);
+  var support = Number(arrangeManifest && arrangeManifest.rotationSupport) || 1;
+  if (arrangeExportTileBase && Number.isFinite(exportPx) && exportPx > 0 && support > 0)
+    return {tileBase:arrangeExportTileBase, cellSize:Math.round(exportPx / support)};
+  // An older run has only the screen set, and keeping 256 here preserves its exported figure.
+  return {tileBase:arrangeTileBase, cellSize:256};
+}
 function buildArrangeFigureCanvas(){
   var figure = arrangeFigure();
   if (!figure) return Promise.reject(new Error("no figure"));
-  var cellSize = 256, rowLabelWidth = 190, titleHeight = 70, colLabelHeight = 70;
+  var tileSource = arrangeFigureTileSource();
+  var cellSize = tileSource.cellSize, scale = cellSize / 256;
+  var rowLabelWidth = 190 * scale, titleHeight = 70 * scale, colLabelHeight = 70 * scale;
   var cells = [], jobs = [];
   figure.rows.forEach(function(_, row){
     figure.cols.forEach(function(_, col){
       var item = arrangeCellAt(figure, row, col), canvas = document.createElement("canvas");
       canvas.width = cellSize; canvas.height = cellSize;
       cells.push({row:row, col:col, cell:item, canvas:canvas});
-      if (item) jobs.push(arrangeComposite(canvas, item.core, cellSize, figure, ""));
+      if (item) jobs.push(arrangeComposite(
+        canvas, item.core, cellSize, figure, "", tileSource.tileBase));
     });
   });
   return Promise.all(jobs).then(function(){
@@ -4041,43 +4066,47 @@ function buildArrangeFigureCanvas(){
     context.fillStyle = arrangeCss("--surface");
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = arrangeCss("--text");
-    context.font = "800 28px " + face;
-    drawArrangeLabel(context, figure.title, 20, titleHeight / 2, canvas.width - 40, "left");
-    context.font = "700 17px " + face;
+    context.font = "800 " + (28 * scale) + "px " + face;
+    drawArrangeLabel(context, figure.title, 20 * scale, titleHeight / 2,
+      canvas.width - 40 * scale, "left");
+    context.font = "700 " + (17 * scale) + "px " + face;
     figure.cols.forEach(function(column, col){
       drawArrangeLabel(context, arrangeColText(figure, col),
         rowLabelWidth + col * cellSize + cellSize / 2,
-        titleHeight + colLabelHeight / 2, cellSize - 24, "center");
+        titleHeight + colLabelHeight / 2, cellSize - 24 * scale, "center");
     });
     figure.rows.forEach(function(row, index){
-      drawArrangeLabel(context, arrangeRowText(figure, index), rowLabelWidth - 18,
+      drawArrangeLabel(context, arrangeRowText(figure, index), rowLabelWidth - 18 * scale,
         titleHeight + colLabelHeight + index * cellSize + cellSize / 2,
-        rowLabelWidth - 32, "right");
+        rowLabelWidth - 32 * scale, "right");
     });
     context.strokeStyle = arrangeCss("--line-strong");
-    context.lineWidth = 1;
+    context.lineWidth = scale;
     cells.forEach(function(item){
       var x = rowLabelWidth + item.col * cellSize;
       var y = titleHeight + colLabelHeight + item.row * cellSize;
       context.fillStyle = arrangeCss("--stage-bg");
       context.fillRect(x, y, cellSize, cellSize);
       if (item.cell) context.drawImage(item.canvas, x, y);
-      context.strokeRect(x + .5, y + .5, cellSize - 1, cellSize - 1);
+      context.strokeRect(x + scale / 2, y + scale / 2,
+        cellSize - scale, cellSize - scale);
       // The same number the screen shows. A preview that drops it would be answering a
       // different question from the one the reader was looking at when they pressed the button.
       if (item.cell && arrangeShowValues) {
         var measured = arrangeCoreValue(item.cell.core, figure);
         if (measured != null) {
           context.save();
-          context.font = "700 15px " + face;
+          context.font = "700 " + (15 * scale) + "px " + face;
           context.fillStyle = "rgba(0,0,0,.55)";
           var text = String(Math.round(measured));
-          var pad = 6, wide = context.measureText(text).width + pad * 2;
-          context.fillRect(x + cellSize - wide - 8, y + cellSize - 30, wide, 22);
+          var pad = 6 * scale, wide = context.measureText(text).width + pad * 2;
+          context.fillRect(x + cellSize - wide - 8 * scale,
+            y + cellSize - 30 * scale, wide, 22 * scale);
           context.fillStyle = "#ffffff";
           context.textAlign = "right";
           context.textBaseline = "middle";
-          context.fillText(text, x + cellSize - 8 - pad, y + cellSize - 19);
+          context.fillText(text, x + cellSize - 8 * scale - pad,
+            y + cellSize - 19 * scale);
           context.restore();
         }
       }

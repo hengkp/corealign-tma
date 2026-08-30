@@ -1,5 +1,5 @@
 /**
- * STEP 8 - Cut one grayscale tile per core per channel, for the Arrange screen.
+ * STEP 8 - Cut screen and export grayscale tiles for every core and channel.
  *
  * Studio draws its figure builder from these. It is a standard-library-only Python server and
  * cannot read a pixel of an OME-TIFF, so the only place this cut can happen is here, inside the
@@ -22,6 +22,9 @@ import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 def json = new GsonBuilder().setPrettyPrinting().create()
 def imageData = getCurrentImageData()
@@ -62,6 +65,9 @@ if (arrange.enabled == false) {
 }
 
 int tilePx = ((arrange.tilePx ?: 256) as Number).intValue()
+int exportTilePx = ((arrange.exportTilePx ?: 1280) as Number).intValue()
+double exportDownsample = ((arrange.exportDownsample ?: 2) as Number).doubleValue()
+boolean exportEnabled = arrange.exportEnabled != false
 // The tile is cut wider than the core so the page can stand the core up without the corners
 // coming off. A rotated square needs at most |cos|+|sin| = 1.414 of its own width, so 1.45
 // covers every angle with a little to spare, and the page enlarges by the same factor to put
@@ -84,6 +90,8 @@ double rangeDownsample = ((arrange.rangeDownsample ?: 32) as Number).doubleValue
 File outDir = new File(new File(workflowDir, 'qc'), '03-arrange')
 File tilesDir = new File(outDir, 'tiles')
 tilesDir.mkdirs()
+File exportTilesDir = new File(outDir, 'tiles-hires')
+if (exportEnabled) exportTilesDir.mkdirs()
 
 // ---------------------------------------------------------------- the grid
 def parseCsvLine = { String line ->
@@ -245,24 +253,55 @@ overview.flush()
 // ---------------------------------------------------------------- cut the tiles
 def present = cores.findAll { !it.missing }
 def statsByCore = [:]
-println "ARRANGE: cutting ${present.size()} cores x ${channelCount} channels at 1/${(int) tileDownsample}"
-long started = System.currentTimeMillis()
-int written = 0
-present.eachWithIndex { core, position ->
+// Both output sets use this scaler so the display range measured above maps raw values to the
+// same 8-bit intensity in either file. Measuring or fitting again here would let the preview
+// disagree with the screen even when the reader chose the same display window.
+def writeGrayTile = { int[] samples, int width, int height, int outputPx,
+                      double low, double high, File target ->
+    double span = high - low
+    def gray = new BufferedImage(outputPx, outputPx, BufferedImage.TYPE_BYTE_GRAY)
+    def graphics = gray.createGraphics()
+    def source = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
+    def sourceRaster = source.getRaster()
+    int[] scaled = new int[width * height]
+    for (int i = 0; i < samples.length; i++) {
+        double value = ((samples[i] - low) / span) * 255.0d
+        scaled[i] = value < 0 ? 0 : (value > 255 ? 255 : (int) Math.round(value))
+    }
+    sourceRaster.setSamples(0, 0, width, height, 0, scaled)
+    graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+        java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+    graphics.drawImage(source, 0, 0, outputPx, outputPx, null)
+    graphics.dispose()
+    ImageIO.write(gray, 'png', target)
+    source.flush()
+    gray.flush()
+}
+
+// The same source rectangle feeds both resolutions so changing downsample changes detail, not
+// field of view. Clamping here also keeps both passes honest for a core at the slide edge.
+def boundsForCore = { core ->
     double side = core.diameter * rotationSupport
     int x = (int) Math.round(core.centerX - side / 2.0d)
     int y = (int) Math.round(core.centerY - side / 2.0d)
     int w = (int) Math.round(side)
     int h = w
-    // A core at the very edge of the slide would ask for pixels that are not there. Clamp the
-    // request and let the tile carry the black margin rather than refusing the core.
     if (x < 0) x = 0
     if (y < 0) y = 0
     if (x + w > server.getWidth()) w = server.getWidth() - x
     if (y + h > server.getHeight()) h = server.getHeight() - y
-    if (w <= 0 || h <= 0) return
+    return w > 0 && h > 0 ? [x: x, y: y, w: w, h: h] : null
+}
 
-    def request = RegionRequest.createInstance(server.getPath(), tileDownsample, x, y, w, h)
+println "ARRANGE: cutting screen tiles for ${present.size()} cores x ${channelCount} channels at 1/${(int) tileDownsample}"
+long screenStarted = System.currentTimeMillis()
+int written = 0
+present.eachWithIndex { core, position ->
+    def bounds = boundsForCore(core)
+    if (bounds == null) return
+
+    def request = RegionRequest.createInstance(server.getPath(), tileDownsample,
+        bounds.x, bounds.y, bounds.w, bounds.h)
     def img = server.readRegion(request)
     def raster = img.getRaster()
     int iw = img.getWidth(), ih = img.getHeight()
@@ -303,31 +342,70 @@ present.eachWithIndex { core, position ->
             p99: (double) circle[Math.min((int) Math.round(0.99d * (circle.length - 1)), circle.length - 1)],
             max: (double) circle[circle.length - 1]
         ]
-        double low = lows[channel], span = highs[channel] - lows[channel]
-        def gray = new BufferedImage(tilePx, tilePx, BufferedImage.TYPE_BYTE_GRAY)
-        def graphics = gray.createGraphics()
-        def source = new BufferedImage(iw, ih, BufferedImage.TYPE_BYTE_GRAY)
-        def sourceRaster = source.getRaster()
-        int[] scaled = new int[iw * ih]
-        for (int i = 0; i < samples.length; i++) {
-            double value = ((samples[i] - low) / span) * 255.0d
-            scaled[i] = value < 0 ? 0 : (value > 255 ? 255 : (int) Math.round(value))
-        }
-        sourceRaster.setSamples(0, 0, iw, ih, 0, scaled)
-        graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-            java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-        graphics.drawImage(source, 0, 0, tilePx, tilePx, null)
-        graphics.dispose()
         String padded = channel < 10 ? "0${channel}" : "${channel}"
-        ImageIO.write(gray, 'png', new File(coreDir, "${padded}.png"))
-        source.flush()
-        gray.flush()
+        writeGrayTile(samples, iw, ih, tilePx, lows[channel], highs[channel],
+            new File(coreDir, "${padded}.png"))
         written++
     }
     statsByCore[core.core] = coreStats
     img.flush()
-    if ((position + 1) % 20 == 0)
-        println "ARRANGE: ${position + 1}/${present.size()} cores"
+    if ((position + 1) % 20 == 0 || position + 1 == present.size())
+        println "ARRANGE: screen ${position + 1}/${present.size()} cores"
+}
+double screenSeconds = (System.currentTimeMillis() - screenStarted) / 1000.0d
+println "ARRANGE: wrote ${written} screen tiles for ${present.size()} cores in ${String.format('%.1f', screenSeconds)} s"
+
+if (exportEnabled) {
+    int exportWorkers = Math.max(1, Math.min(8,
+        Math.min(Math.max(present.size(), 1), Runtime.getRuntime().availableProcessors())))
+    println "ARRANGE: cutting export tiles for ${present.size()} cores x ${channelCount} channels at 1/${(int) exportDownsample} with ${exportWorkers} workers"
+    long exportStarted = System.currentTimeMillis()
+    def exportCompleted = new AtomicInteger(0)
+    def exportWrittenCount = new AtomicInteger(0)
+    def cutExportCore = { core ->
+        def bounds = boundsForCore(core)
+        if (bounds != null) {
+            def request = RegionRequest.createInstance(server.getPath(), exportDownsample,
+                bounds.x, bounds.y, bounds.w, bounds.h)
+            def img = server.readRegion(request)
+            try {
+                def raster = img.getRaster()
+                int iw = img.getWidth(), ih = img.getHeight()
+                int[] samples = new int[iw * ih]
+                File coreDir = new File(exportTilesDir, core.core)
+                coreDir.mkdirs()
+                for (int channel = 0; channel < channelCount; channel++) {
+                    raster.getSamples(0, 0, iw, ih, channel, samples)
+                    String padded = channel < 10 ? "0${channel}" : "${channel}"
+                    writeGrayTile(samples, iw, ih, exportTilePx, lows[channel], highs[channel],
+                        new File(coreDir, "${padded}.png"))
+                    exportWrittenCount.incrementAndGet()
+                }
+            } finally {
+                img.flush()
+            }
+        }
+        int completed = exportCompleted.incrementAndGet()
+        if (completed % 20 == 0 || completed == present.size())
+            println "ARRANGE: export ${completed}/${present.size()} cores"
+    }
+
+    if (exportWorkers > 1 && present.size() > 1) {
+        def executor = Executors.newFixedThreadPool(exportWorkers)
+        try {
+            def futures = present.collect { core ->
+                executor.submit({ cutExportCore(core); return null } as Callable<Object>)
+            }
+            futures.each { it.get() }
+        } finally {
+            executor.shutdown()
+        }
+    } else {
+        present.each { core -> cutExportCore(core) }
+    }
+    int exportWritten = exportWrittenCount.get()
+    double exportSeconds = (System.currentTimeMillis() - exportStarted) / 1000.0d
+    println "ARRANGE: wrote ${exportWritten} export tiles for ${present.size()} cores in ${String.format('%.1f', exportSeconds)} s"
 }
 
 // ---------------------------------------------------------------- the manifest
@@ -367,6 +445,11 @@ def manifest = [
          stats: statsByCore[core.core] ?: [:]]
     }
 ]
+if (exportEnabled) {
+    manifest.exportTileBase = 'qc/03-arrange/tiles-hires'
+    manifest.exportTilePx = exportTilePx
+    manifest.exportSourceDownsample = exportDownsample
+}
 // Write the manifest last and atomically. Studio decides the whole screen is available from
 // this one file, so a half-written manifest beside a half-cut tile set would show a person a
 // figure builder with holes in it.
@@ -377,7 +460,5 @@ java.nio.file.Files.move(temporary.toPath(), manifestFile.toPath(),
     java.nio.file.StandardCopyOption.REPLACE_EXISTING,
     java.nio.file.StandardCopyOption.ATOMIC_MOVE)
 
-double seconds = (System.currentTimeMillis() - started) / 1000.0d
-println "ARRANGE: wrote ${written} tiles for ${present.size()} cores in ${String.format('%.1f', seconds)} s"
 println "ARRANGE: ${manifestFile.getAbsolutePath()}"
 System.setProperty('tma.arrange.status', 'OK')
