@@ -164,6 +164,21 @@ test("the always-present File menu and Export sheet keep every destination visib
   assert.ok(page.includes('id="fileExportResultsReason"'));
 });
 
+// Found on a real slide, 7 Sep 2026: mid-run the save returned ok with the qupath path while
+// that folder was empty, and because hasQupathProject() trusts savedProjectPath that answer
+// switched Open in QuPath on and pointed it at nothing. The bridge flushes the operator's
+// edits; it does not build the project. So the folder has to be re-read after the bridge
+// answers rather than inferred from it.
+test("save project only reports success when a QuPath project is really there", () => {
+  const body = server.slice(server.indexOf("def project_save_result"),
+                            server.indexOf("def resolve_in_project"));
+  const afterBridge = body.slice(body.indexOf('answer.get("ok")'));
+  const success = afterBridge.indexOf('return {"ok": True, "path": str(qupath_folder)}, 200');
+  assert.ok(success > 0, "the handler must still report the path when the project exists");
+  assert.match(afterBridge.slice(0, success), /qupath_folder\.glob\("\*\.qpproj"\)/,
+    "the folder is re-read after the bridge answers, not inferred from its ok");
+});
+
 test("save status always combines an icon with translated words", () => {
   const body = page.slice(page.indexOf("function setSaveState("),
                           page.indexOf("var SAVE_DELAY"));

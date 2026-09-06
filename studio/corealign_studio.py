@@ -1583,6 +1583,15 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": False,
                     "error": "CoreAlign could not save the project right now. Wait for the "
                              "current step to finish, then try again."}, 409
+        # The bridge flushes the operator's edits; it does not build the QuPath project. That
+        # is written when the run reaches the project step. Re-read the folder rather than
+        # trusting the bridge's ok: reporting success here would name an empty folder and
+        # unlock Open in QuPath against it, which is the one thing that path must never do.
+        if not (qupath_folder.is_dir() and any(qupath_folder.glob("*.qpproj"))):
+            return {"ok": False,
+                    "error": "Your edits are saved. The QuPath project itself is written when "
+                             "the run reaches the project step, so there is nothing to open in "
+                             "QuPath yet."}, 409
         return {"ok": True, "path": str(qupath_folder)}, 200
 
     def resolve_in_project(self, relative: str) -> Path | None:
