@@ -125,7 +125,10 @@ test("the workflow has exactly the five redesigned stages", () => {
 });
 
 test("each workflow stage has exactly one panel", () => {
-  assert.deepEqual([...page.matchAll(/data-panel="([^"]+)"/g)].map((match) => match[1]),
+  // Match the section tags, not every occurrence of the string. A CSS rule that targets a
+  // panel is not a second panel, and counting it as one made this test fail on a stylesheet.
+  assert.deepEqual(
+    [...page.matchAll(/<section[^>]*\sdata-panel="([^"]+)"/g)].map((match) => match[1]),
     ["slide", "tissue", "cores", "orientation", "figure"]);
 });
 
@@ -760,4 +763,107 @@ test("the grid tools say why they are unavailable instead of disappearing", () =
   locked.paintGridTools();
   assert.match(locked.$("gridToolReason").textContent, /gridEditUnavailable/,
     "a grid that cannot be edited says so rather than offering dead buttons");
+});
+
+// ------------------------------------------------------------- step 4 card grid
+// The queue answers "what is next". A 126-position slide needs an answer to "which of these
+// need me" before that question is even useful, and only the grid gives one.
+function cardGridHarness(cores, options = {}){
+  const start = page.indexOf("var SEVERITY_BANDS = [");
+  const end = page.indexOf("function drawCoreFilters(");
+  assert.ok(start > 0 && end > start, "the review band block must be findable");
+  const noop = () => {};
+  const nodes = {};
+  const element = () => ({
+    hidden:false, disabled:false, textContent:"", value:"", dataset:{},
+    setAttribute:noop, removeAttribute:noop, appendChild:noop, remove:noop,
+    querySelectorAll:() => [], querySelector:() => null,
+    classList:{add:noop, remove:noop, contains:() => false}
+  });
+  const context = {
+    model: {cores},
+    checked: options.checked || {},
+    edits: {},
+    expandedBands: options.expandedBands || {},
+    visible: [], current: 0,
+    coreClassOf: (core) => (core.status === "missing" ? "missing" : core.status),
+    $: (id) => (nodes[id] = nodes[id] || element()),
+    t: (key, ...args) => [key, ...args].join(" "),
+    updateStraightBulk: noop, syncQueueRowStates: noop,
+    drawCoreGrid: noop, drawActionBar: noop, drawQueue: noop, drawDetail: noop,
+    saveLocal: noop, markDirty: noop, setOrientationView: noop,
+    document: {querySelectorAll: () => []},
+    Number, Math, Object, Infinity, isFinite, String
+  };
+  runInNewContext(page.slice(start, end), context);
+  return context;
+}
+const reviewCore = (name, residual, extra = {}) => Object.assign(
+  {core:name, row:name[0], col:1, index:0, residualDeg:residual,
+   confidence:0.9, adjustmentDeg:0, rotated:name + ".png",
+   status: residual === null ? "missing" : "ok", reasons:[]}, extra);
+
+test("the card grid shows every core, and a filter chip removes exactly its band", () => {
+  const context = cardGridHarness([
+    reviewCore("1-A", 172), reviewCore("2-A", 40), reviewCore("3-A", 9),
+    reviewCore("4-A", 0.4), reviewCore("1-B", 0.2),
+    reviewCore("2-B", null, {status:"missing"})
+  ]);
+  assert.equal(context.reviewCoresInOrder().length, 6,
+    "every core is on the grid, not only the ones in an expanded band");
+  assert.equal(context.filteredCards().length, 6, "all filters start on");
+
+  context.cardFilters.straight = false;
+  assert.equal([...context.filteredCards().map((core) => core.core)].sort().join(","),
+    "1-A,2-A,2-B,3-A", "turning off Straight removes exactly the straight cores");
+
+  context.cardFilters.straight = true;
+  context.cardFilters.flipped = false;
+  assert.ok(!context.filteredCards().some((core) => core.core === "1-A"),
+    "turning off Upside down removes the 172 degree core");
+});
+
+// The queue only holds the bands that are expanded. Focusing a core from a folded band
+// without opening that band first lands the reader on a different core than the one they
+// clicked, which is worse than not opening at all.
+test("opening a card expands that core's band before it picks the core", () => {
+  const body = page.slice(page.indexOf("function focusCore("),
+                          page.indexOf("function drawCoreFilters("));
+  const expand = body.indexOf("expandedBands[severityBandOf(core)] = true");
+  const rebuild = body.indexOf("rebuildVisible(name)");
+  assert.ok(expand > 0 && rebuild > expand,
+    "the band has to be opened before the visible list is rebuilt");
+});
+
+// Both views share one panel, so anything that reveals one has to hide the other.
+test("the two orientation views are never both on screen", () => {
+  const body = page.slice(page.indexOf("function setOrientationView("),
+                          page.indexOf("function focusCore("));
+  assert.match(body, /\$\("coreGridView"\)\.hidden = view !== "all"/);
+  assert.match(body, /\$\("orientationEditor"\)\.hidden = view !== "focus"/);
+  const stage = page.slice(page.indexOf("function showStageProgress("),
+                           page.indexOf("/* ------------------------------------------------------------------ picker"));
+  assert.match(stage, /orientationView !== "focus"/,
+    "the progress view must respect which orientation view is showing");
+});
+
+// Both of these were real rendering bugs found by measuring the page, not by reading it:
+// a flex item shrank below its aspect-ratio, and a scroll container shared its height out
+// between the rows instead of letting them size to their content.
+test("the card thumbnail cannot be squashed by its own layout", () => {
+  const shot = page.slice(page.indexOf(".coreCard .shot{"), page.indexOf(".coreCard .shot img{"));
+  assert.match(shot, /flex:0 0 auto/, "the thumbnail must not be allowed to shrink");
+  assert.match(shot, /aspect-ratio:1\/1/);
+  const cards = page.slice(page.indexOf(".coreCards{"), page.indexOf(".coreCards[data-density=\"s\"]"));
+  assert.match(cards, /grid-auto-rows:max-content/,
+    "rows size to their content, or a definite-height scroller squashes every card");
+});
+
+// The menu bar's three tracks carry minmax() floors adding to about 1070 px. Below that the
+// bar pushed the whole document into a sideways scroll on a phone.
+test("the menu bar gives the stage tracker its own row rather than widening the page", () => {
+  const from = page.indexOf("@media (max-width:900px){");
+  const narrow = page.slice(from, page.indexOf("@media ", from + 10));
+  assert.match(narrow, /\.topbar\{grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(narrow, /\.topbarCenter\{grid-row:2;grid-column:1\/-1\}/);
 });

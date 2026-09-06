@@ -349,6 +349,107 @@ h2{font-size:17px;font-weight:750}
 .gridOverlay .resizeHandle{fill:var(--grid-handle-fill);stroke:var(--grid-selected);stroke-width:2;vector-effect:non-scaling-stroke}
 .gridOverlay .resizeHandle[data-direction="n"],.gridOverlay .resizeHandle[data-direction="s"]{cursor:ns-resize}
 .gridOverlay .resizeHandle[data-direction="e"],.gridOverlay .resizeHandle[data-direction="w"]{cursor:ew-resize}
+/* ---------------------------------------------------------------- step 4 card grid */
+/* min-width:0 on every level. A grid or flex child defaults to min-width:auto, so the
+   filter row's max-content width propagated all the way out and made the whole page scroll
+   sideways at 375 px. */
+.coreGridView{display:none;min-width:0;min-height:0;grid-template-rows:auto minmax(0,1fr);gap:12px;padding:16px 20px 20px}
+.panel[data-panel="orientation"].is-active .coreGridView:not([hidden]){display:grid}
+.coreGridHead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
+.coreGridFilters{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.filterChip{
+  display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:0 11px;
+  border:1px solid var(--line);border-radius:999px;background:var(--surface);
+  color:var(--muted);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;
+}
+.filterChip:hover{border-color:var(--muted)}
+.filterChip[aria-pressed="true"]{border-color:var(--accent);color:var(--text);background:var(--surface-2)}
+.filterChip .severityDot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.filterChip .n{font-variant-numeric:tabular-nums;color:var(--faint)}
+.filterChip[aria-pressed="true"] .n{color:var(--accent)}
+.coreGridCount{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.densityControl{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.densityBtn{
+  min-width:30px;min-height:30px;border:0;background:var(--surface);color:var(--muted);
+  font:inherit;font-size:12px;font-weight:700;cursor:pointer;
+}
+.densityBtn + .densityBtn{border-left:1px solid var(--line)}
+.densityBtn[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
+.coreCards{
+  --cardMin:190px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cardMin),1fr));
+  /* max-content rows, and start-aligned items. A scroll container with a definite height
+     otherwise shares that height between the rows, and every card is squashed to a quarter
+     of it while its own contents overflow behind overflow:hidden. */
+  grid-auto-rows:max-content;align-items:start;min-width:0;
+  gap:12px;overflow:auto;align-content:start;padding-bottom:4px;
+}
+.coreCards[data-density="s"]{--cardMin:132px}
+.coreCards[data-density="l"]{--cardMin:262px}
+.coreCard{
+  display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;overflow:hidden;position:relative;
+}
+.coreCard[data-selected="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.coreCard .shot{
+  /* flex:0 0 auto, not the 0 1 auto default. A flex item may shrink below the height its
+     aspect-ratio asks for, and the square thumbnail collapsed to a 38 px letterbox. */
+  position:relative;display:block;width:100%;flex:0 0 auto;padding:0;border:0;
+  background:var(--stage-bg);aspect-ratio:1/1;cursor:zoom-in;overflow:hidden;
+}
+.coreCard .shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.coreCard .shot .noShot{
+  position:absolute;inset:0;display:grid;place-items:center;color:var(--faint);font-size:11.5px;
+}
+.coreCard .band{
+  position:absolute;left:7px;top:7px;display:inline-flex;align-items:center;gap:5px;
+  padding:2px 7px;border-radius:999px;background:var(--surface);border:1px solid var(--line);
+  font-size:10.5px;font-weight:700;color:var(--text);
+}
+.coreCard .band .severityDot{width:7px;height:7px;border-radius:50%}
+.coreCard .doneMark{
+  position:absolute;right:7px;top:7px;width:21px;height:21px;border-radius:50%;
+  display:grid;place-items:center;background:var(--ok);color:var(--on-accent);
+}
+.coreCard[data-checked="false"] .doneMark{display:none}
+.coreCard .foot{display:flex;align-items:center;gap:8px;padding:8px 9px;border-top:1px solid var(--line)}
+.coreCard .foot > input{flex:0 0 auto;margin:0}
+.coreCard .who{flex:1 1 auto;min-width:0;overflow:hidden}
+.coreCard .nm{font-size:13px;font-weight:750;letter-spacing:-.01em}
+.coreCard .sub{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.coreCard .cardBtn{flex:0 0 auto}
+.coreCard .edited{font-size:10px;font-weight:700;color:var(--accent)}
+.coreCard .cardBtn{
+  min-width:28px;min-height:28px;display:grid;place-items:center;padding:0 6px;
+  border:1px solid var(--line);border-radius:7px;background:var(--surface);
+  color:var(--muted);font:inherit;font-size:11px;font-weight:700;cursor:pointer;
+}
+.coreCard .cardBtn:hover{border-color:var(--muted);color:var(--text)}
+.coreCards[data-density="s"] .coreCard .sub,
+.coreCards[data-density="s"] .coreCard .cardBtn.flip{display:none}
+.coreGridEmpty{padding:26px 4px;color:var(--muted);font-size:14px}
+.selectionBar{
+  position:sticky;bottom:0;display:flex;align-items:center;gap:9px;
+  padding:9px 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--surface);box-shadow:0 -6px 20px -14px rgba(0,0,0,.5);
+}
+.selectionBar[hidden]{display:none}
+.selectionBar b{font-size:13px}
+.backToGrid{flex:0 0 auto;min-height:30px;padding:0 9px;font-size:12.5px}
+@media (max-width:640px){
+  /* Nine controls do not fit one phone-width row, and crowding them made the wordmark and
+     the run state overlap. Keep the mark, the File menu, the save state and Export: the
+     slide name is on the stage below, and the clock is not something anybody acts on. */
+  .brand{width:28px;gap:0;overflow:hidden;white-space:nowrap}
+  .topbar .slideName,.topbar .clock{display:none}
+  .topbar .pill span{display:none}
+  .topbar .pill{padding:0 7px}
+
+  .coreGridView{padding:12px 14px 14px}
+  .coreGridFilters{flex:1 1 100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+  .coreGridFilters .filterChip{flex:0 0 auto}
+  .coreGridHead .densityControl{order:3}
+}
 .gridToolShelf{display:grid;justify-items:center;gap:5px;line-height:1.35}
 .gridTools{
   display:flex;align-items:center;gap:3px;padding:5px;border-radius:999px;
@@ -838,6 +939,14 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 }
 
 @media (max-width:900px){
+  /* The menu bar's three tracks carry hard minmax() floors adding up to about 1070 px, so
+     below that the bar pushed the whole page into a sideways scroll. Give the stage tracker
+     its own row instead: it already scrolls inside itself. */
+  .topbar{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}
+  .topbarLeft{grid-row:1;grid-column:1}
+  .topbarRight{grid-row:1;grid-column:2}
+  .topbarCenter{grid-row:2;grid-column:1/-1}
+
   /* The severity headers need to stay readable at a narrow width. A bounded queue keeps
      its own scroll without taking the viewing area away from the selected core. */
   .review{grid-template-columns:1fr;grid-template-rows:minmax(0,42vh) minmax(0,1fr)}
@@ -1049,9 +1158,39 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 
     <!-- 4 ------------------------------------------------- orientation and its progress -->
     <section class="panel" id="orientationPanel" data-panel="orientation" data-i18n-aria-label="reviewRotatedCores">
-      <div class="stageEditor review" id="orientationEditor">
+
+      <!-- All cores at once. A 126-position slide behind a queue is 126 screens, and none of
+           them answers the question the operator actually opened this for: which ones need me. -->
+      <div class="coreGridView" id="coreGridView">
+        <div class="coreGridHead">
+          <div class="coreGridFilters" id="coreGridFilters" role="group" data-i18n-aria-label="filterByAngle"></div>
+          <span class="spacer"></span>
+          <span class="coreGridCount" id="coreGridCount" aria-live="polite"></span>
+          <div class="densityControl" role="group" data-i18n-aria-label="cardSize">
+            <button class="densityBtn" type="button" data-density="s">S</button>
+            <button class="densityBtn" type="button" data-density="m" aria-pressed="true">M</button>
+            <button class="densityBtn" type="button" data-density="l">L</button>
+          </div>
+          <button class="btn quiet" id="openFocusView" type="button" data-i18n="reviewOneAtATime"></button>
+        </div>
+        <div class="coreCards" id="coreCards" data-density="m"></div>
+        <p class="coreGridEmpty" id="coreGridEmpty" hidden data-i18n="noCoresMatchFilter"></p>
+        <div class="selectionBar" id="selectionBar" hidden>
+          <b id="selectionCount"></b>
+          <span class="spacer"></span>
+          <button class="btn" id="selectionAccept" type="button" data-i18n="acceptSelected"></button>
+          <button class="btn" id="selectionFlip" type="button" data-i18n="flipSelected"></button>
+          <button class="btn quiet" id="selectionClear" type="button" data-i18n="clearSelection"></button>
+        </div>
+      </div>
+
+      <div class="stageEditor review" id="orientationEditor" hidden>
       <div class="queue">
         <div class="queueHead">
+          <button class="btn quiet backToGrid" id="backToGrid" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.828 12l4.95 4.95-1.414 1.414L8 12l6.364-6.364 1.414 1.414z"/></svg>
+            <span data-i18n="backToAllCores"></span>
+          </button>
           <div class="verdicts" id="filterChips"></div>
           <div class="queueCount" id="queueCount"></div>
         </div>
@@ -1504,6 +1643,20 @@ var EN = {
   chooseSlideFirst:"Choose a slide first",
   startFailed:"Could not start",
   stopped:"Stopped",
+  reviewOneAtATime:"Review one at a time",
+  backToAllCores:"All cores",
+  filterByAngle:"Filter by how far the core is off",
+  cardSize:"Card size",
+  noCoresMatchFilter:"No cores match the filters you have on. Turn one back on to see them.",
+  coreGridCount:"{0} of {1} cores · {2} still need you",
+  coreGridCountDone:"{0} of {1} cores · nothing left to review",
+  selectedCount:"{0} selected",
+  acceptSelected:"Accept these",
+  flipSelected:"Turn 180\u00b0",
+  clearSelection:"Clear",
+  openCoreLarge:"Open {0} to adjust it",
+  flipThisCore:"Turn this core 180\u00b0",
+  acceptThisCore:"Accept this core",
   bandFlipped:"Upside down",
   bandWrong:"Badly off",
   bandSlight:"Slightly off",
@@ -1802,6 +1955,20 @@ var TH = {
   chooseSlideFirst:"เลือกสไลด์ก่อน",
   startFailed:"เริ่มไม่สำเร็จ",
   stopped:"หยุดแล้ว",
+  reviewOneAtATime:"\u0e14\u0e39\u0e17\u0e35\u0e25\u0e30 core",
+  backToAllCores:"\u0e14\u0e39\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14",
+  filterByAngle:"\u0e01\u0e23\u0e2d\u0e07\u0e15\u0e32\u0e21\u0e2d\u0e07\u0e28\u0e32\u0e17\u0e35\u0e48\u0e40\u0e2d\u0e35\u0e22\u0e07",
+  cardSize:"\u0e02\u0e19\u0e32\u0e14\u0e01\u0e32\u0e23\u0e4c\u0e14",
+  noCoresMatchFilter:"\u0e44\u0e21\u0e48\u0e21\u0e35 core \u0e17\u0e35\u0e48\u0e15\u0e23\u0e07\u0e01\u0e31\u0e1a\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e17\u0e35\u0e48\u0e40\u0e1b\u0e34\u0e14\u0e44\u0e27\u0e49 \u00b7 \u0e40\u0e1b\u0e34\u0e14\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e01\u0e25\u0e31\u0e1a\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e14\u0e39",
+  coreGridCount:"{0} \u0e08\u0e32\u0e01 {1} core \u00b7 \u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e27\u0e08 {2}",
+  coreGridCountDone:"{0} \u0e08\u0e32\u0e01 {1} core \u00b7 \u0e15\u0e23\u0e27\u0e08\u0e04\u0e23\u0e1a\u0e17\u0e38\u0e01\u0e15\u0e31\u0e27\u0e41\u0e25\u0e49\u0e27",
+  selectedCount:"\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e27\u0e49 {0}",
+  acceptSelected:"\u0e23\u0e31\u0e1a\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14",
+  flipSelected:"\u0e2b\u0e21\u0e38\u0e19 180\u00b0",
+  clearSelection:"\u0e25\u0e49\u0e32\u0e07\u0e01\u0e32\u0e23\u0e40\u0e25\u0e37\u0e2d\u0e01",
+  openCoreLarge:"\u0e40\u0e1b\u0e34\u0e14 {0} \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e1b\u0e23\u0e31\u0e1a\u0e2d\u0e07\u0e28\u0e32",
+  flipThisCore:"\u0e2b\u0e21\u0e38\u0e19 core \u0e19\u0e35\u0e49 180\u00b0",
+  acceptThisCore:"\u0e23\u0e31\u0e1a core \u0e19\u0e35\u0e49",
   bandFlipped:"กลับหัว",
   bandWrong:"เอียงมาก",
   bandSlight:"เอียงเล็กน้อย",
@@ -2035,13 +2202,17 @@ function setStage(next){
 function showStageEditor(name){
   $("runView").hidden = true;
   $("coresEditor").hidden = false;
-  $("orientationEditor").hidden = false;
   setStage(name);
+  // Orientation has two views and only ever shows one of them. Un-hiding the queue here
+  // unconditionally would stack it under the card grid.
+  if (name === "orientation") setOrientationView(orientationView);
+  else $("orientationEditor").hidden = orientationView !== "focus";
 }
 function showStageProgress(name){
   processingStage = name === "orientation" ? "orientation" : "cores";
   $("coresEditor").hidden = processingStage === "cores";
-  $("orientationEditor").hidden = processingStage === "orientation";
+  $("orientationEditor").hidden = processingStage === "orientation" || orientationView !== "focus";
+  $("coreGridView").hidden = processingStage === "orientation" || orientationView !== "all";
   var panel = $(processingStage + "Panel");
   if (panel && $("runView").parentNode !== panel) panel.insertBefore($("runView"), panel.firstChild);
   $("runView").hidden = false;
@@ -2304,6 +2475,7 @@ function drawReview(fresh){
   updateQueueCount();
   drawQueue(true);
   drawDetail();
+  drawCoreGrid();
   drawActionBar();
 }
 function drawVerdicts(){
@@ -2358,6 +2530,205 @@ function residualLabel(core){
   var residual = residualSortValue(core);
   return residual === -Infinity ? t("residualUnknown") : t("residualKnown", residual.toFixed(1));
 }
+
+/* --------------------------------------------------- step 4, all cores at once */
+// The queue answers "what is next". It cannot answer "which of my 126 cores need me",
+// which is the question somebody opens this stage holding. The grid answers that first
+// and hands the queue the one core that turned out to need real work.
+var orientationView = "all";
+var cardFilters = {flipped:true, wrong:true, slight:true, straight:true, missing:true};
+var cardSelection = {};
+
+function reviewCoresInOrder(){
+  var groups = groupedReviewCores();
+  var all = [];
+  SEVERITY_BANDS.forEach(function(band){ all = all.concat(groups[band.key]); });
+  return all;
+}
+function filteredCards(){
+  return reviewCoresInOrder().filter(function(core){
+    return cardFilters[severityBandOf(core)];
+  });
+}
+function setOrientationView(view){
+  orientationView = view;
+  $("coreGridView").hidden = view !== "all";
+  $("orientationEditor").hidden = view !== "focus";
+  if (view === "all") drawCoreGrid();
+  drawActionBar();
+}
+// Opening one core has to bring its band with it: the queue only holds the bands that are
+// expanded, so focusing a core from a folded band would otherwise land on a different one.
+function focusCore(name){
+  var core = reviewCoresInOrder().filter(function(c){ return c.core === name; })[0];
+  if (!core) return;
+  expandedBands[severityBandOf(core)] = true;
+  rebuildVisible(name);
+  setOrientationView("focus");
+  drawQueue();
+  updateQueueCount();
+  drawDetail();
+}
+function drawCoreFilters(){
+  var box = $("coreGridFilters"); box.textContent = "";
+  var groups = groupedReviewCores();
+  SEVERITY_BANDS.forEach(function(band){
+    var cores = groups[band.key] || [];
+    if (!cores.length) return;
+    var chip = document.createElement("button");
+    chip.type = "button"; chip.className = "filterChip";
+    chip.setAttribute("aria-pressed", String(!!cardFilters[band.key]));
+    chip.innerHTML = '<i class="severityDot" data-band="' + band.key + '"></i>' +
+      '<span class="lb"></span><span class="n"></span>';
+    chip.querySelector(".lb").textContent = t(band.labelKey);
+    chip.querySelector(".n").textContent = cores.length;
+    chip.addEventListener("click", function(){
+      cardFilters[band.key] = !cardFilters[band.key];
+      drawCoreGrid();
+    });
+    box.appendChild(chip);
+  });
+}
+function makeCoreCard(core){
+  var card = document.createElement("div");
+  card.className = "coreCard";
+  card.dataset.core = core.core;
+  card.dataset.checked = String(!!checked[core.core]);
+  card.dataset.selected = String(!!cardSelection[core.core]);
+  var band = severityBandOf(core);
+
+  var shot = document.createElement("button");
+  shot.type = "button"; shot.className = "shot";
+  shot.setAttribute("aria-label", t("openCoreLarge", core.core));
+  // 126 full previews at once would saturate the link, and the one the operator clicks
+  // would wait behind the rest of them.
+  shot.innerHTML = '<img alt="" loading="lazy" decoding="async" fetchpriority="low">' +
+    '<span class="band"><i class="severityDot" data-band="' + band + '"></i><b></b></span>' +
+    '<span class="doneMark"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path fill="currentColor" d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg></span>';
+  shot.querySelector("b").textContent = t(
+    SEVERITY_BANDS.filter(function(b){ return b.key === band; })[0].labelKey);
+  if (core.rotated) shot.querySelector("img").src = "/project/" + core.rotated;
+  else shot.insertAdjacentHTML("beforeend", '<span class="noShot">' + t("noPreview") + "</span>");
+  shot.addEventListener("click", function(){ focusCore(core.core); });
+  card.appendChild(shot);
+
+  var foot = document.createElement("div");
+  foot.className = "foot";
+  var pick = document.createElement("input");
+  pick.type = "checkbox"; pick.checked = !!cardSelection[core.core];
+  pick.setAttribute("aria-label", t("selectedCount", core.core));
+  pick.addEventListener("change", function(){
+    if (this.checked) cardSelection[core.core] = true; else delete cardSelection[core.core];
+    card.dataset.selected = String(!!cardSelection[core.core]);
+    drawSelectionBar();
+  });
+  foot.appendChild(pick);
+
+  var who = document.createElement("span");
+  who.className = "who";
+  who.innerHTML = '<span class="nm"></span> <span class="edited"></span><br><span class="sub"></span>';
+  who.querySelector(".nm").textContent = core.core;
+  who.querySelector(".sub").textContent = residualLabel(core);
+  who.querySelector(".edited").textContent = isEdited(core) ? t("edited") : "";
+  foot.appendChild(who);
+
+  var flip = document.createElement("button");
+  flip.type = "button"; flip.className = "cardBtn flip"; flip.textContent = "180°";
+  flip.title = t("flipThisCore");
+  flip.addEventListener("click", function(){ flipCore(core); drawCoreGrid(); });
+  foot.appendChild(flip);
+
+  var accept = document.createElement("button");
+  accept.type = "button"; accept.className = "cardBtn";
+  accept.setAttribute("aria-pressed", String(!!checked[core.core]));
+  accept.title = t("acceptThisCore");
+  accept.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path fill="currentColor" d="M10 15.172l9.192-9.193 1.415 1.414L10 18l-6.364-6.364 1.414-1.414z"/></svg>';
+  accept.addEventListener("click", function(){ setChecked(core, !checked[core.core]); drawCoreGrid(); });
+  foot.appendChild(accept);
+
+  card.appendChild(foot);
+  return card;
+}
+// One place decides what accepting a core means, so the card and the queue can never drift
+// into two different answers.
+function setChecked(core, on){
+  if (on) checked[core.core] = true; else delete checked[core.core];
+  saveLocal();
+  updateQueueCount();
+  drawActionBar();
+}
+function flipCore(core){
+  var next = angleOf(core) + 180;
+  while (next > 180) next -= 360;
+  while (next < -180) next += 360;
+  if (Math.abs(next - baseAngleOf(core)) < 0.05) delete edits[core.core];
+  else edits[core.core] = next;
+  saveLocal();
+  markDirty("angles");
+  drawActionBar();
+}
+function drawSelectionBar(){
+  var names = Object.keys(cardSelection);
+  $("selectionBar").hidden = names.length === 0;
+  $("selectionCount").textContent = t("selectedCount", names.length);
+}
+function updateCoreGridCount(){
+  var shown = filteredCards().length;
+  var total = reviewCoresInOrder().length;
+  var groups = groupedReviewCores();
+  var left = groups.flipped.concat(groups.wrong, groups.slight).filter(function(core){
+    return !checked[core.core];
+  }).length;
+  $("coreGridCount").textContent = left
+    ? t("coreGridCount", shown, total, left)
+    : t("coreGridCountDone", shown, total);
+}
+function drawCoreGrid(){
+  if (!model || !model.cores) return;
+  drawCoreFilters();
+  var box = $("coreCards"); box.textContent = "";
+  var cards = filteredCards();
+  cards.forEach(function(core){ box.appendChild(makeCoreCard(core)); });
+  $("coreGridEmpty").hidden = cards.length > 0;
+  updateCoreGridCount();
+  drawSelectionBar();
+}
+$("openFocusView").addEventListener("click", function(){
+  if (!visible.length) rebuildVisible("");
+  setOrientationView("focus");
+  drawQueue(); updateQueueCount(); drawDetail();
+});
+$("backToGrid").addEventListener("click", function(){ setOrientationView("all"); });
+document.querySelectorAll(".densityBtn").forEach(function(button){
+  button.addEventListener("click", function(){
+    document.querySelectorAll(".densityBtn").forEach(function(other){
+      other.setAttribute("aria-pressed", String(other === button));
+    });
+    $("coreCards").dataset.density = button.dataset.density;
+  });
+});
+$("selectionAccept").addEventListener("click", function(){
+  Object.keys(cardSelection).forEach(function(name){
+    var core = reviewCoresInOrder().filter(function(c){ return c.core === name; })[0];
+    if (core) setChecked(core, true);
+  });
+  cardSelection = {};
+  drawCoreGrid();
+});
+$("selectionFlip").addEventListener("click", function(){
+  Object.keys(cardSelection).forEach(function(name){
+    var core = reviewCoresInOrder().filter(function(c){ return c.core === name; })[0];
+    if (core) flipCore(core);
+  });
+  cardSelection = {};
+  drawCoreGrid();
+});
+$("selectionClear").addEventListener("click", function(){
+  cardSelection = {};
+  drawCoreGrid();
+});
 function makeCoreRow(core, index){
   var b = document.createElement("button");
   b.type = "button"; b.className = "coreRow";
@@ -2549,6 +2920,7 @@ $("bulkStraight").addEventListener("click", function(){
   saveLocal();
   updateQueueCount();
   drawDetail();
+  drawCoreGrid();
   drawActionBar();
   toast(t("acceptedStraight", pending.length));
 });
