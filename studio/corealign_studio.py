@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import mimetypes
 import os
 import re
@@ -232,30 +233,6 @@ def read_channels(path: Path | str) -> dict:
         return unavailable
 
 
-def validate_channels(value: object) -> list[int] | None:
-    """Keep distinct integer channel indices from an untrusted browser payload."""
-    if not isinstance(value, list):
-        return None
-    clean: list[int] = []
-    seen: set[int] = set()
-    for item in value:
-        if isinstance(item, bool):
-            continue
-        if isinstance(item, int):
-            index = item
-        elif isinstance(item, str):
-            try:
-                index = int(item)
-            except ValueError:
-                continue
-        else:
-            continue
-        if index not in seen:
-            clean.append(index)
-            seen.add(index)
-    return clean or None
-
-
 def human_size(num: int) -> str:
     step = float(num)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -342,8 +319,8 @@ def orientation_workers() -> int:
     return max(1, min(by_cpu, by_memory, MAX_WORKERS))
 
 
-def build_config(tissue: str, output: str, channels: list[int] | None = None) -> dict:
-    """The setup choices in the shape CoreAlign expects."""
+def build_config(tissue: str) -> dict:
+    """The Studio setup choice in the shape CoreAlign expects."""
     skin = tissue == "skin"
     config = {
         "schemaVersion": 2,
@@ -388,7 +365,7 @@ def build_config(tissue: str, output: str, channels: list[int] | None = None) ->
                     "regionRefinementEnabled": True,
                     "saveFullResolutionPng": True,
                     "saveNativeOmeTiff": False,
-                    "saveRotatedMultichannelOmeTiff": output == "research",
+                    "saveRotatedMultichannelOmeTiff": True,
                     "nuclearChannelTokens": ["dapi", "hoechst", "nuclear"],
                     "epidermisChannelTokens": ["keratin", "cytokeratin", "panck", "epcam"],
                     "rgbRedChannelTokens": ["keratin", "cytokeratin", "panck", "epcam"],
@@ -409,8 +386,6 @@ def build_config(tissue: str, output: str, channels: list[int] | None = None) ->
             }
         },
     }
-    if channels:
-        config["profiles"]["automatic"]["orientation"]["channelIndices"] = channels
     return config
 
 
@@ -431,8 +406,6 @@ class Run:
             self.slide: Path | None = None
             self.project: Path | None = None
             self.tissue = "skin"
-            self.output = "presentation"
-            self.channels: list[int] | None = None
             self.process: subprocess.Popen | None = None
             self._results_cache: tuple[float, list[dict]] | None = None
             self.log_path: Path | None = None
@@ -443,15 +416,14 @@ class Run:
             self.bridge_tokens: dict[str, str] = {}
 
     # -- lifecycle ----------------------------------------------------------
-    def start(self, slide: Path, tissue: str, output: str,
-              channels: list[int] | None = None) -> None:
+    def start(self, slide: Path, tissue: str) -> None:
         with self.lock:
             if self.state in ("running", "starting"):
                 raise RuntimeError("a run is already in progress")
             project = slide.parent
             config = project / "corealign.config.json"
             config.write_text(
-                json.dumps(build_config(tissue, output, channels), indent=2) + "\n", "utf-8")
+                json.dumps(build_config(tissue), indent=2) + "\n", "utf-8")
 
             work = project / "work"
             work.mkdir(exist_ok=True)
@@ -483,8 +455,6 @@ class Run:
             self.project = project
             self._results_cache = None
             self.tissue = tissue
-            self.output = output
-            self.channels = list(channels) if channels else None
             self.state = "running"
             self.started_at = time.time()
             self.finished_at = 0.0
@@ -512,7 +482,6 @@ class Run:
             self.slide = slide
             self.project = slide.parent
             self._results_cache = None
-            self.channels = None
             log = slide.parent / "work" / "studio-run.log"
             self.log_path = log if log.is_file() else None
             self.bridge_base = ""
@@ -1131,7 +1100,10 @@ class Run:
                 diameter = float(item.get("diameter", source.get("diameter")))
             except (TypeError, ValueError):
                 return {"ok": False, "error": f"{name} has no usable position."}
-            if diameter <= 0 or (width and not 0 <= x <= width) or (height and not 0 <= y <= height):
+            if (not math.isfinite(x) or not math.isfinite(y)
+                    or not math.isfinite(diameter) or diameter <= 0
+                    or (width and not 0 <= x <= width)
+                    or (height and not 0 <= y <= height)):
                 return {"ok": False, "error": f"{name} is outside the slide."}
             seen.add(key)
             clean.append({"core": name, "action": action,
@@ -1237,8 +1209,6 @@ class Run:
                 "slide": str(self.slide) if self.slide else "",
                 "project": str(self.project) if self.project else "",
                 "tissue": self.tissue,
-                "output": self.output,
-                "channels": self.channels,
                 "elapsedSeconds": elapsed,
                 "gate": gate,
                 # A question from a run that has since died. Not answerable, but worth
@@ -1404,6 +1374,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not RUN.attach(target):
                     return self.json_out({"error": "a run is already in progress"}, 409)
                 return self.json_out(RUN.snapshot())
+            if route == "/api/project/save":
+                return self.save_project()
             if route == "/api/grid-corrections":
                 body = self.read_json()
                 answer = RUN.save_grid_corrections(body.get("corrections") or [])
@@ -1484,8 +1456,6 @@ class Handler(BaseHTTPRequestHandler):
         payload = self.read_json()
         slide = Path(str(payload.get("slide") or ""))
         tissue = "skin" if payload.get("tissue") != "other" else "other"
-        output = "research" if payload.get("output") == "research" else "presentation"
-        channels = validate_channels(payload.get("channels"))
         if not slide.name or not inside_roots(slide):
             target = ""
             try:
@@ -1505,24 +1475,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out({"error": f"QuPath was not found at {QUPATH}"}, 500)
         if not Path(WORKFLOW).is_file():
             return self.json_out({"error": f"CoreAlign.groovy was not found at {WORKFLOW}"}, 500)
-        if channels:
-            # Bound the selection against the slide's own channel count. Reading the header
-            # costs one seek, and it turns "channel 999" from a run that silently drops the
-            # index and processes something else into a refusal the person can act on.
-            known = read_channels(slide).get("channels") or []
-            if known:
-                count = len(known)
-                if any(index < 0 or index >= count for index in channels):
-                    return self.json_out({"error":
-                        f"This slide has {count} channel(s), so that selection cannot be "
-                        "applied. Reload the page and choose again."}, 400)
-                if len(channels) == count and channels == list(range(count)):
-                    # Every channel in order is what a run did before this question existed.
-                    # Saying so explicitly would change both identity hashes and throw away
-                    # cores a previous run already computed.
-                    channels = None
         try:
-            RUN.start(slide, tissue, output, channels)
+            RUN.start(slide, tissue)
         except RuntimeError as error:
             return self.json_out({"error": str(error)}, 409)
         return self.json_out(RUN.snapshot())
@@ -1553,6 +1507,83 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(error.code, error.read() or b"{}", "application/json; charset=utf-8")
         except (urllib.error.URLError, socket.timeout, OSError) as error:
             return self.json_out({"ok": False, "error": f"could not reach CoreAlign: {error}"}, 502)
+
+    def save_project(self) -> None:
+        """Ask the live workflow to save, or report when its project will be ready."""
+        try:
+            payload, status = self.project_save_result()
+        except Exception as error:
+            self.log_message("project save failed: %s", error)
+            payload, status = ({"ok": False,
+                "error": "CoreAlign could not save the project right now. Wait for the "
+                         "current step to finish, then try again."}, 409)
+        return self.json_out(payload, status)
+
+    def project_save_result(self) -> tuple[dict, int]:
+        project = self.resolve_in_project(".")
+        if project is None or not project.is_dir():
+            return {"ok": False,
+                    "error": "Choose or attach a slide before saving its project."}, 409
+        if not os.access(project, os.W_OK):
+            return {"ok": False,
+                "error": "The project folder is read only. Copy the slide into a writable "
+                         "folder or ask for write access."}, 409
+        if not RUN.results(detail=False):
+            return {"ok": False,
+                    "error": "Run CoreAlign until it has produced a grid or result before "
+                             "saving the project."}, 409
+
+        qupath_folder = self.resolve_in_project("qupath")
+        if qupath_folder is None:
+            return {"ok": False,
+                "error": "The QuPath project folder is outside the attached project. Remove "
+                         "the qupath link from the slide folder and try again."}, 409
+        if qupath_folder.exists() and (not qupath_folder.is_dir()
+                                       or not os.access(qupath_folder, os.W_OK)):
+            return {"ok": False,
+                    "error": "The QuPath project folder is read only. Ask for write access "
+                             "and try again."}, 409
+        has_qupath_project = qupath_folder.is_dir() and any(qupath_folder.glob("*.qpproj"))
+        url = RUN.bridge_url("save")
+        if not url:
+            if has_qupath_project:
+                return {"ok": True, "path": str(qupath_folder)}, 200
+            return {"ok": False,
+                    "error": "The QuPath project will be written when the current step "
+                             "finishes. Resume the run first if it has stopped."}, 409
+
+        model = RUN.review()
+        corrections = []
+        for core, angle in (model.get("corrections") or {}).items():
+            try:
+                value = float(angle)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(value):
+                corrections.append({"core": core, "rotationAdjustmentDeg": value})
+        bridge_payload = {
+            "schemaVersion": 1,
+            "image": model.get("image") or (RUN.slide.name if RUN.slide else ""),
+            "baseRun": model.get("baseRun") or "pending",
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "corrections": corrections,
+        }
+        request = urllib.request.Request(
+            url, data=json.dumps(bridge_payload).encode("utf-8"), method="POST",
+            headers={"Content-Type": "text/plain;charset=UTF-8"})
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                answer = json.loads(response.read().decode("utf-8", "replace") or "{}")
+        except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, OSError,
+                ValueError):
+            return {"ok": False,
+                    "error": "CoreAlign could not save the project right now. Wait for the "
+                             "current step to finish, then try again."}, 409
+        if not isinstance(answer, dict) or not answer.get("ok"):
+            return {"ok": False,
+                    "error": "CoreAlign could not save the project right now. Wait for the "
+                             "current step to finish, then try again."}, 409
+        return {"ok": True, "path": str(qupath_folder)}, 200
 
     def resolve_in_project(self, relative: str) -> Path | None:
         project = RUN.project

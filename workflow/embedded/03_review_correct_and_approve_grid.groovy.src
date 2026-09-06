@@ -574,7 +574,10 @@ corrections.each { ann ->
     String coreName = positionNames[targetIndex] ?: String.format(Locale.US, 'C%03d', targetIndex + 1)
     double cx = markMissing ? oldCore.getROI().getCentroidX() : ann.getROI().getCentroidX()
     double cy = markMissing ? oldCore.getROI().getCentroidY() : ann.getROI().getCentroidY()
-    double diameter = markMissing ? Math.max(8.0d, nominalDiameter * 0.05d) : nominalDiameter
+    double correctedDiameter = Math.max(ann.getROI().getBoundsWidth(), ann.getROI().getBoundsHeight())
+    if (!Double.isFinite(correctedDiameter) || correctedDiameter <= 0d)
+        correctedDiameter = nominalDiameter
+    double diameter = markMissing ? Math.max(8.0d, nominalDiameter * 0.05d) : correctedDiameter
     def replacement = PathObjects.createTMACoreObject(cx, cy, diameter, markMissing)
     replacement.setName(coreName)
     replacement.setColor(markMissing ? COLOR_MISSING : COLOR_CORRECTED)

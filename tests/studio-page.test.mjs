@@ -115,15 +115,98 @@ test("every route the page calls is answered by the server", () => {
   }
 });
 
-// Arrange is a real workflow destination, not a dialog layered over Review. Keeping the
-// registration and panel together catches the two one-sided wiring mistakes that leave a
-// tab with nowhere to go, or a screen nobody can reach.
-test("the arrange stage is registered and has its own panel", () => {
-  assert.match(page,
-    /\{key:"review",\s*labelKey:"stageReview"\},\s*\{key:"arrange",\s*labelKey:"stageArrange"\},\s*\{key:"export"/,
-    "Arrange must sit between Review and Results");
-  assert.match(page, /<section class="panel arrange" data-panel="arrange"/,
-    "the Arrange tab needs a matching panel");
+// Processing and export are states or sheets, not workflow destinations. Keeping this exact
+// list catches both an old tab surviving and a new panel being left unreachable.
+test("the workflow has exactly the five redesigned stages", () => {
+  const start = page.indexOf("var STAGES = [");
+  const stages = page.slice(start, page.indexOf("\n];", start));
+  assert.deepEqual([...stages.matchAll(/\{key:"([^"]+)"/g)].map((match) => match[1]),
+    ["slide", "tissue", "cores", "orientation", "figure"]);
+});
+
+test("each workflow stage has exactly one panel", () => {
+  assert.deepEqual([...page.matchAll(/data-panel="([^"]+)"/g)].map((match) => match[1]),
+    ["slide", "tissue", "cores", "orientation", "figure"]);
+});
+
+test("the tissue stage asks one question and run sends only its answer", () => {
+  assert.ok(page.includes('id="tissueChoice"'));
+  for (const removed of ["outputChoice", "channelChoice", "channelPanel", "channelList"]) {
+    assert.ok(!page.includes(removed), `${removed} must not survive the setup redesign`);
+  }
+  const startRun = page.slice(page.indexOf("function startRun("),
+                              page.indexOf('$("startBtn")'));
+  assert.match(startRun, /var payload = \{slide:chosenSlide\.path, tissue:tissue\}/);
+  assert.ok(!/payload\.(?:output|channels)|output:|channels:/.test(startRun));
+});
+
+test("one progress card moves between Cores and Orientation", () => {
+  assert.equal((page.match(/id="runView"/g) || []).length, 1,
+    "the page must reuse one progress widget");
+  const body = page.slice(page.indexOf("function showStageProgress("),
+                          page.indexOf("/* ------------------------------------------------------------------ picker"));
+  assert.match(body, /processingStage = name === "orientation" \? "orientation" : "cores"/);
+  assert.match(body, /panel\.insertBefore\(\$\("runView"\), panel\.firstChild\)/);
+});
+
+test("the always-present File menu and Export sheet keep every destination visible", () => {
+  for (const id of ["fileSaveProject", "fileOpenQupath", "fileExportFigure",
+                    "fileExportResults", "exportBtn", "exportSheet"]) {
+    assert.ok(page.includes(`id="${id}"`), `${id} is missing from the application chrome`);
+  }
+  assert.ok(page.includes('api("/api/project/save"'));
+  assert.ok(page.includes('id="fileSaveProjectReason"'));
+  assert.ok(page.includes('id="fileOpenQupathReason"'));
+  assert.ok(page.includes('id="fileExportFigureReason"'));
+  assert.ok(page.includes('id="fileExportResultsReason"'));
+});
+
+test("save status always combines an icon with translated words", () => {
+  const body = page.slice(page.indexOf("function setSaveState("),
+                          page.indexOf("var SAVE_DELAY"));
+  assert.match(body, /icon\.setAttribute\("aria-hidden", "true"\)/);
+  assert.match(body, /el\.appendChild\(icon\)[\s\S]*el\.appendChild\(words\)/);
+  for (const key of ["saveSaving", "saveSaved", "saveNotSaved"]) {
+    assert.ok(page.includes(`${key}:`), `${key} needs English and Thai words`);
+  }
+});
+
+test("autosave keeps an 800 ms timer and an in-flight promise per scope", () => {
+  assert.match(page, /var SAVE_DELAY = 800/);
+  for (const scope of ["grid", "angles", "arrange"]) {
+    assert.match(page, new RegExp(`${scope}:\\{timer:0, inFlight:null`));
+  }
+  const body = page.slice(page.indexOf("function markDirty("),
+                          page.indexOf("function flushSaves("));
+  assert.match(body, /setTimeout\([\s\S]*startSave\(scope\)[\s\S]*SAVE_DELAY/);
+});
+
+test("the primary action is never disabled for save state", () => {
+  const body = page.slice(page.indexOf("function drawActionBar("),
+                          page.indexOf("var gateActionInProgress"));
+  assert.ok(!body.includes("editsMatchSaved"));
+  assert.ok(!/go\.disabled\s*=\s*[^;]*(?:changes|synced|save)/.test(body),
+    "dirty or saving state must never disable the primary action");
+  assert.ok(!page.includes("Save before"), "save state must never relabel the action");
+});
+
+test("a gate is answered only after a successful save flush", () => {
+  const body = page.slice(page.indexOf('$("gateGo").addEventListener'),
+                          page.indexOf("/* ------------------------------------------------------------------ grid gate"));
+  const flush = body.indexOf("flushSaves()");
+  const failure = body.indexOf("if (!saved.ok)");
+  const gate = body.indexOf('api("/api/bridge/gate"');
+  assert.ok(flush >= 0 && flush < failure && failure < gate,
+    "the flush and its failure return must precede the gate POST");
+  assert.match(body, /if \(!saved\.ok\) \{[\s\S]*?return;[\s\S]*?api\("\/api\/bridge\/gate"/);
+});
+
+test("flushSaves cancels debounce timers and waits for every scope", () => {
+  const body = page.slice(page.indexOf("function flushSaves("),
+                          page.indexOf("/* ------------------------------------------------------------------ file and export"));
+  assert.match(body, /clearTimeout\(state\.timer\)/);
+  assert.match(body, /return startSave\(scope\)/);
+  assert.match(body, /return Promise\.all\(jobs\)/);
 });
 
 // English and Thai are selected at runtime by the same key. A missing translation silently
@@ -461,7 +544,7 @@ test("a save that went to the file rather than to a run says so", () => {
     const start = page.indexOf(`var ${name} = {`);
     return page.slice(start, page.indexOf("\n};", start));
   });
-  for (const key of ["savedAnglesForNextRun", "savedCoresForNextRun"]) {
+  for (const key of ["savedAngles", "savedAnglesForNextRun"]) {
     for (const [index, dictionary] of dictionaries.entries()) {
       assert.ok(dictionary.includes(`${key}:`),
         `${key} is missing from the ${["EN", "TH"][index]} dictionary`);
@@ -501,16 +584,43 @@ test("a tile URL changes when the tiles are cut again", () => {
     "the shared prefix must cover both the screen and high-resolution tile directories");
 });
 
-// Selecting every channel is what a run did before the question existed. Saying so
-// explicitly puts a list into both identity hashes and throws away every core a previous
-// run already computed, so the all-channels case has to normalise back to silence.
-test("an all-channels selection is sent as no selection at all", () => {
-  assert.ok(page.includes("picked.length < everything"),
-    "the page must omit channels when every one of them is ticked");
-  assert.match(server, /channels == list\(range\(count\)\)/,
-    "the server must normalise an explicit full list back to None");
-  assert.match(server, /index < 0 or index >= count/,
-    "an index outside the slide's channel count must be refused, not silently dropped");
+// Channel choice is a figure-display decision. A run always keeps the complete slide, even
+// when an older page or another caller still includes a subset in its request.
+test("Studio run requests always keep every slide channel", () => {
+  const handler = server.slice(server.indexOf("    def start_run(self)"),
+                               server.indexOf("    def proxy_bridge"));
+  const config = server.slice(server.indexOf("def build_config"),
+                              server.indexOf("class Run"));
+  assert.ok(!/payload\.get\(["'](?:channels|channelIndices)["']\)/.test(handler),
+    "the run handler must ignore every channel-selection request field");
+  assert.ok(!config.includes("channelIndices"),
+    "Studio must not write orientation.channelIndices into its config");
+  assert.match(handler, /RUN\.start\(slide, tissue\)/,
+    "the run starts with slide and tissue only");
+});
+
+test("Studio run requests always produce the research output set", () => {
+  const handler = server.slice(server.indexOf("    def start_run(self)"),
+                               server.indexOf("    def proxy_bridge"));
+  const config = server.slice(server.indexOf("def build_config"),
+                              server.indexOf("class Run"));
+  assert.ok(!/payload\.get\(["']output["']\)/.test(handler),
+    "the run handler must ignore the removed output request field");
+  assert.match(config, /"saveRotatedMultichannelOmeTiff": True/,
+    "Studio must always ask CoreAlign for the multichannel research files");
+});
+
+test("project save stays confined and keeps bridge credentials private", () => {
+  const body = server.slice(server.indexOf("    def save_project(self)"),
+                            server.indexOf("    def download_file"));
+  assert.match(body, /self\.resolve_in_project\("\."\)/,
+    "project save must resolve the attached folder through the download sandbox helper");
+  assert.match(body, /RUN\.bridge_url\("save"\)/,
+    "a live run must use CoreAlign's existing save action");
+  assert.match(body, /"path": str\(qupath_folder\)/,
+    "success returns the absolute QuPath project folder");
+  assert.ok(!/"(?:url|token)"\s*:/.test(body),
+    "the response must never include the bridge address or token");
 });
 
 // Counting edits cannot tell "saved" from "changed since saved". Dragging an already-saved
@@ -521,7 +631,9 @@ test("the grid save state compares the edits, not how many there are", () => {
     "the saved state needs a content fingerprint");
   assert.ok(!/gridSynced = gridChanges === gridSaved/.test(page),
     "comparing counts hides a re-drag of an already-saved core");
-  assert.ok(page.includes("gridSaved = sentFingerprint"),
+  assert.ok(page.includes("fingerprint:gridFingerprint()"),
+    "the controller must snapshot the grid content before starting its request");
+  assert.ok(page.includes("gridSaved = snapshot.fingerprint"),
     "stamp what was sent, not what the edits look like when the reply lands");
 });
 
@@ -534,4 +646,118 @@ test("attaching a different project does not inherit the last run's state", () =
     "attach must notice it is being pointed somewhere else");
   assert.match(body, /self\.state = "idle"/,
     "a different project starts idle, whatever the last one ended as");
+});
+
+// ---------------------------------------------------------------- step 3 grid editor
+// These run the real functions rather than matching their text. A grid editor that reads
+// correctly and computes wrongly is exactly the failure a source-pattern test cannot see.
+function gridEditorHarness(){
+  const start = page.indexOf("var gridEdits = {}");
+  const end = page.indexOf('$("gridOverlay").addEventListener');
+  assert.ok(start > 0 && end > start, "the grid editor block must be findable");
+  const noop = () => {};
+  const element = () => ({
+    hidden: false, disabled: false, min: "", max: "", step: "", value: "",
+    textContent: "", dataset: {}, setAttribute: noop, removeAttribute: noop,
+    querySelectorAll: () => [], querySelector: () => null, remove: noop, appendChild: noop,
+    naturalWidth: 1800, naturalHeight: 1800, style: {},
+    getBoundingClientRect: () => ({left: 0, top: 0, width: 900, height: 900}),
+    classList: {add: noop, remove: noop, contains: () => false}
+  });
+  const nodes = {};
+  const context = {
+    model: null,
+    $: (id) => (nodes[id] = nodes[id] || element()),
+    t: (key, ...args) => [key, ...args].join(" "),
+    markDirty: noop, drawActionBar: noop,
+    document: {activeElement: null,
+      createElementNS: () => element(), createElement: () => element()},
+    window: {},
+    requestAnimationFrame: noop,
+    isFinite, Math, Number, Object, JSON, String
+  };
+  runInNewContext(page.slice(start, end), context);
+  return context;
+}
+function harnessWithGrid(cores, editable = true){
+  const context = gridEditorHarness();
+  context.model = {grid: {cores, editable, slideWidth: 1800, gridHash: "test"}};
+  return context;
+}
+const presentCore = (core, extra = {}) => Object.assign(
+  {core, row: core[0], col: 1, centerX: 500, centerY: 500, diameter: 320,
+   missing: false, confidence: 0.9}, extra);
+
+// An empty position carries a placeholder ROI a twentieth of a core wide. Drawn at its own
+// size it is a speck nobody can find on a whole-slide overview, which is why "add a core
+// here" was unreachable in the first place.
+test("an empty position renders as a ghost at the grid's own core size", () => {
+  const context = harnessWithGrid([
+    presentCore("1-A"), presentCore("2-A"),
+    presentCore("3-A", {missing: true, diameter: 16})
+  ]);
+  const ghost = context.coreNow(context.gridCores()[2]);
+  assert.equal(ghost.missing, true);
+  assert.equal(context.nominalDiameter(), 320, "the nominal size is the median present core");
+  assert.equal(context.renderedDiameter(ghost), 320,
+    "a ghost is drawn at the nominal size, not at its 16 px placeholder");
+  assert.equal(context.renderedDiameter(context.coreNow(context.gridCores()[0])), 320,
+    "a present core still draws at its own measured size");
+});
+
+// The centre must not walk across the slide while somebody is only making a circle bigger.
+test("a resize changes the diameter and leaves the centre where it was", () => {
+  const context = harnessWithGrid([presentCore("1-A"), presentCore("2-A")]);
+  context.editCore("1-A", "move", 500, 500, 500);
+  const edit = context.gridEdits["1-A"];
+  assert.equal(edit.diameter, 500, "the operator's own diameter is what gets stored");
+  assert.equal(edit.centerX, 500);
+  assert.equal(edit.centerY, 500);
+});
+
+// Groovy skips a correction whose diameter is not finite and positive, and a skip is silent.
+// A value that can never leave the page is the only way the operator hears about it.
+test("the diameter is clamped and a zero or negative value never reaches gridEdits", () => {
+  const context = harnessWithGrid([presentCore("1-A"), presentCore("2-A")]);
+  const bounds = context.diameterBounds();
+  assert.equal(bounds.min, 64);
+  assert.equal(bounds.max, 960);
+  assert.equal(bounds.nominal, 320);
+  assert.equal(context.clampDiameter(1), 64, "below the floor is raised to it");
+  assert.equal(context.clampDiameter(99999), 960, "above the ceiling is cut to it");
+  for (const refused of [0, -50, "abc", NaN, Infinity]) {
+    assert.equal(context.clampDiameter(refused), null, `${refused} must be refused outright`);
+  }
+  context.editCore("1-A", "move", 500, 500, -50);
+  assert.ok(context.gridEdits["1-A"].diameter > 0,
+    "a refused diameter falls back to a real size rather than being written through");
+});
+
+// Restoring an empty position is the "add a core" the operator asked for. It has to arrive
+// core-sized, or the run receives a speck where a core was meant to be.
+test("restoring an empty position gives it a full-sized core", () => {
+  const context = harnessWithGrid([
+    presentCore("1-A"), presentCore("2-A"),
+    presentCore("3-A", {missing: true, diameter: 16})
+  ]);
+  context.editCore("3-A", "restore");
+  assert.equal(context.gridEdits["3-A"].action, "restore");
+  assert.equal(context.gridEdits["3-A"].diameter, 320,
+    "a restored position is core-sized, not placeholder-sized");
+  assert.equal(context.coreNow(context.gridCores()[2]).missing, false);
+});
+
+// Every tool states why it cannot act. A control that vanishes when unavailable makes people
+// hunt for it and doubt they ever saw it.
+test("the grid tools say why they are unavailable instead of disappearing", () => {
+  const context = harnessWithGrid([presentCore("1-A"), presentCore("2-A")]);
+  context.pickedCore = "";
+  context.paintGridTools();
+  assert.match(context.$("gridToolReason").textContent, /noCoreSelected/);
+  assert.equal(context.$("gridAddCore").disabled, true);
+
+  const locked = harnessWithGrid([presentCore("1-A")], false);
+  locked.paintGridTools();
+  assert.match(locked.$("gridToolReason").textContent, /gridEditUnavailable/,
+    "a grid that cannot be edited says so rather than offering dead buttons");
 });

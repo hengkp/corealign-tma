@@ -7,7 +7,7 @@
 <!--
   CoreAlign Studio.
 
-  One screen, six stages, one question per stage. Everything is drawn from Studio's own
+  One screen, five stages, one question per stage. Everything is drawn from Studio's own
   API (/api/status, /api/review, /api/arrange, /api/results); the page does not embed REPORT.html and
   never sees the bridge token.
 
@@ -35,6 +35,8 @@
   --bad:#d44c47; --bad-soft:#fdebec;
   --none:#8a8a86; --none-soft:#eeeeec;
   --stage-bg:#0d0d0f;
+  --grid-present:#00a8a3; --grid-ghost:#a4a4a0; --grid-edited:#31a85d;
+  --grid-selected:#d99a12; --grid-label:#ffffff; --grid-handle-fill:#0d0d0f;
   /* One stack for the page and for the labels burned into an exported figure. It has to
      start with the platform's own UI face, because that is the only one guaranteed to be
      installed and the only one that carries Thai and Latin with matching metrics. A bare
@@ -57,6 +59,8 @@
     --bad:#ef6b66; --bad-soft:#361a1a;
     --none:#7c7b78; --none-soft:#26262a;
     --stage-bg:#08080a;
+    --grid-present:#00ebe6; --grid-ghost:#aaa9a5; --grid-edited:#50f07d;
+    --grid-selected:#ffd166; --grid-label:#ffffff; --grid-handle-fill:#08080a;
     --shadow:0 1px 2px rgba(0,0,0,.5); --shadow-lg:0 10px 34px rgba(0,0,0,.6);
     color-scheme:dark;
   }
@@ -71,6 +75,8 @@
   --bad:#ef6b66; --bad-soft:#361a1a;
   --none:#7c7b78; --none-soft:#26262a;
   --stage-bg:#08080a;
+  --grid-present:#00ebe6; --grid-ghost:#aaa9a5; --grid-edited:#50f07d;
+  --grid-selected:#ffd166; --grid-label:#ffffff; --grid-handle-fill:#08080a;
   --shadow:0 1px 2px rgba(0,0,0,.5); --shadow-lg:0 10px 34px rgba(0,0,0,.6);
   color-scheme:dark;
 }
@@ -90,13 +96,17 @@ svg{display:block;fill:currentColor}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
 
 /* ---------------------------------------------------------------- app shell */
-.app{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto auto;height:100dvh}
+.app{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;height:100dvh}
 
 .topbar{
-  display:flex;align-items:center;gap:14px;
-  padding:0 18px;height:56px;
+  position:relative;z-index:20;display:grid;
+  grid-template-columns:minmax(250px,1fr) minmax(470px,auto) minmax(350px,1fr);
+  align-items:center;gap:12px;padding:7px 14px;min-height:62px;
   background:var(--surface);border-bottom:1px solid var(--line);
 }
+.topbarLeft,.topbarRight{display:flex;align-items:center;gap:10px;min-width:0}
+.topbarRight{justify-content:flex-end}
+.topbarCenter{min-width:0}
 .brand{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
 .brand .mark{
   width:28px;height:28px;flex:0 0 auto;border-radius:9px;
@@ -106,6 +116,26 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   min-width:0;flex:1 1 auto;color:var(--muted);font-size:13.5px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+.fileMenuHost{position:relative;flex:0 0 auto}
+.menuButton{min-height:34px;padding:0 11px;border-color:transparent}
+.fileMenu{
+  position:absolute;top:calc(100% + 7px);left:0;width:min(360px,calc(100vw - 28px));
+  padding:7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  box-shadow:var(--shadow-lg);z-index:40
+}
+.fileMenuItem{
+  display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:9px;width:100%;
+  padding:9px 10px;border-radius:8px;text-align:left;color:var(--text)
+}
+.fileMenuItem:hover:not(:disabled){background:var(--surface-2)}
+.fileMenuItem:disabled{cursor:default;color:var(--faint)}
+.fileMenuItem svg{grid-row:1/3;margin-top:2px}
+.fileMenuItem .itemLabel{font-size:13.5px;font-weight:750}
+.fileMenuItem .itemReason{font-size:11.5px;line-height:1.35;color:var(--faint)}
+.fileMenuPath{display:grid;gap:8px;margin:4px 7px 8px;padding:10px;border-radius:9px;background:var(--surface-2)}
+.fileMenuPath code{overflow-wrap:anywhere;color:var(--text)}
+.fileMenuPath p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+.fileMenuPath .btn{justify-self:start;min-height:32px;padding:0 10px;font-size:12px}
 .pill{
   display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
   padding:5px 12px 5px 10px;border-radius:999px;
@@ -126,17 +156,18 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 }
 .iconBtn:hover{background:var(--surface-2);color:var(--text)}
 .langBtn{width:auto;min-width:34px;padding:0 8px;font-size:12.5px;font-weight:800}
+.topbarExport{min-height:36px;padding:0 15px}
 
 /* stage tracker */
 .stages{
   display:flex;align-items:stretch;gap:2px;
-  padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:0;background:var(--surface);
   overflow-x:auto;scrollbar-width:none;
 }
 .stages::-webkit-scrollbar{display:none}
 .stageTab{
-  display:flex;align-items:center;gap:9px;padding:7px 14px 7px 9px;border-radius:999px;
-  color:var(--faint);font-size:13.5px;font-weight:650;white-space:nowrap;
+  display:flex;align-items:center;gap:7px;padding:6px 9px 6px 6px;border-radius:999px;
+  color:var(--faint);font-size:12.5px;font-weight:650;white-space:nowrap;
 }
 .stageTab .num{
   width:22px;height:22px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
@@ -148,7 +179,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .stageTab[data-state="now"] .num{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .stageTab:disabled{cursor:default}
 .stageTab:not(:disabled):hover{background:var(--surface-2)}
-.stageSep{align-self:center;width:14px;height:1px;background:var(--line-strong);flex:0 0 auto}
+.stageSep{align-self:center;width:8px;height:1px;background:var(--line-strong);flex:0 0 auto}
 
 .stageBody{min-height:0;position:relative;overflow:hidden}
 .panel{position:absolute;inset:0;display:none;min-height:0}
@@ -163,14 +194,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 /* On a 720 px laptop this card runs past the fold as soon as a prior-run banner appears,
    and the one button the screen exists for goes with it. Same shape as the results dialog:
    the questions scroll, the action row does not. */
-[data-panel="setup"] .card{
+.tissuePanel .card{
   display:flex;flex-direction:column;max-height:calc(100dvh - 150px);padding-bottom:0;
 }
-[data-panel="setup"] .cardBody{
+.tissuePanel .cardBody{
   display:grid;gap:18px;align-content:start;min-height:0;overflow-y:auto;
   margin:0 -26px;padding:0 26px 4px;
 }
-[data-panel="setup"] .card > .controlsRow{
+.tissuePanel .card > .controlsRow{
   flex:0 0 auto;margin-top:16px;padding:14px 0 26px;border-top:1px solid var(--line);
 }
 h1,h2{margin:0;letter-spacing:-.015em}
@@ -209,30 +240,6 @@ h2{font-size:17px;font-weight:750}
 .segmented button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .segmented .t{display:block;font-weight:750;font-size:14.5px}
 .segmented .d{display:block;margin-top:2px;color:var(--muted);font-size:12.5px;line-height:1.45}
-.channelBrief{
-  display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;
-  border:1px solid var(--line);border-radius:12px;background:var(--surface);
-  color:inherit;font:inherit;text-align:left;cursor:pointer
-}
-.channelBrief:hover{border-color:var(--accent)}
-.channelBrief .channelSummary{flex:1 1 auto;min-width:0}
-.channelBrief .chev{flex:0 0 auto;color:var(--accent);font-size:12.5px;font-weight:700}
-.channelPanel{display:grid;gap:10px;margin-top:10px}
-.channelList{
-  display:grid;max-height:232px;overflow-y:auto;border:1px solid var(--line);
-  border-radius:12px;background:var(--surface);
-}
-.channelRow{display:flex;align-items:center;gap:11px;padding:10px 13px;cursor:pointer}
-.channelRow + .channelRow{border-top:1px solid var(--line)}
-.channelRow:hover{background:var(--surface-2)}
-.channelRow input{width:17px;height:17px;flex:0 0 auto;margin:0;accent-color:var(--accent)}
-.channelRow .name{flex:1 1 auto;min-width:0;font-size:14px;font-weight:650}
-.channelRow .role{flex:0 0 auto;color:var(--faint);font-size:12.5px}
-.channelSummary{margin:0;color:var(--muted);font-size:13px}
-.channelHint{margin:0;color:var(--faint);font-size:12.5px;line-height:1.5}
-.channelActions{justify-content:flex-start}
-.channelActions .btn{min-height:34px;padding:0 11px;font-size:12.5px}
-
 .priorRun{
   display:flex;align-items:center;gap:14px;padding:13px 15px;border-radius:12px;
   background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
@@ -269,7 +276,8 @@ h2{font-size:17px;font-weight:750}
 .emptyNote{padding:26px 4px;color:var(--muted);font-size:14px}
 
 /* ---------------------------------------------------------------- running */
-.running{place-items:center;padding:28px}
+.stageRunView{width:100%;height:100%;place-items:center;padding:28px}
+.stageRunView:not([hidden]){display:grid}
 .runCard{width:100%;max-width:660px;text-align:center}
 .bar{height:8px;border-radius:999px;background:var(--sunk);overflow:hidden;margin:20px 0 10px}
 .bar > i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width 400ms ease}
@@ -308,7 +316,8 @@ h2{font-size:17px;font-weight:750}
 .metric[data-tone="none"] b{color:var(--none)} .metric[data-tone="bad"] b{color:var(--bad)}
 
 /* ---------------------------------------------------------------- grid gate */
-.gridGate{grid-template-columns:minmax(0,1fr) 340px}
+.stageEditor{width:100%;height:100%;min-width:0;min-height:0}
+.gridGate{display:grid;grid-template-columns:minmax(0,1fr) 340px}
 .gridStage{
   background:var(--stage-bg);display:flex;align-items:center;justify-content:center;
   min-height:0;min-width:0;overflow:auto;padding:18px;border-right:1px solid var(--line);
@@ -318,29 +327,41 @@ h2{font-size:17px;font-weight:750}
    which is how a 1055x2048 overlay ended up rendering at full size inside a 310px box. */
 /* The image carries the size and the wrapper follows it. Sizing the wrapper instead made
    the image 100% of a box that was itself sized by the image, which collapses to nothing. */
-.gridCanvas{position:relative;flex:0 0 auto;display:inline-block;line-height:0}
+.gridWorkspace{display:grid;justify-items:center;gap:12px;flex:0 0 auto;min-width:max-content}
+.gridCanvas{position:relative;display:inline-block;line-height:0}
 .gridStage img{display:block;max-width:none;max-height:none;border-radius:8px}
 .gridStage[data-zoom="true"]{align-items:flex-start;justify-content:flex-start}
 .gridOverlay{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.gridOverlay circle{
+.gridOverlay .coreCircle{
   fill:transparent;stroke-width:2;cursor:grab;
   transition:stroke-width 120ms ease,fill 120ms ease;
 }
-.gridOverlay circle:hover{fill:rgba(255,255,255,.10);stroke-width:3}
-.gridOverlay circle[data-state="present"]{stroke:#00ebe6}
-.gridOverlay circle[data-state="missing"]{stroke:#ff4650;stroke-dasharray:5 4}
-.gridOverlay circle[data-state="edited"]{stroke:#50f07d;stroke-width:3;fill:rgba(80,240,125,.13)}
-.gridOverlay circle[data-picked="true"]{stroke:#ffd166;stroke-width:4;fill:rgba(255,209,102,.16)}
-.gridOverlay circle.dragging{cursor:grabbing}
-.gridOverlay text{fill:rgba(255,255,255,.62);font-size:11px;font-weight:700;pointer-events:none}
+.gridOverlay .coreCircle:hover{fill:color-mix(in srgb,var(--grid-label) 10%,transparent);stroke-width:3}
+.gridOverlay .coreCircle[data-state="present"]{stroke:var(--grid-present)}
+.gridOverlay .coreCircle[data-state="ghost"]{stroke:var(--grid-ghost);stroke-dasharray:6 5;fill:color-mix(in srgb,var(--grid-ghost) 8%,transparent)}
+.gridOverlay .coreCircle[data-state="present"][data-edited="true"]{stroke:var(--grid-edited);stroke-width:3;fill:color-mix(in srgb,var(--grid-edited) 13%,transparent)}
+.gridOverlay .coreCircle[data-state="ghost"][data-edited="true"]{fill:color-mix(in srgb,var(--grid-edited) 11%,transparent)}
+.gridOverlay .coreCircle[data-picked="true"]{stroke:var(--grid-selected);stroke-width:4;fill:color-mix(in srgb,var(--grid-selected) 16%,transparent)}
+.gridOverlay .coreCircle.dragging{cursor:grabbing}
+.gridOverlay .coreLabel{fill:var(--grid-label);font-weight:800;paint-order:stroke;stroke:var(--stage-bg);stroke-width:2px;stroke-linejoin:round;pointer-events:none}
+.gridOverlay .coreLabel[data-state="ghost"]{fill:var(--grid-ghost)}
+.gridOverlay .coreLabel[data-picked="true"]{fill:var(--grid-selected)}
+.gridOverlay .resizeHandle{fill:var(--grid-handle-fill);stroke:var(--grid-selected);stroke-width:2;vector-effect:non-scaling-stroke}
+.gridOverlay .resizeHandle[data-direction="n"],.gridOverlay .resizeHandle[data-direction="s"]{cursor:ns-resize}
+.gridOverlay .resizeHandle[data-direction="e"],.gridOverlay .resizeHandle[data-direction="w"]{cursor:ew-resize}
+.gridToolShelf{display:grid;justify-items:center;gap:5px;line-height:1.35}
 .gridTools{
-  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
-  display:flex;align-items:center;gap:10px;padding:6px 8px 6px 6px;border-radius:999px;
-  background:rgba(0,0,0,.62);backdrop-filter:blur(6px);
+  display:flex;align-items:center;gap:3px;padding:5px;border-radius:999px;
+  border:1px solid var(--line-strong);background:var(--surface);color:var(--text);
+  box-shadow:var(--shadow-lg)
 }
-.gridTools .nudge{background:transparent;border-color:rgba(255,255,255,.28);color:#fff;height:28px}
-.gridTools .nudge:hover{background:rgba(255,255,255,.16);color:#fff}
-.zoomHint{color:rgba(255,255,255,.78);font-size:12px;font-weight:650;white-space:nowrap;padding-right:6px}
+.gridTool{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 10px;border-radius:999px;color:var(--muted);font-size:12px;font-weight:750;white-space:nowrap}
+.gridTool:hover:not(:disabled){background:var(--surface-2);color:var(--text)}
+.gridTool[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-dark)}
+.gridTool:disabled{opacity:.4;cursor:default}
+.gridTool kbd{padding:0 4px;margin:0;font-size:9px}
+.gridToolSep{width:1px;height:22px;margin:0 3px;background:var(--line-strong)}
+.gridToolReason{min-height:16px;color:var(--grid-label);font-size:11.5px;font-weight:650;white-space:nowrap}
 
 .picked{
   padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);
@@ -349,6 +370,12 @@ h2{font-size:17px;font-weight:750}
 .picked[hidden]{display:none}
 .pickedHead b{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
 .pickedHead span{display:block;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;margin-top:1px}
+.diameterControl{display:grid;gap:5px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.diameterControl > span{font-size:12px;font-weight:750;color:var(--muted)}
+.diameterBox{display:flex;align-items:center;gap:5px}
+.diameterBox input{width:100%;min-width:0;border:0;background:transparent;font-weight:750;font-variant-numeric:tabular-nums}
+.diameterBox output{min-width:24px;color:var(--muted);font-size:12px;font-weight:750}
+.diameterRange{color:var(--faint);font-size:11px;line-height:1.35}
 .pickedActions{display:grid;gap:6px}
 .pickedActions .btn{min-height:38px;font-size:13.5px}
 .pickedHint{margin:0;color:var(--faint);font-size:12px}
@@ -360,7 +387,7 @@ h2{font-size:17px;font-weight:750}
 }
 
 /* ---------------------------------------------------------------- core review */
-.review{grid-template-columns:minmax(288px,332px) minmax(0,1fr)}
+.review{display:grid;grid-template-columns:minmax(288px,332px) minmax(0,1fr)}
 .queue{
   display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;min-width:0;
   border-right:1px solid var(--line);background:var(--surface);
@@ -503,13 +530,33 @@ kbd{
 .actionBar .ask{min-width:0;flex:1 1 auto}
 .actionBar .ask b{display:block;font-size:14.5px;font-weight:750;letter-spacing:-.01em}
 .actionBar .ask span{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
-.saveState{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.saveState{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.saveState .saveIcon{width:15px;text-align:center;font-weight:850;line-height:1}
 .saveState[data-tone="busy"]{color:var(--accent-dark)}
 .saveState[data-tone="bad"]{color:var(--bad)}
+.saveState[data-tone="dirty"]{color:var(--warn)}
 .saveState[data-tone="ok"]{color:var(--ok)}
 
 /* ---------------------------------------------------------------- export */
-.export{overflow-y:auto;overflow-x:hidden;padding:26px 24px;align-content:start}
+.exportSheet{
+  width:min(1120px,calc(100vw - 32px));height:min(760px,calc(100dvh - 32px));padding:0;
+  overflow:hidden;border:1px solid var(--line);border-radius:16px;
+  background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg)
+}
+.exportSheet::backdrop{background:color-mix(in srgb,var(--stage-bg) 74%,transparent)}
+.exportSheetLayout{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%}
+.exportSheetHead{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.exportSheetHead h2{font-size:18px}
+.exportTabs{display:flex;gap:5px;margin-left:10px}
+.exportTab{padding:6px 11px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:750}
+.exportTab[aria-selected="true"]{background:var(--accent-soft);color:var(--accent-dark)}
+.exportTab:disabled{opacity:.42;cursor:default}
+.exportSheetBody{min-height:0;overflow:hidden}
+.exportSheetPanel{height:100%;min-height:0;overflow:auto;padding:22px 24px}
+.exportFigurePanel{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
+.exportFigureIntro{display:flex;align-items:flex-start;gap:12px}
+.exportFigureIntro > div{min-width:0;flex:1 1 auto}
+.exportFigureUnavailable{align-self:center;justify-self:center;max-width:520px;color:var(--muted);text-align:center}
 .exportInner{width:100%;max-width:1180px;min-width:0;margin:0 auto;display:grid;gap:16px}
 .exportReport{display:grid;gap:14px;min-width:0}
 .exportChips{padding-top:1px}
@@ -729,15 +776,6 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 .arrangePalette button{width:24px;height:24px;border:2px solid var(--surface);border-radius:7px;box-shadow:0 0 0 1px var(--line-strong)}
 .arrangeHex{width:96px;height:30px;padding:4px 7px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 .arrangeChannelToggle{justify-self:start;color:var(--accent-dark);font-size:12.5px;font-weight:750}
-.arrangePreviewDialog{
-  width:min(94vw,1180px);max-height:92vh;padding:0;border:1px solid var(--line);
-  border-radius:var(--radius-lg);background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg)
-}
-.arrangePreviewDialog::backdrop{background:rgba(10,10,12,.62)}
-.arrangePreviewHead{
-  display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)
-}
-.arrangePreviewHead h2{margin:0;font-size:16px}
 .arrangePreviewSize{
   margin-left:auto;color:var(--muted);font-size:12px;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
@@ -745,7 +783,7 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 /* The figure is drawn on a dark stage, so give it one to sit on rather than floating the
    cores on the page surface where their black backgrounds look like holes. */
 .arrangePreviewBody{
-  overflow:auto;max-height:calc(92vh - 132px);padding:16px;background:var(--sunk)
+  overflow:auto;min-height:0;padding:16px;border-radius:12px;background:var(--sunk)
 }
 .arrangePreviewBody canvas{display:block;border-radius:10px;box-shadow:var(--shadow)}
 .arrangePreviewFoot{
@@ -755,7 +793,6 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
   position:sticky;bottom:0;z-index:4;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:10px 0;border-top:1px solid var(--line);background:var(--surface)
 }
-.arrangeSaveRow .saveState{margin-left:auto}
 
 /* ---------------------------------------------------------------- log drawer */
 .logDrawer{background:var(--surface);border-top:1px solid var(--line)}
@@ -789,6 +826,17 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
   .arrangeMapPane{border-right:0;border-bottom:1px solid var(--line)}
 }
 
+@media (max-width:1279px){
+  .topbar{grid-template-columns:minmax(220px,1fr) minmax(410px,auto) minmax(320px,1fr);gap:7px;padding-inline:10px}
+  .brand{font-size:13px}.brand .mark{width:25px;height:25px}
+  .stageTab{gap:5px;padding-right:7px;font-size:11.5px}
+  .stageSep{width:3px}
+  .topbarLeft,.topbarRight{gap:6px}
+  .pill{padding-inline:8px;font-size:11.5px}
+  .clock{font-size:11.5px}
+  .topbarExport{padding-inline:11px}
+}
+
 @media (max-width:900px){
   /* The severity headers need to stay readable at a narrow width. A bounded queue keeps
      its own scroll without taking the viewing area away from the selected core. */
@@ -815,20 +863,55 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 <div class="app">
 
   <header class="topbar">
-    <div class="brand">
-      <span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2v3.06a7 7 0 0 1 5.94 5.94H22v2h-3.06A7 7 0 0 1 13 18.94V22h-2v-3.06A7 7 0 0 1 5.06 13H2v-2h3.06A7 7 0 0 1 11 5.06V2h2zm-1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg></span>
-      CoreAlign Studio
+    <div class="topbarLeft">
+      <div class="brand">
+        <span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2v3.06a7 7 0 0 1 5.94 5.94H22v2h-3.06A7 7 0 0 1 13 18.94V22h-2v-3.06A7 7 0 0 1 5.06 13H2v-2h3.06A7 7 0 0 1 11 5.06V2h2zm-1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg></span>
+        CoreAlign Studio
+      </div>
+      <div class="slideName" id="slideName" data-i18n="noSlide"></div>
+      <div class="fileMenuHost">
+        <button class="btn menuButton" id="fileMenuBtn" type="button" aria-expanded="false" aria-controls="fileMenu" data-i18n="fileMenu"></button>
+        <div class="fileMenu" id="fileMenu" role="menu" hidden>
+          <button class="fileMenuItem" id="fileSaveProject" type="button" role="menuitem">
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2zm0 2v14h14V8.5L15.5 5H15v5H7V5H5zm4 0v3h4V5H9zm-1 8h8v4H8v-4z"/></svg>
+            <span class="itemLabel" data-i18n="saveProject"></span>
+            <span class="itemReason" id="fileSaveProjectReason"></span>
+          </button>
+          <button class="fileMenuItem" id="fileOpenQupath" type="button" role="menuitem" aria-expanded="false" aria-controls="fileQupathPath">
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l2 2h7v14H4V4zm2 2v12h12V8h-5.83l-2-2H6zm3 5h6v2H9v-2z"/></svg>
+            <span class="itemLabel" data-i18n="openInQupath"></span>
+            <span class="itemReason" id="fileOpenQupathReason"></span>
+          </button>
+          <div class="fileMenuPath" id="fileQupathPath" hidden>
+            <code id="qPathText"></code>
+            <button class="btn" id="copyQupathPath" type="button" data-i18n="copyPath"></button>
+            <p data-i18n="openQupathHint"></p>
+          </div>
+          <button class="fileMenuItem" id="fileExportFigure" type="button" role="menuitem">
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v14h14V5H5zm2 11 3-4 2 2 3-4 2 6H7z"/></svg>
+            <span class="itemLabel" data-i18n="exportFigure"></span>
+            <span class="itemReason" id="fileExportFigureReason"></span>
+          </button>
+          <button class="fileMenuItem" id="fileExportResults" type="button" role="menuitem">
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
+            <span class="itemLabel" data-i18n="exportAllResults"></span>
+            <span class="itemReason" id="fileExportResultsReason"></span>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="slideName" id="slideName" data-i18n="noSlide"></div>
-    <div class="pill" id="statePill" data-tone="idle"><i class="dot"></i><span id="stateText" data-i18n="stateIdle"></span></div>
-    <div class="clock" id="clock" hidden>0:00</div>
-    <button class="iconBtn langBtn" id="langBtn" type="button"></button>
-    <button class="iconBtn" id="themeBtn" data-i18n-title="themeSwitch" data-i18n-aria-label="themeSwitch">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.51 4.93l1.42-1.42 2.12 2.12-1.41 1.42-2.13-2.12zm12.44 12.44l1.41-1.41 2.12 2.12-1.41 1.41-2.12-2.12zM19.07 3.5l1.42 1.42-2.12 2.12-1.42-1.41 2.12-2.13zM6.64 15.95l1.41 1.41-2.12 2.12-1.41-1.41 2.12-2.12zM23 11v2h-3v-2h3zM4 11v2H1v-2h3z"/></svg>
-    </button>
+    <div class="topbarCenter"><nav class="stages" id="stages" data-i18n-aria-label="workflowStages"></nav></div>
+    <div class="topbarRight">
+      <span class="saveState" id="saveState" role="status" aria-live="polite"></span>
+      <div class="pill" id="statePill" data-tone="idle"><i class="dot"></i><span id="stateText" data-i18n="stateIdle"></span></div>
+      <div class="clock" id="clock" hidden>0:00</div>
+      <button class="iconBtn langBtn" id="langBtn" type="button"></button>
+      <button class="iconBtn" id="themeBtn" data-i18n-title="themeSwitch" data-i18n-aria-label="themeSwitch">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.51 4.93l1.42-1.42 2.12 2.12-1.41 1.42-2.13-2.12zm12.44 12.44l1.41-1.41 2.12 2.12-1.41 1.41-2.12-2.12zM19.07 3.5l1.42 1.42-2.12 2.12-1.42-1.41 2.12-2.13zM6.64 15.95l1.41 1.41-2.12 2.12-1.41-1.41 2.12-2.12zM23 11v2h-3v-2h3zM4 11v2H1v-2h3z"/></svg>
+      </button>
+      <button class="btn primary topbarExport" id="exportBtn" type="button" data-i18n="export"></button>
+    </div>
   </header>
-
-  <nav class="stages" id="stages" data-i18n-aria-label="workflowStages"></nav>
 
   <main class="stageBody">
 
@@ -842,8 +925,8 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
       <div class="pickerBody"><div class="fileList" id="fileList"></div></div>
     </section>
 
-    <!-- 2 ------------------------------------------------------------ three choices -->
-    <section class="panel center" data-panel="setup" data-i18n-aria-label="setupPanel">
+    <!-- 2 ----------------------------------------------------------- tissue choice -->
+    <section class="panel center tissuePanel" data-panel="tissue" data-i18n-aria-label="setupPanel">
       <div class="card rowGap">
         <div class="cardBody">
         <div>
@@ -862,39 +945,6 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
               <span class="t" data-i18n="otherTissue"></span>
               <span class="d" data-i18n="otherTissueHint"></span>
             </button>
-          </div>
-        </div>
-
-        <div class="choice">
-          <span class="label" data-i18n="setupFiles"></span>
-          <div class="segmented" id="outputChoice" role="group" data-i18n-aria-label="outputType">
-            <button type="button" data-value="presentation" aria-pressed="true">
-              <span class="t" data-i18n="presentationFiles"></span>
-              <span class="d" data-i18n="presentationFilesHint"></span>
-            </button>
-            <button type="button" data-value="research" aria-pressed="false">
-              <span class="t" data-i18n="researchFiles"></span>
-              <span class="d" data-i18n="researchFilesHint"></span>
-            </button>
-          </div>
-        </div>
-
-        <div class="choice" id="channelChoice" hidden>
-          <span class="label" data-i18n="setupChannels"></span>
-          <p class="channelHint" data-i18n="channelHint"></p>
-          <!-- Collapsed by default. Nineteen checkboxes opened on arrival pushed the Start
-               button off a 900 px screen, and most runs never need to touch this. The one
-               line says what will happen; the panel opens for the run that wants less. -->
-          <button class="channelBrief" type="button" id="channelToggle" aria-expanded="false">
-            <span class="channelSummary" id="channelSummary" aria-live="polite"></span>
-            <span class="chev" id="channelToggleWord" data-i18n="change"></span>
-          </button>
-          <div class="channelPanel" id="channelPanel" hidden>
-            <div class="channelList" id="channelList"></div>
-            <div class="controlsRow channelActions">
-              <button class="btn quiet" type="button" id="suggestedChannels" data-i18n="nucleiOnly"></button>
-              <button class="btn quiet" type="button" id="allChannels" data-i18n="allChannels"></button>
-            </div>
           </div>
         </div>
 
@@ -926,30 +976,42 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
       </div>
     </section>
 
-    <!-- 3 ------------------------------------------------------------------ running -->
-    <section class="panel running" data-panel="run" data-i18n-aria-label="processing">
-      <div class="runCard">
-        <h1 data-i18n="processing"></h1>
-        <div class="bar indeterminate" id="runBar"><i style="width:100%"></i></div>
-        <div class="runStep" id="runStep" data-i18n="openingSlide"></div>
-        <div class="runCounts" id="runCounts" hidden></div>
-        <ul class="activity" id="activity" data-i18n-aria-label="recentActivity"></ul>
-        <div class="controlsRow" style="justify-content:center;margin-top:20px">
-          <button class="btn danger" id="stopBtn" data-i18n="stop"></button>
+    <!-- 3 ------------------------------------------------------- cores and its progress -->
+    <section class="panel" id="coresPanel" data-panel="cores" data-i18n-aria-label="reviewGrid">
+      <div class="stageRunView" id="runView" hidden>
+        <div class="runCard">
+          <h1 data-i18n="processing"></h1>
+          <div class="bar indeterminate" id="runBar"><i style="width:100%"></i></div>
+          <div class="runStep" id="runStep" data-i18n="openingSlide"></div>
+          <div class="runCounts" id="runCounts" hidden></div>
+          <ul class="activity" id="activity" data-i18n-aria-label="recentActivity"></ul>
+          <div class="controlsRow" style="justify-content:center;margin-top:20px">
+            <button class="btn danger" id="stopBtn" data-i18n="stop"></button>
+          </div>
         </div>
       </div>
-    </section>
-
-    <!-- 4a ---------------------------------------------------------------- grid gate -->
-    <section class="panel gridGate" data-panel="grid" data-i18n-aria-label="reviewGrid">
-      <div class="gridStage" id="gridStage" style="position:relative">
+      <div class="stageEditor gridGate" id="coresEditor">
+      <div class="gridStage" id="gridStage">
+        <div class="gridWorkspace">
         <div class="gridCanvas" id="gridCanvas">
           <img id="gridImg" data-i18n-alt="gridImageAlt">
           <svg class="gridOverlay" id="gridOverlay" aria-hidden="true"></svg>
         </div>
-        <div class="gridTools">
-          <button class="nudge" id="zoomToggle" data-i18n="zoomFull"></button>
-          <span class="zoomHint" id="zoomHint" data-i18n="gridEditHint"></span>
+        <div class="gridToolShelf">
+          <div class="gridTools" role="toolbar" data-i18n-aria-label="gridToolbar">
+            <button class="gridTool" id="gridSelectTool" type="button" aria-pressed="true">
+              <span data-i18n="selectMove"></span><kbd>Esc</kbd>
+            </button>
+            <button class="gridTool" id="gridAddCore" type="button" disabled data-i18n="markPresent"></button>
+            <button class="gridTool" id="gridRemoveCore" type="button" disabled>
+              <span data-i18n="markMissing"></span><kbd>Del</kbd>
+            </button>
+            <button class="gridTool" id="gridResetCore" type="button" disabled data-i18n="resetThisCore"></button>
+            <span class="gridToolSep" aria-hidden="true"></span>
+            <button class="gridTool" id="zoomToggle" type="button" data-i18n="zoomFull"></button>
+          </div>
+          <span class="gridToolReason" id="gridToolReason" role="status" aria-live="polite"></span>
+        </div>
         </div>
       </div>
       <aside class="sideRail">
@@ -964,6 +1026,14 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
             <b id="pickedName">–</b>
             <span id="pickedFacts"></span>
           </div>
+          <label class="diameterControl" id="diameterControl" for="coreDiameter">
+            <span data-i18n="coreDiameter"></span>
+            <span class="diameterBox">
+              <input id="coreDiameter" type="number" inputmode="decimal">
+              <output id="coreDiameterUnit" for="coreDiameter"></output>
+            </span>
+            <small class="diameterRange" id="coreDiameterRange"></small>
+          </label>
           <div class="pickedActions">
             <button class="btn" id="markMissing" data-i18n="markMissing"></button>
             <button class="btn" id="markPresent" data-i18n="markPresent"></button>
@@ -974,10 +1044,12 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 
         <ul class="warnList" id="gridWarnings"></ul>
       </aside>
+      </div>
     </section>
 
-    <!-- 4b --------------------------------------------------------------- core review -->
-    <section class="panel review" data-panel="review" data-i18n-aria-label="reviewRotatedCores">
+    <!-- 4 ------------------------------------------------- orientation and its progress -->
+    <section class="panel" id="orientationPanel" data-panel="orientation" data-i18n-aria-label="reviewRotatedCores">
+      <div class="stageEditor review" id="orientationEditor">
       <div class="queue">
         <div class="queueHead">
           <div class="verdicts" id="filterChips"></div>
@@ -1040,10 +1112,11 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
           </div>
         </div>
       </div>
+      </div>
     </section>
 
-    <!-- 5 ----------------------------------------------------------------- arrange -->
-    <section class="panel arrange" data-panel="arrange" data-i18n-aria-label="stageArrange">
+    <!-- 5 ------------------------------------------------------------------ figure -->
+    <section class="panel arrange" data-panel="figure" data-i18n-aria-label="stageFigure">
       <p class="arrangeUnavailable" id="arrangeUnavailable" data-i18n="arrangeTilesUnavailable"></p>
       <div class="arrangeWorkspace" id="arrangeWorkspace" hidden>
         <section class="arrangePane arrangeMapPane">
@@ -1095,16 +1168,44 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
             <div class="arrangeSaveRow">
               <button class="btn" id="previewArrange" type="button" data-i18n="arrangePreviewPng"></button>
               <button class="btn" id="exportArrange" type="button" data-i18n="arrangeExportPng"></button>
-              <span class="saveState" id="arrangeSaveState"></span>
-              <button class="btn primary" id="saveArrange" type="button" data-i18n="arrangeSave"></button>
             </div>
           </div>
         </section>
       </div>
     </section>
 
-    <!-- 6 ------------------------------------------------------------------- export -->
-    <section class="panel export" data-panel="export" data-i18n-aria-label="results">
+  </main>
+
+  <dialog class="exportSheet" id="exportSheet" aria-labelledby="exportSheetTitle">
+    <div class="exportSheetLayout">
+      <header class="exportSheetHead">
+        <h2 id="exportSheetTitle" data-i18n="export"></h2>
+        <div class="exportTabs" role="tablist" data-i18n-aria-label="exportSections">
+          <button class="exportTab" id="exportFigureTab" type="button" role="tab" aria-controls="exportFigurePanel" aria-selected="false" data-i18n="figure"></button>
+          <button class="exportTab" id="exportResultsTab" type="button" role="tab" aria-controls="exportResultsPanel" aria-selected="false" data-i18n="results"></button>
+        </div>
+        <span class="spacer"></span>
+        <button class="iconBtn" id="closeExportSheet" type="button" data-i18n-aria-label="closeExport">
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
+        </button>
+      </header>
+      <div class="exportSheetBody">
+        <section class="exportSheetPanel exportFigurePanel" id="exportFigurePanel" role="tabpanel">
+          <div class="exportFigureIntro">
+            <div>
+              <h1 data-i18n="arrangePreviewTitle"></h1>
+              <p class="lede" data-i18n="exportFigureHint"></p>
+            </div>
+            <span class="arrangePreviewSize" id="arrangePreviewSize"></span>
+          </div>
+          <p class="exportFigureUnavailable" id="exportFigureUnavailable" data-i18n="figureUnavailable"></p>
+          <div class="arrangePreviewBody" id="arrangePreviewBody" hidden></div>
+          <footer class="arrangePreviewFoot">
+            <button class="btn primary" id="arrangePreviewDownload" type="button" data-i18n="arrangeExportPng"></button>
+          </footer>
+        </section>
+
+        <section class="exportSheetPanel" id="exportResultsPanel" role="tabpanel" hidden>
       <div class="exportInner">
         <div>
           <h1 id="exportTitle" data-i18n="results"></h1>
@@ -1134,7 +1235,8 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
           <div class="resultSectionBody">
             <div class="groupList" id="groupList"></div>
             <div class="controlsRow downloadAll">
-              <button class="btn primary big" id="zipAll">
+              <span class="hint" id="zipAllReason" data-i18n="resultsUnavailable"></span>
+              <button class="btn primary big" id="zipAll" disabled>
                 <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10h5l-6 6-6-6h5V3h2v7zm-9 9h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
                 <span data-i18n="downloadAllZip"></span>
               </button>
@@ -1146,22 +1248,12 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
           <button class="btn quiet" id="newRun" data-i18n="newSlide"></button>
         </div>
       </div>
+        </section>
+      </div>
+    </div>
+  </dialog>
 
-      <dialog class="arrangePreviewDialog" id="arrangePreviewDialog" aria-labelledby="arrangePreviewTitle">
-        <header class="arrangePreviewHead">
-          <h2 id="arrangePreviewTitle" data-i18n="arrangePreviewTitle"></h2>
-          <span class="arrangePreviewSize" id="arrangePreviewSize"></span>
-          <button class="iconBtn" id="closeArrangePreview" data-i18n-aria-label="closeDetails">
-            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
-          </button>
-        </header>
-        <div class="arrangePreviewBody" id="arrangePreviewBody"></div>
-        <footer class="arrangePreviewFoot">
-          <button class="btn primary" id="arrangePreviewDownload" type="button" data-i18n="arrangeExportPng"></button>
-        </footer>
-      </dialog>
-
-      <dialog class="resultDialog" id="exportDialog" aria-labelledby="exportDialogTitle">
+  <dialog class="resultDialog" id="exportDialog" aria-labelledby="exportDialogTitle">
         <div class="resultDialogLayout">
           <header class="resultDialogHead">
             <h2 id="exportDialogTitle" data-i18n="coreDetails"></h2>
@@ -1204,19 +1296,13 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
             <span class="resultDialogPosition" id="exportDialogPosition"></span>
           </footer>
         </div>
-      </dialog>
-    </section>
-
-  </main>
+  </dialog>
 
   <div class="actionBar" id="actionBar" hidden>
     <div class="ask">
       <b id="askTitle"></b>
       <span id="askSummary"></span>
     </div>
-    <span class="saveState" id="saveState"></span>
-    <button class="btn" id="saveGrid" hidden data-i18n="saveGridEdits"></button>
-    <button class="btn" id="saveEdits" hidden data-i18n="saveAngleEdits"></button>
     <button class="btn primary big" id="gateGo"></button>
   </div>
 
@@ -1243,12 +1329,36 @@ var EN = {
   languageThai:"Thai",
   languageEnglish:"EN",
   workflowStages:"Workflow stages",
-  stageSlide:"Choose slide",
-  stageSetup:"Set up",
-  stageRun:"Processing",
-  stageReview:"Review",
-  stageArrange:"Arrange",
-  stageExport:"Results",
+  stageSlide:"Slide",
+  stageTissue:"Tissue",
+  stageCores:"Cores",
+  stageOrientation:"Orientation",
+  stageFigure:"Figure",
+  fileMenu:"File",
+  saveProject:"Save project",
+  saveProjectUnavailable:"Choose a slide and run until a grid or result exists",
+  projectSaved:"Project saved to {0}",
+  openInQupath:"Open in QuPath",
+  openQupathUnavailable:"The QuPath project is not ready yet",
+  openQupathHint:"Open this folder from QuPath's own Open Project command.",
+  copyPath:"Copy path",
+  pathCopied:"Project path copied",
+  copyFailed:"Could not copy the project path",
+  export:"Export",
+  exportSections:"Export sections",
+  exportFigure:"Export figure",
+  exportAllResults:"Export all results",
+  figure:"Figure",
+  closeExport:"Close export",
+  figureUnavailable:"Create a figure after the rotated cores are ready.",
+  resultsUnavailable:"No result files have been produced yet.",
+  resultGroupUnavailable:"This folder has not been produced yet",
+  exportFigureHint:"Preview the current figure at export resolution, then save it as PNG.",
+  saveSaving:"Saving...",
+  saveSaved:"Saved",
+  saveNotSaved:"Not saved",
+  savedAngles:"Saved angle edits for {0} cores",
+  savedAnglesForNextRun:"Saved angle edits for {0} cores · run again to process only those cores",
   arrangeTilesUnavailable:"The core images for this run have not been cut yet.",
   arrangeSlideMap:"Slide map",
   arrangeSlideMapHint:"Choose a core on the left to place it in the selected figure cell.",
@@ -1269,7 +1379,6 @@ var EN = {
   arrangeExportPng:"Export figure PNG",
   arrangePreviewPng:"Preview figure",
   arrangePreviewTitle:"Figure preview",
-  arrangeSave:"Save arrangement",
   arrangeUntitledFigure:"Untitled figure",
   arrangeNewFigure:"Figure {0}",
   arrangeCopySuffix:"Copy",
@@ -1300,33 +1409,18 @@ var EN = {
   arrangeColourHex:"Colour hex value",
   arrangeUseColour:"Use colour {0}",
   arrangeFillReport:"Filled {0} cells · could not fill {1}.",
-  arrangeSaved:"Arrangement saved",
-  arrangeUnsaved:"Unsaved changes",
-  arrangeSavedToast:"Saved the figure arrangement",
   arrangeLoading:"Loading the figure arrangement...",
   arrangeExportFailed:"Could not export the figure PNG",
   pickTitle:"Choose a slide to align",
-  pickHint:"Choose an .ome.tif or .tif file from a folder you can access.",
+  pickHint:"Choose a .qptiff or .ome.tiff file from a folder you can access.",
   setupPanel:"Set up the run",
-  setupTitle:"Answer three questions, then start",
-  setupTissue:"1 · Which tissue",
+  setupTitle:"Choose the tissue, then start",
+  setupTissue:"Which tissue",
   tissueType:"Tissue type",
   skin:"Skin",
   skinHint:"Place the epidermis at the top",
   otherTissue:"Other tissue",
   otherTissueHint:"Place the clearest tissue edge at the top",
-  setupFiles:"2 · Which files do you need",
-  outputType:"Result file type",
-  presentationFiles:"Images for presentation",
-  presentationFilesHint:"Full-resolution PNG, one per core · much faster",
-  researchFiles:"Files for further analysis",
-  researchFilesHint:"Multichannel OME-TIFF at the original bit depth · slower because each core is written separately",
-  setupChannels:"3 · Which channels",
-  channelHint:"Selected channels appear in the images and exported files · selecting fewer channels does not make the run faster.",
-  change:"Change",
-  close:"Close",
-  nucleiOnly:"Nuclei only",
-  allChannels:"All channels",
   abandonedTitle:"The last run stopped partway through",
   priorTitle:"CoreAlign results already exist in this folder",
   viewPrior:"View existing results",
@@ -1338,16 +1432,27 @@ var EN = {
   stop:"Stop",
   reviewGrid:"Review grid",
   gridImageAlt:"Whole-slide image with detected circles",
-  zoomFull:"View full size",
-  zoomFit:"Fit to screen",
-  gridEditHint:"Drag a circle to move it · click a circle to select it",
+  zoomFull:"Zoom 100%",
+  zoomFit:"Zoom fit",
+  gridEditHint:"Select a circle to move, add, remove, reset, or resize it",
   gridEditUnavailable:"Run once more to edit the grid on this page",
+  gridToolbar:"Core grid tools",
+  selectMove:"Select/move",
+  resetThisCore:"Reset this core",
+  noCoreSelected:"Select a circle to use Add, Remove, or Reset.",
+  addAlreadyPresent:"Add is unavailable because this position already contains a core.",
+  removeAlreadyEmpty:"Remove is unavailable because this position is already empty.",
+  resetUnavailable:"This core has no edits to reset.",
   gridQuestion:"Do the circles match the tissue?",
-  gridQuestionHint:"If they do, use the button below to continue. If CoreAlign missed a core, draw an ellipse over it in QuPath and name it TMA correction.",
-  markMissing:"No tissue at this position",
-  markPresent:"Tissue is present at this position",
+  gridQuestionHint:"Select any position to move, add, remove, or resize its core.",
+  markMissing:"Remove core",
+  markPresent:"Add core here",
+  coreDiameter:"Diameter",
+  diameterPixels:"px",
+  diameterMicrometres:"µm",
+  diameterRange:"Allowed: {0} to {1} {2}",
   reset:"Reset",
-  moveCircleHint:"Drag the circle over the tissue to move it",
+  moveCircleHint:"Drag the circle to move it · drag a square handle to resize it",
   reviewRotatedCores:"Review rotated cores",
   bulkStraight:"Accept all the straight ones ({0})",
   bulkStraightRule:"less than 5° off",
@@ -1387,23 +1492,15 @@ var EN = {
   downloadCorePng:"Download the full-resolution PNG for this core",
   previous:"← Previous",
   next:"Next →",
-  saveGridEdits:"Save grid edits",
-  saveAngleEdits:"Save angle edits",
   runLog:"Run log",
   browseFailed:"Could not open this folder",
   upOneLevel:"↑ Up one level",
   outsideAllowedArea:"Outside the allowed area",
   folderNotWritable:"{0} · Cannot write files in this folder",
   emptyFolder:"This folder has no slides or subfolders.",
-  channelAll:"All {0} channels",
-  channelSelected:"{0} of {1} channels · exported files will contain only the selected channels",
-  roleNuclear:"Nuclear",
-  roleAutofluorescence:"Autofluorescence",
-  roleMarker:"Marker",
   reasonResidual:"Still {0}° off after rotation",
   reasonOrientation:"Rotation is uncertain",
   reasonCrop:"Crop region is uncertain",
-  chooseOneChannel:"Select at least one channel",
   chooseSlideFirst:"Choose a slide first",
   startFailed:"Could not start",
   stopped:"Stopped",
@@ -1425,27 +1522,14 @@ var EN = {
   edited:"Edited",
   coreFacts:"Row {0}, column {1} · automatic rotation {2} · confidence {3} · {4} remaining",
   acceptedStraight:"Accepted {0} straight cores",
-  saving:"Saving...",
   saveFailed:"Could not save",
-  savedAngles:"Saved angle edits for {0} cores",
-  savedAnglesForNextRun:"Saved angle edits for {0} cores · run again to process only those cores",
-  savedPositions:"Saved {0} positions",
-  unsavedPositions:"{0} positions not saved",
   editedPositions:"Edited {0} positions",
   waitingGridReview:"Waiting for CoreAlign to open grid review",
-  saveGridFirstSummary:"Save first, then confirm. CoreAlign will apply the edits and show the grid again.",
   waiting:"Waiting...",
-  saveBeforeContinue:"Save before continuing",
-  applyGridEdits:"Apply edits and review the grid again",
-  continue:"Continue",
-  savedCores:"Saved {0} cores",
-  savedCoresForNextRun:"Saved {0} cores · waiting for the next run",
-  unsavedCores:"{0} cores not saved",
   reviewRemaining:"{0} cores have not been checked",
   reviewComplete:"All flagged cores have been checked",
-  angleEditsSummary:"Adjusted {0} cores · save before approval to reprocess only those cores",
+  angleEditsSummary:"Adjusted {0} cores · approval will reprocess only those cores",
   approveSummary:"Approve to create the result files",
-  saveBeforeApprove:"Save before approval",
   gateGridTitle:"Check the detected cores",
   gateGridSummary:"{0} cores found, {1} positions empty",
   gateGridButton:"Grid is correct",
@@ -1457,9 +1541,8 @@ var EN = {
   goToResults:"Go to results",
   approvedWithEditsTitle:"This run was approved, but it has new angle edits",
   finishedTitle:"This run has finished",
-  rerunEditedSummary:"Adjusted {0} cores · save first, then run again to process only those cores",
+  rerunEditedSummary:"Adjusted {0} cores · run again to process only those cores",
   rerunSummary:"Review the results at any time · run again to approve · completed cores will not be repeated",
-  saveBeforeRun:"Save before running again",
   rerunEdited:"Run again with angle edits",
   rerunApproval:"Run again for approval",
   answerFailed:"Could not send the answer",
@@ -1471,7 +1554,6 @@ var EN = {
   pickedMissingEdited:"Row {0}, column {1} · marked as no tissue · confidence {2} · edited",
   pickedPresent:"Row {0}, column {1} · detected · confidence {2}",
   pickedPresentEdited:"Row {0}, column {1} · detected · confidence {2} · edited",
-  gridSavedToast:"Grid edits saved · confirm to let CoreAlign apply them",
   filterAll:"All",
   filterPassed:"Passed",
   filterReview:"Review again",
@@ -1545,12 +1627,36 @@ var TH = {
   languageThai:"ไทย",
   languageEnglish:"อังกฤษ",
   workflowStages:"ขั้นตอนการทำงาน",
-  stageSlide:"เลือกสไลด์",
-  stageSetup:"ตั้งค่า",
-  stageRun:"ประมวลผล",
-  stageReview:"ตรวจผล",
-  stageArrange:"จัดภาพ",
-  stageExport:"ผลลัพธ์",
+  stageSlide:"สไลด์",
+  stageTissue:"เนื้อเยื่อ",
+  stageCores:"คอร์",
+  stageOrientation:"การวางแนว",
+  stageFigure:"รูป",
+  fileMenu:"ไฟล์",
+  saveProject:"บันทึกโปรเจกต์",
+  saveProjectUnavailable:"เลือกสไลด์และรันจนมีกริดหรือผลลัพธ์ก่อน",
+  projectSaved:"บันทึกโปรเจกต์ไว้ที่ {0}",
+  openInQupath:"เปิดใน QuPath",
+  openQupathUnavailable:"โปรเจกต์ QuPath ยังไม่พร้อม",
+  openQupathHint:"เปิดโฟลเดอร์นี้ด้วยคำสั่ง Open Project ของ QuPath",
+  copyPath:"คัดลอกพาธ",
+  pathCopied:"คัดลอกพาธโปรเจกต์แล้ว",
+  copyFailed:"คัดลอกพาธโปรเจกต์ไม่ได้",
+  export:"ส่งออก",
+  exportSections:"ส่วนที่ส่งออก",
+  exportFigure:"ส่งออกรูป",
+  exportAllResults:"ส่งออกผลลัพธ์ทั้งหมด",
+  figure:"รูป",
+  closeExport:"ปิดหน้าส่งออก",
+  figureUnavailable:"สร้างรูปได้เมื่อ core ที่หมุนแล้วพร้อมใช้งาน",
+  resultsUnavailable:"ยังไม่มีไฟล์ผลลัพธ์",
+  resultGroupUnavailable:"ยังไม่ได้สร้างโฟลเดอร์นี้",
+  exportFigureHint:"ดูตัวอย่างรูปความละเอียดสำหรับส่งออก แล้วบันทึกเป็น PNG",
+  saveSaving:"กำลังบันทึก...",
+  saveSaved:"บันทึกแล้ว",
+  saveNotSaved:"ยังไม่บันทึก",
+  savedAngles:"บันทึกมุมที่ปรับแล้ว {0} core",
+  savedAnglesForNextRun:"บันทึกมุมที่ปรับแล้ว {0} core · รันอีกครั้งเพื่อประมวลผลใหม่เฉพาะที่แก้",
   arrangeTilesUnavailable:"ยังไม่ได้ตัดภาพ core สำหรับการรันนี้",
   arrangeSlideMap:"แผนผังสไลด์",
   arrangeSlideMapHint:"เลือก core ทางซ้ายเพื่อใส่ในช่องรูปที่กำลังเลือก",
@@ -1571,7 +1677,6 @@ var TH = {
   arrangeExportPng:"ส่งออกรูป PNG",
   arrangePreviewPng:"ดูตัวอย่างรูป",
   arrangePreviewTitle:"ตัวอย่างรูปที่จะได้",
-  arrangeSave:"บันทึกการจัดภาพ",
   arrangeUntitledFigure:"รูปที่ยังไม่ได้ตั้งชื่อ",
   arrangeNewFigure:"รูปที่ {0}",
   arrangeCopySuffix:"สำเนา",
@@ -1602,33 +1707,18 @@ var TH = {
   arrangeColourHex:"รหัสสีแบบ hex",
   arrangeUseColour:"ใช้สี {0}",
   arrangeFillReport:"เติมได้ {0} ช่อง · หา core ไม่ได้ {1} ช่อง",
-  arrangeSaved:"บันทึกการจัดภาพแล้ว",
-  arrangeUnsaved:"มีการแก้ที่ยังไม่ได้บันทึก",
-  arrangeSavedToast:"บันทึกการจัดรูปแล้ว",
   arrangeLoading:"กำลังอ่านการจัดรูป...",
   arrangeExportFailed:"ส่งออกรูป PNG ไม่สำเร็จ",
   pickTitle:"เลือกสไลด์ที่จะจัดเรียง",
-  pickHint:"เลือกไฟล์ .ome.tif หรือ .tif ในโฟลเดอร์ที่คุณเข้าถึงได้",
+  pickHint:"เลือกไฟล์ .qptiff หรือ .ome.tiff ในโฟลเดอร์ที่คุณเข้าถึงได้",
   setupPanel:"ตั้งค่าก่อนเริ่ม",
-  setupTitle:"ตอบสามข้อ แล้วกดเริ่ม",
-  setupTissue:"1 · เนื้อเยื่อชนิดไหน",
+  setupTitle:"เลือกชนิดเนื้อเยื่อ แล้วกดเริ่ม",
+  setupTissue:"เนื้อเยื่อชนิดไหน",
   tissueType:"ชนิดเนื้อเยื่อ",
   skin:"ผิวหนัง",
   skinHint:"หมุนให้ชั้นหนังกำพร้าอยู่ด้านบน",
   otherTissue:"เนื้อเยื่ออื่น",
   otherTissueHint:"หมุนให้ขอบเนื้อเยื่อที่เด่นที่สุดอยู่ด้านบน",
-  setupFiles:"2 · ต้องการไฟล์แบบไหน",
-  outputType:"ชนิดไฟล์ผลลัพธ์",
-  presentationFiles:"ภาพสำหรับนำเสนอ",
-  presentationFilesHint:"PNG ความละเอียดเต็ม หนึ่งไฟล์ต่อหนึ่ง core · เร็วกว่ามาก",
-  researchFiles:"ไฟล์สำหรับวิเคราะห์ต่อ",
-  researchFilesHint:"OME-TIFF หลายแชนเนล บิตเดปธ์เดิม · ทำทีละ core จึงช้ากว่า",
-  setupChannels:"3 · ใช้แชนเนลไหน",
-  channelHint:"แชนเนลที่เลือกคือแชนเนลที่จะอยู่ในภาพและในไฟล์ที่ส่งออก · เลือกน้อยลงไม่ได้ทำให้เร็วขึ้น",
-  change:"เปลี่ยน",
-  close:"ปิด",
-  nucleiOnly:"เฉพาะนิวเคลียส",
-  allChannels:"ทุกแชนเนล",
   abandonedTitle:"การรันครั้งก่อนหยุดไปกลางคัน",
   priorTitle:"โฟลเดอร์นี้เคยผ่าน CoreAlign มาแล้ว",
   viewPrior:"ดูผลเดิม",
@@ -1640,16 +1730,27 @@ var TH = {
   stop:"หยุดการทำงาน",
   reviewGrid:"ตรวจกริด",
   gridImageAlt:"ภาพสไลด์ทั้งแผ่นพร้อมวงกลมที่ตรวจพบ",
-  zoomFull:"ขยายเต็มขนาด",
-  zoomFit:"ย่อกลับให้พอดีจอ",
-  gridEditHint:"ลากวงกลมเพื่อย้าย · คลิกวงเพื่อเลือก",
+  zoomFull:"ซูม 100%",
+  zoomFit:"ซูมพอดีจอ",
+  gridEditHint:"เลือกวงกลมเพื่อย้าย เพิ่ม ลบ คืนค่า หรือปรับขนาด",
   gridEditUnavailable:"รันใหม่หนึ่งรอบเพื่อให้แก้กริดในหน้านี้ได้",
+  gridToolbar:"เครื่องมือแก้กริด core",
+  selectMove:"เลือก/ย้าย",
+  resetThisCore:"คืนค่า core นี้",
+  noCoreSelected:"เลือกวงกลมก่อนใช้ เพิ่ม ลบ หรือคืนค่า",
+  addAlreadyPresent:"เพิ่มไม่ได้ เพราะตำแหน่งนี้มี core อยู่แล้ว",
+  removeAlreadyEmpty:"ลบไม่ได้ เพราะตำแหน่งนี้ว่างอยู่แล้ว",
+  resetUnavailable:"core นี้ยังไม่มีการแก้ไขให้คืนค่า",
   gridQuestion:"ตรวจว่าวงกลมตรงกับเนื้อเยื่อไหม",
-  gridQuestionHint:"ถ้าตรงแล้วกดปุ่มด้านล่างเพื่อไปต่อ · ถ้ามี core ที่ระบบมองไม่เห็น ให้วาดวงรีทับใน QuPath แล้วตั้งชื่อว่า TMA correction",
-  markMissing:"ตำแหน่งนี้ไม่มีเนื้อเยื่อ",
-  markPresent:"ตำแหน่งนี้มีเนื้อเยื่อ",
+  gridQuestionHint:"เลือกตำแหน่งเพื่อย้าย เพิ่ม ลบ หรือปรับขนาด core",
+  markMissing:"ลบ core",
+  markPresent:"เพิ่ม core ตรงนี้",
+  coreDiameter:"เส้นผ่านศูนย์กลาง",
+  diameterPixels:"px",
+  diameterMicrometres:"µm",
+  diameterRange:"ปรับได้ตั้งแต่ {0} ถึง {1} {2}",
   reset:"คืนค่าเดิม",
-  moveCircleHint:"ลากวงกลมบนภาพเพื่อย้ายให้ตรงเนื้อเยื่อ",
+  moveCircleHint:"ลากวงกลมเพื่อย้าย · ลากจุดสี่เหลี่ยมเพื่อปรับขนาด",
   reviewRotatedCores:"ตรวจ core ที่หมุนแล้ว",
   bulkStraight:"ผ่านทั้งหมดที่ตรงแล้ว ({0})",
   bulkStraightRule:"เอียงน้อยกว่า 5°",
@@ -1689,23 +1790,15 @@ var TH = {
   downloadCorePng:"ดาวน์โหลด PNG ความละเอียดเต็มของ core นี้",
   previous:"← ก่อนหน้า",
   next:"ถัดไป →",
-  saveGridEdits:"บันทึกการแก้กริด",
-  saveAngleEdits:"บันทึกมุมที่ปรับ",
   runLog:"บันทึกการทำงาน",
   browseFailed:"เปิดโฟลเดอร์นี้ไม่ได้",
   upOneLevel:"↑ ขึ้นหนึ่งชั้น",
   outsideAllowedArea:"อยู่นอกพื้นที่ที่เปิดให้เข้าถึง",
   folderNotWritable:"{0} · เขียนไฟล์ในโฟลเดอร์นี้ไม่ได้",
   emptyFolder:"โฟลเดอร์นี้ไม่มีสไลด์และไม่มีโฟลเดอร์ย่อย",
-  channelAll:"ทุกแชนเนล {0} ช่อง",
-  channelSelected:"{0} จาก {1} แชนเนล · ไฟล์ผลลัพธ์จะมีเฉพาะช่องที่เลือก",
-  roleNuclear:"นิวเคลียส",
-  roleAutofluorescence:"ออโตฟลูออเรสเซนซ์",
-  roleMarker:"มาร์กเกอร์",
   reasonResidual:"หมุนแล้วยังเอียงอยู่ {0}°",
   reasonOrientation:"มุมหมุนยังไม่มั่นใจ",
   reasonCrop:"กรอบครอปยังไม่นิ่ง",
-  chooseOneChannel:"ต้องเลือกอย่างน้อยหนึ่งแชนเนล",
   chooseSlideFirst:"เลือกสไลด์ก่อน",
   startFailed:"เริ่มไม่สำเร็จ",
   stopped:"หยุดแล้ว",
@@ -1727,27 +1820,14 @@ var TH = {
   edited:"ปรับแล้ว",
   coreFacts:"แถว {0} คอลัมน์ {1} · หมุนอัตโนมัติ {2} · ความมั่นใจ {3} · เหลือเอียง {4}",
   acceptedStraight:"ผ่าน core ที่ตรงแล้ว {0} core",
-  saving:"กำลังบันทึก...",
   saveFailed:"บันทึกไม่สำเร็จ",
-  savedAngles:"บันทึกมุมที่ปรับแล้ว {0} core",
-  savedAnglesForNextRun:"บันทึกมุมที่ปรับแล้ว {0} core · รันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้",
-  savedPositions:"บันทึกแล้ว {0} ตำแหน่ง",
-  unsavedPositions:"ยังไม่ได้บันทึก {0} ตำแหน่ง",
   editedPositions:"แก้ไว้ {0} ตำแหน่ง",
   waitingGridReview:"รอ CoreAlign เปิดขั้นตอนตรวจกริด",
-  saveGridFirstSummary:"บันทึกก่อน แล้วกดยืนยัน · CoreAlign จะใส่การแก้แล้วให้ดูกริดอีกรอบก่อนไปต่อ",
   waiting:"รออยู่...",
-  saveBeforeContinue:"บันทึกก่อนจึงจะไปต่อได้",
-  applyGridEdits:"ใส่การแก้ แล้วดูกริดอีกครั้ง",
-  continue:"ไปต่อ",
-  savedCores:"บันทึกไว้แล้ว {0} core",
-  savedCoresForNextRun:"บันทึกไว้แล้ว {0} core · รอการรันครั้งถัดไป",
-  unsavedCores:"ยังไม่ได้บันทึก {0} core",
   reviewRemaining:"เหลืออีก {0} core ที่ยังไม่ได้ดู",
   reviewComplete:"ดูครบทุก core ที่ระบบทักแล้ว",
-  angleEditsSummary:"ปรับมุมไว้ {0} core · บันทึกก่อน แล้วอนุมัติเพื่อให้ประมวลผลใหม่เฉพาะที่แก้",
+  angleEditsSummary:"ปรับมุมไว้ {0} core · เมื่ออนุมัติจะประมวลผลใหม่เฉพาะที่แก้",
   approveSummary:"อนุมัติเพื่อสร้างไฟล์ผลลัพธ์",
-  saveBeforeApprove:"บันทึกก่อนจึงจะอนุมัติได้",
   gateGridTitle:"ตรวจ core ที่ระบบพบ",
   gateGridSummary:"พบ {0} core และมีตำแหน่งว่าง {1} ตำแหน่ง",
   gateGridButton:"กริดถูกต้อง",
@@ -1759,9 +1839,8 @@ var TH = {
   goToResults:"ไปที่ผลลัพธ์",
   approvedWithEditsTitle:"การรันนี้อนุมัติไปแล้ว แต่มีมุมที่ปรับใหม่",
   finishedTitle:"การรันครั้งนี้จบไปแล้ว",
-  rerunEditedSummary:"ปรับมุมไว้ {0} core · บันทึกก่อน แล้วรันอีกครั้ง จะประมวลผลใหม่เฉพาะที่แก้",
+  rerunEditedSummary:"ปรับมุมไว้ {0} core · รันอีกครั้งเพื่อประมวลผลใหม่เฉพาะที่แก้",
   rerunSummary:"ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ",
-  saveBeforeRun:"บันทึกก่อนจึงจะรันได้",
   rerunEdited:"รันใหม่ด้วยมุมที่แก้",
   rerunApproval:"รันอีกครั้งเพื่ออนุมัติ",
   answerFailed:"ส่งคำตอบไม่สำเร็จ",
@@ -1773,7 +1852,6 @@ var TH = {
   pickedMissingEdited:"แถว {0} คอลัมน์ {1} · ทำเครื่องหมายว่าไม่มีเนื้อเยื่อ · ความมั่นใจ {2} · แก้ไว้แล้ว",
   pickedPresent:"แถว {0} คอลัมน์ {1} · ตรวจพบ · ความมั่นใจ {2}",
   pickedPresentEdited:"แถว {0} คอลัมน์ {1} · ตรวจพบ · ความมั่นใจ {2} · แก้ไว้แล้ว",
-  gridSavedToast:"บันทึกการแก้กริดแล้ว · กดยืนยันเพื่อให้ CoreAlign ใส่การแก้นี้",
   filterAll:"ทั้งหมด",
   filterPassed:"ผ่าน",
   filterReview:"ต้องดูซ้ำ",
@@ -1911,15 +1989,15 @@ $("langBtn").addEventListener("click", function(){
 
 /* ------------------------------------------------------------------ stages */
 var STAGES = [
-  {key:"slide",  labelKey:"stageSlide"},
-  {key:"setup",  labelKey:"stageSetup"},
-  {key:"run",    labelKey:"stageRun"},
-  {key:"review", labelKey:"stageReview"},
-  {key:"arrange", labelKey:"stageArrange"},
-  {key:"export", labelKey:"stageExport"}
+  {key:"slide", labelKey:"stageSlide"},
+  {key:"tissue", labelKey:"stageTissue"},
+  {key:"cores", labelKey:"stageCores"},
+  {key:"orientation", labelKey:"stageOrientation"},
+  {key:"figure", labelKey:"stageFigure"}
 ];
 var stage = "slide";
 var reached = {slide:true};
+var processingStage = "cores";
 
 function buildStages(){
   var nav = $("stages"); nav.textContent = "";
@@ -1931,7 +2009,7 @@ function buildStages(){
     b.appendChild(document.createTextNode(t(item.labelKey)));
     b.addEventListener("click", function(){
       if (!reached[item.key]) return;
-      setStage(item.key === "review" && lastGateId === "grid" ? "grid" : item.key);
+      setStage(item.key);
       drawActionBar();
     });
     nav.appendChild(b);
@@ -1939,7 +2017,7 @@ function buildStages(){
 }
 function paintStages(){
   var order = STAGES.map(function(s){ return s.key; });
-  var here = order.indexOf(stage === "grid" ? "review" : stage);
+  var here = order.indexOf(stage);
   document.querySelectorAll(".stageTab").forEach(function(tab){
     var index = order.indexOf(tab.dataset.key);
     tab.dataset.state = index === here ? "now" : (index < here ? "done" : "next");
@@ -1947,19 +2025,31 @@ function paintStages(){
   });
 }
 function setStage(next){
-  if (next !== "export" && $("exportDialog").open) $("exportDialog").close();
   stage = next;
-  if (next !== "arrange" || arrangeAvailable)
-    reached[next === "grid" ? "review" : next] = true;
+  if (next !== "figure" || arrangeAvailable) reached[next] = true;
   document.querySelectorAll(".panel").forEach(function(panel){
     panel.classList.toggle("is-active", panel.dataset.panel === next);
   });
   paintStages();
 }
+function showStageEditor(name){
+  $("runView").hidden = true;
+  $("coresEditor").hidden = false;
+  $("orientationEditor").hidden = false;
+  setStage(name);
+}
+function showStageProgress(name){
+  processingStage = name === "orientation" ? "orientation" : "cores";
+  $("coresEditor").hidden = processingStage === "cores";
+  $("orientationEditor").hidden = processingStage === "orientation";
+  var panel = $(processingStage + "Panel");
+  if (panel && $("runView").parentNode !== panel) panel.insertBefore($("runView"), panel.firstChild);
+  $("runView").hidden = false;
+  setStage(processingStage);
+}
 
 /* ------------------------------------------------------------------ picker */
-var chosenSlide = null, tissue = "skin", output = "presentation";
-var channelsAvailable = false, channelSuggested = [];
+var chosenSlide = null, tissue = "skin";
 var browseData = null;
 
 function browse(path){
@@ -2013,97 +2103,24 @@ function fileRow(kind, name, meta, blocked, onClick){
   if (!blocked) b.addEventListener("click", onClick);
   return b;
 }
-function selectedChannelIndices(){
-  return Array.prototype.map.call(
-    $("channelList").querySelectorAll("input:checked"),
-    function(input){ return Number(input.dataset.index); }
-  ).sort(function(a, b){ return a - b; });
-}
-function paintChannelSummary(){
-  var total = $("channelList").querySelectorAll("input").length;
-  var selected = selectedChannelIndices().length;
-  // This line used to promise a speed-up. It was wrong: a benchmark that always read all
-  // the channels first had warmed the cache for the subset read, and a real end-to-end run
-  // on the same slide came out 18:28 with six channels against 15:27 with all nineteen.
-  // What the choice actually decides is what ends up in the files, so say that.
-  $("channelSummary").textContent = (selected >= total)
-    ? t("channelAll", total)
-    : t("channelSelected", selected, total);
-}
-function selectChannels(indices){
-  var wanted = {};
-  indices.forEach(function(index){ wanted[String(index)] = true; });
-  $("channelList").querySelectorAll("input").forEach(function(input){
-    input.checked = !!wanted[input.dataset.index];
-  });
-  paintChannelSummary();
-}
-function loadChannels(slide){
-  var path = slide.path;
-  channelsAvailable = false;
-  channelSuggested = [];
-  $("channelChoice").hidden = true;
-  $("channelPanel").hidden = true;
-  $("channelToggle").setAttribute("aria-expanded", "false");
-  $("channelToggleWord").textContent = t("change");
-  $("channelList").textContent = "";
-  api("/api/channels?slide=" + encodeURIComponent(path)).then(function(res){
-    if (!chosenSlide || chosenSlide.path !== path) return;
-    var data = res.body || {};
-    if (!res.ok || !data.available || !Array.isArray(data.channels) || !data.channels.length)
-      return;
-
-    var list = $("channelList");
-    var roleWords = {
-      nuclear:"roleNuclear",
-      autofluorescence:"roleAutofluorescence",
-      marker:"roleMarker"
-    };
-    data.channels.forEach(function(channel){
-      var row = document.createElement("label");
-      row.className = "channelRow";
-      var input = document.createElement("input");
-      input.type = "checkbox";
-      input.dataset.index = String(channel.index);
-      var name = document.createElement("span");
-      name.className = "name";
-      name.textContent = String(channel.name || "");
-      var role = document.createElement("span");
-      role.className = "role";
-      role.dataset.kind = channel.kind || "marker";
-      role.textContent = t(roleWords[channel.kind] || roleWords.marker);
-      row.appendChild(input);
-      row.appendChild(name);
-      row.appendChild(role);
-      list.appendChild(row);
-    });
-    channelSuggested = (Array.isArray(data.suggested) ? data.suggested : []).map(Number);
-    if (!channelSuggested.length) {
-      channelSuggested = Array.prototype.map.call(list.querySelectorAll("input"),
-        function(input){ return Number(input.dataset.index); });
-    }
-    channelsAvailable = true;
-    selectChannels(Array.prototype.map.call(list.querySelectorAll("input"),
-      function(input){ return Number(input.dataset.index); }));
-    $("channelPanel").hidden = true;
-    $("channelToggle").setAttribute("aria-expanded", "false");
-    $("channelToggleWord").textContent = t("change");
-    $("channelChoice").hidden = false;
-  });
-}
 function pick(slide){
   chosenSlide = slide;
+  savedProjectPath = "";
+  resetSaveScope("grid");
+  resetSaveScope("angles");
+  gridKey = "";
+  gridEdits = {};
+  gridSaved = null;
+  resetArrange();
   $("slideName").textContent = slide.name;
   $("setupSlide").textContent = slide.path;
-  reached.setup = true;
-  setStage("setup");
-  loadChannels(slide);
+  reached.tissue = true;
+  setStage("tissue");
   // If this folder has been through CoreAlign before, show what is already there rather
   // than making a person run it again to find out.
   model = null; reviewKey = ""; lastGateId = "";
   api("/api/attach", {method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({slide:slide.path})}).then(function(){
-      arrangeProject = "";
       loadArrange();
       poll();
     });
@@ -2128,49 +2145,20 @@ function segmented(containerId, onChange){
   });
 }
 segmented("tissueChoice", function(value){ tissue = value; });
-segmented("outputChoice", function(value){ output = value; });
-$("channelList").addEventListener("change", function(event){
-  var input = event.target.closest("input[type=checkbox]");
-  if (!input) return;
-  if (!input.checked && !selectedChannelIndices().length) {
-    input.checked = true;
-    toast(t("chooseOneChannel"));
-  }
-  paintChannelSummary();
-});
-$("allChannels").addEventListener("click", function(){
-  selectChannels(Array.prototype.map.call($("channelList").querySelectorAll("input"),
-    function(input){ return Number(input.dataset.index); }));
-});
-$("suggestedChannels").addEventListener("click", function(){ selectChannels(channelSuggested); });
-$("channelToggle").addEventListener("click", function(){
-  var open = $("channelPanel").hidden;
-  $("channelPanel").hidden = !open;
-  this.setAttribute("aria-expanded", open ? "true" : "false");
-  $("channelToggleWord").textContent = open ? t("close") : t("change");
-});
 $("backToPicker").addEventListener("click", function(){ setStage("slide"); });
-$("openPrior").addEventListener("click", function(){ setStage("review"); drawActionBar(); });
+$("openPrior").addEventListener("click", function(){ setStage("orientation"); drawActionBar(); });
 
 function startRun(button){
   if (!chosenSlide) { toast(t("chooseSlideFirst")); return; }
   button.disabled = true;
-  var payload = {slide:chosenSlide.path, tissue:tissue, output:output};
-  // Selecting every channel is what the run already did before this question existed, so
-  // send nothing. The selection is part of both identity hashes, and a list that says "all
-  // of them" would invalidate every core a previous run had already computed.
-  if (channelsAvailable) {
-    var picked = selectedChannelIndices();
-    var everything = $("channelList").querySelectorAll("input").length;
-    if (picked.length && picked.length < everything) payload.channels = picked;
-  }
+  var payload = {slide:chosenSlide.path, tissue:tissue};
   api("/api/run", {method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify(payload)})
   .then(function(res){
     button.disabled = false;
     if (!res.ok) { toast(res.body.error || t("startFailed")); return; }
     reviewKey = ""; model = null; lastGateId = "";
-    setStage("run"); poll();
+    showStageProgress("cores"); poll();
   });
 }
 $("startBtn").addEventListener("click", function(){ startRun(this); });
@@ -2180,6 +2168,9 @@ $("stopBtn").addEventListener("click", function(){
 $("newRun").addEventListener("click", function(){
   api("/api/reset", {method:"POST"}).then(function(){
     chosenSlide = null; model = null; reviewKey = ""; lastGateId = "";
+    savedProjectPath = "";
+    resetSaveScope("grid");
+    resetSaveScope("angles");
     resetArrange();
     reached = {slide:true};
     setStage("slide"); browse("");
@@ -2305,6 +2296,8 @@ function drawReview(fresh){
     }
     current = 0;
     previous = "";
+    resetSaveScope("angles");
+    if (!editsMatchSaved()) markDirty("angles");
   }
   drawVerdicts();
   rebuildVisible(previous);
@@ -2501,6 +2494,7 @@ function setAngle(value, mark){
   if (Math.abs(angle - baseAngleOf(core)) < 0.05) delete edits[core.core];
   else edits[core.core] = angle;
   saveLocal();
+  markDirty("angles");
   var row = currentQueueRow();
   if (row) row.dataset.edited = String(isEdited(core));
   drawActionBar();
@@ -2517,6 +2511,7 @@ $("resetAngle").addEventListener("click", function(){
   if (!core) return;
   delete edits[core.core];
   saveLocal();
+  markDirty("angles");
   setAngle(baseAngleOf(core), false);
   var row = currentQueueRow();
   if (row) row.dataset.edited = "false";
@@ -2574,7 +2569,7 @@ function toggleChecked(){
 }
 
 document.addEventListener("keydown", function(event){
-  if (stage !== "review") return;
+  if (stage !== "orientation" || $("exportDialog").open || $("exportSheet").open) return;
   var target = event.target || {};
   var tag = (target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
@@ -2602,30 +2597,303 @@ function editsMatchSaved(){
 }
 function setSaveState(text, tone, el){
   el = el || $("saveState");
-  el.textContent = text || "";
+  el.textContent = "";
   el.dataset.tone = tone || "";
+  var icon = document.createElement("span");
+  icon.className = "saveIcon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = tone === "busy" ? "↻" : (tone === "ok" ? "✓" : "!");
+  var words = document.createElement("span");
+  words.textContent = text || t("saveSaved");
+  el.appendChild(icon);
+  el.appendChild(words);
 }
-$("saveEdits").addEventListener("click", function(){
-  var payload = pendingEdits();
-  setSaveState(t("saving"), "busy");
-  api("/api/corrections", {method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({corrections:payload})})
-  .then(function(res){
-    if (!res.ok || res.body.ok === false) {
-      setSaveState(res.body.error || t("saveFailed"), "bad");
-      return;
-    }
-    savedEdits = {};
-    payload.forEach(function(item){ savedEdits[item.core] = item.rotationAdjustmentDeg; });
-    // The server posts the angles into the run when one is waiting and writes them to
-    // corealign-review-corrections.json when none is. Those are different outcomes for the
-    // person who pressed the button: one is applied at the gate in front of them, the other
-    // sits on disk until somebody runs again. The screen looks the same either way, so it
-    // has to say which happened.
-    savedVia = res.body.via || "";
-    drawActionBar();
-    toast(t(savedVia === "file" ? "savedAnglesForNextRun" : "savedAngles", payload.length));
+
+var SAVE_DELAY = 800;
+var saveScopes = {
+  grid:{timer:0, inFlight:null, inFlightRevision:0, revision:0, savedRevision:0, generation:0, error:""},
+  angles:{timer:0, inFlight:null, inFlightRevision:0, revision:0, savedRevision:0, generation:0, error:""},
+  arrange:{timer:0, inFlight:null, inFlightRevision:0, revision:0, savedRevision:0, generation:0, error:""}
+};
+function paintSaveState(){
+  var names = Object.keys(saveScopes);
+  var saving = names.some(function(name){ return !!saveScopes[name].inFlight; });
+  var dirty = names.some(function(name){
+    return saveScopes[name].revision > saveScopes[name].savedRevision;
   });
+  var failed = names.some(function(name){ return !!saveScopes[name].error; });
+  if (saving) setSaveState(t("saveSaving"), "busy");
+  else if (dirty) setSaveState(t("saveNotSaved"), failed ? "bad" : "dirty");
+  else setSaveState(t("saveSaved"), "ok");
+}
+function resetSaveScope(scope){
+  var state = saveScopes[scope];
+  if (!state) return;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = 0;
+  state.inFlight = null;
+  state.inFlightRevision = 0;
+  state.revision = 0;
+  state.savedRevision = 0;
+  state.generation++;
+  state.error = "";
+  paintSaveState();
+}
+function saveSnapshot(scope){
+  if (scope === "grid") {
+    var gridPayload = Object.keys(gridEdits).map(function(name){
+      var edit = gridEdits[name];
+      return {core:name, action:edit.action, centerX:edit.centerX,
+              centerY:edit.centerY, diameter:edit.diameter};
+    });
+    return {payload:gridPayload, fingerprint:gridFingerprint()};
+  }
+  if (scope === "angles") return {payload:pendingEdits()};
+  return {document:arrangeClone(arrangeDocument)};
+}
+function issueSave(scope, snapshot){
+  var path = scope === "grid" ? "/api/grid-corrections"
+    : (scope === "angles" ? "/api/corrections" : "/api/arrange");
+  var body = scope === "arrange"
+    ? {arrangement:snapshot.document}
+    : {corrections:snapshot.payload};
+  return api(path, {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)}).then(function(res){
+      if (!res.ok || res.body.ok === false) {
+        return {ok:false, error:(res.body && res.body.error) || t("saveFailed")};
+      }
+      return {ok:true, body:res.body || {}};
+    });
+}
+function acceptSave(scope, snapshot, result){
+  if (scope === "grid") {
+    gridSaved = snapshot.fingerprint;
+    return;
+  }
+  if (scope === "angles") {
+    savedEdits = {};
+    snapshot.payload.forEach(function(item){
+      savedEdits[item.core] = item.rotationAdjustmentDeg;
+    });
+    savedVia = result.body.via || "";
+    toast(t(savedVia === "file" ? "savedAnglesForNextRun" : "savedAngles",
+      snapshot.payload.length));
+    return;
+  }
+  arrangeSaved = arrangeClone(result.body.arrangement || snapshot.document);
+  if (arrangeFingerprint(arrangeDocument) === arrangeFingerprint(snapshot.document))
+    arrangeDocument = arrangeClone(arrangeSaved);
+}
+function startSave(scope){
+  var state = saveScopes[scope];
+  if (!state) return Promise.resolve({ok:false, error:t("saveFailed")});
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = 0;
+  if (state.inFlight) {
+    var active = state.inFlight;
+    var activeRevision = state.inFlightRevision;
+    return active.then(function(result){
+      return state.revision > activeRevision ? startSave(scope) : result;
+    });
+  }
+  if (state.revision <= state.savedRevision) return Promise.resolve({ok:true});
+  var revision = state.revision;
+  var generation = state.generation;
+  var snapshot = saveSnapshot(scope);
+  state.inFlightRevision = revision;
+  state.error = "";
+  var tracked = issueSave(scope, snapshot).then(function(result){
+    if (state.generation === generation) {
+      if (result.ok) {
+        acceptSave(scope, snapshot, result);
+        state.savedRevision = Math.max(state.savedRevision, revision);
+        state.error = "";
+      } else {
+        state.error = result.error || t("saveFailed");
+        toast(state.error);
+      }
+    }
+    if (state.inFlight === tracked) state.inFlight = null;
+    paintSaveState();
+    drawActionBar();
+    return result;
+  }).catch(function(error){
+    var message = error && error.message ? error.message : t("saveFailed");
+    if (state.generation === generation) {
+      state.error = message;
+      toast(message);
+    }
+    if (state.inFlight === tracked) state.inFlight = null;
+    paintSaveState();
+    return {ok:false, error:message};
+  });
+  state.inFlight = tracked;
+  paintSaveState();
+  return tracked;
+}
+function markDirty(scope){
+  var state = saveScopes[scope];
+  if (!state) return;
+  state.revision++;
+  state.error = "";
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = setTimeout(function(){
+    state.timer = 0;
+    startSave(scope);
+  }, SAVE_DELAY);
+  paintSaveState();
+}
+function flushSaves(){
+  var jobs = Object.keys(saveScopes).map(function(scope){
+    var state = saveScopes[scope];
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = 0;
+    return startSave(scope);
+  });
+  return Promise.all(jobs).then(function(results){
+    for (var i = 0; i < results.length; i++) {
+      if (!results[i].ok) return {ok:false, error:results[i].error || t("saveFailed")};
+    }
+    return {ok:true};
+  });
+}
+
+/* ------------------------------------------------------------------ file and export */
+var savedProjectPath = "";
+var exportSheetTab = "figure";
+function resultGroups(){
+  return lastStatus && Array.isArray(lastStatus.results) ? lastStatus.results : [];
+}
+function hasResults(){
+  return resultGroups().some(function(group){ return Number(group.count) > 0; });
+}
+function hasQupathProject(){
+  return !!savedProjectPath || resultGroups().some(function(group){
+    return group.key === "qupath" && Number(group.count) > 0;
+  });
+}
+function hasFigure(){
+  return !!(arrangeAvailable && arrangeDocument && arrangeFigure());
+}
+function qupathProjectPath(){
+  if (savedProjectPath) return savedProjectPath;
+  var project = lastStatus && lastStatus.project ? String(lastStatus.project) : attachedProjectKey();
+  return project ? project.replace(/[\\/]$/, "") + "/qupath" : "";
+}
+function closeFileMenu(){
+  $("fileMenu").hidden = true;
+  $("fileMenuBtn").setAttribute("aria-expanded", "false");
+  $("fileOpenQupath").setAttribute("aria-expanded", "false");
+  $("fileQupathPath").hidden = true;
+}
+function updateExportAvailability(){
+  var projectReady = hasResults();
+  var qupathReady = hasQupathProject();
+  var figureReady = hasFigure();
+  $("fileSaveProject").disabled = !projectReady;
+  $("fileSaveProjectReason").textContent = projectReady ? "" : t("saveProjectUnavailable");
+  $("fileOpenQupath").disabled = !qupathReady;
+  $("fileOpenQupathReason").textContent = qupathReady ? "" : t("openQupathUnavailable");
+  $("fileExportFigure").disabled = !figureReady;
+  $("fileExportFigureReason").textContent = figureReady ? "" : t("figureUnavailable");
+  $("fileExportResults").disabled = !projectReady;
+  $("fileExportResultsReason").textContent = projectReady ? "" : t("resultsUnavailable");
+  $("exportFigureTab").disabled = !figureReady;
+  $("exportResultsTab").disabled = !projectReady;
+  $("exportFigureUnavailable").hidden = figureReady;
+  $("arrangePreviewBody").hidden = !figureReady;
+  $("arrangePreviewDownload").disabled = !figureReady;
+  if (qupathReady) $("qPathText").textContent = qupathProjectPath();
+}
+function selectExportSheetTab(name){
+  exportSheetTab = name === "results" ? "results" : "figure";
+  var figureSelected = exportSheetTab === "figure";
+  $("exportFigureTab").setAttribute("aria-selected", String(figureSelected));
+  $("exportResultsTab").setAttribute("aria-selected", String(!figureSelected));
+  $("exportFigurePanel").hidden = !figureSelected;
+  $("exportResultsPanel").hidden = figureSelected;
+  if (figureSelected && hasFigure()) renderFigurePreview();
+  if (!figureSelected && lastStatus) drawExport(lastStatus);
+}
+function openExportSheet(name){
+  closeFileMenu();
+  updateExportAvailability();
+  var requested = name;
+  if (!requested) requested = hasFigure() ? "figure" : (hasResults() ? "results" : "figure");
+  selectExportSheetTab(requested);
+  if (!$("exportSheet").open) $("exportSheet").showModal();
+}
+$("fileMenuBtn").addEventListener("click", function(){
+  var opening = $("fileMenu").hidden;
+  if (opening) {
+    updateExportAvailability();
+    $("fileMenu").hidden = false;
+  } else closeFileMenu();
+  this.setAttribute("aria-expanded", String(opening));
+});
+$("fileSaveProject").addEventListener("click", function(){
+  var button = this;
+  flushSaves().then(function(saved){
+    if (!saved.ok) { toast(saved.error || t("saveFailed")); return; }
+    button.disabled = true;
+    api("/api/project/save", {method:"POST"}).then(function(res){
+      button.disabled = false;
+      if (!res.ok || res.body.ok === false) {
+        toast((res.body && res.body.error) || t("saveFailed"));
+        return;
+      }
+      savedProjectPath = String(res.body.path || "");
+      updateExportAvailability();
+      toast(t("projectSaved", savedProjectPath));
+    });
+  });
+});
+$("fileOpenQupath").addEventListener("click", function(){
+  var opening = $("fileQupathPath").hidden;
+  $("qPathText").textContent = qupathProjectPath();
+  $("fileQupathPath").hidden = !opening;
+  this.setAttribute("aria-expanded", String(opening));
+});
+function copyText(text){
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    return navigator.clipboard.writeText(text);
+  return new Promise(function(resolve, reject){
+    var input = document.createElement("textarea");
+    input.value = text;
+    input.setAttribute("readonly", "readonly");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    var copied = false;
+    try { copied = document.execCommand("copy"); }
+    catch (error) { copied = false; }
+    document.body.removeChild(input);
+    if (copied) resolve(); else reject(new Error("clipboard unavailable"));
+  });
+}
+$("copyQupathPath").addEventListener("click", function(){
+  var path = qupathProjectPath();
+  copyText(path).then(function(){ toast(t("pathCopied")); })
+    .catch(function(){ toast(t("copyFailed")); });
+});
+$("fileExportFigure").addEventListener("click", function(){ openExportSheet("figure"); });
+$("fileExportResults").addEventListener("click", function(){ openExportSheet("results"); });
+$("exportBtn").addEventListener("click", function(){ openExportSheet(); });
+$("exportFigureTab").addEventListener("click", function(){ selectExportSheetTab("figure"); });
+$("exportResultsTab").addEventListener("click", function(){ selectExportSheetTab("results"); });
+$("closeExportSheet").addEventListener("click", function(){ $("exportSheet").close(); });
+$("exportSheet").addEventListener("click", function(event){
+  if (event.target === this) this.close();
+});
+document.addEventListener("click", function(event){
+  if (!event.target.closest(".fileMenuHost")) closeFileMenu();
+});
+document.addEventListener("keydown", function(event){
+  if (event.key === "Escape" && !$("fileMenu").hidden) {
+    closeFileMenu();
+    $("fileMenuBtn").focus();
+  }
 });
 
 /* ------------------------------------------------------------------ action bar */
@@ -2648,52 +2916,27 @@ function gateButton(gate){
 
 function drawActionBar(){
   var bar = $("actionBar");
-  var show = (stage === "grid" || stage === "review");
+  var show = (stage === "cores" || stage === "orientation") && $("runView").hidden;
   bar.hidden = !show;
   if (!show) return;
   var go = $("gateGo");
-  var save = $("saveEdits");
 
-  if (stage === "grid") {
-    save.hidden = true;
+  if (stage === "cores") {
     var gridChanges = Object.keys(gridEdits).length;
-    var gridSynced = gridFingerprint() === gridSaved;
-    $("saveGrid").hidden = gridChanges === 0;
-    $("saveGrid").disabled = gridSynced;
-    if (gridChanges && gridSynced) setSaveState(t("savedPositions", gridChanges), "ok");
-    else if (gridChanges) setSaveState(t("unsavedPositions", gridChanges), "");
-    else setSaveState("");
-
     $("askTitle").textContent = openGate
       ? (gridChanges ? t("editedPositions", gridChanges) : gateTitle(openGate))
       : t("waitingGridReview");
-    $("askSummary").textContent = openGate
-      ? (gridChanges
-          ? t("saveGridFirstSummary")
-          : gateSummary(openGate))
-      : "";
-    go.textContent = !openGate ? t("waiting")
-      : (gridChanges && !gridSynced) ? t("saveBeforeContinue")
-      : gridChanges ? t("applyGridEdits")
-      : gateButton(openGate);
+    $("askSummary").textContent = openGate ? gateSummary(openGate) : "";
+    go.textContent = openGate ? gateButton(openGate) : t("waiting");
     go.dataset.act = "gate";
-    go.disabled = !openGate || (gridChanges > 0 && !gridSynced);
+    go.disabled = !openGate;
     return;
   }
-  $("saveGrid").hidden = true;
 
   var changes = pendingEdits().length;
-  var synced = editsMatchSaved();
   var pending = model && model.cores
     ? model.cores.filter(function(c){ return c.status === "review"; }) : [];
   var left = pending.filter(function(c){ return !checked[c.core]; }).length;
-
-  save.hidden = changes === 0 && synced;
-  save.disabled = synced;
-  if (changes && synced) setSaveState(
-    t(savedVia === "file" ? "savedCoresForNextRun" : "savedCores", changes), "ok");
-  else if (changes) setSaveState(t("unsavedCores", changes), "");
-  else setSaveState("");
 
   if (openGate) {
     $("askTitle").textContent = left
@@ -2702,11 +2945,9 @@ function drawActionBar(){
     $("askSummary").textContent = changes
       ? t("angleEditsSummary", changes)
       : t("approveSummary");
-    go.textContent = (changes && !synced)
-      ? t("saveBeforeApprove")
-      : gateButton(openGate);
+    go.textContent = gateButton(openGate);
     go.dataset.act = "gate";
-    go.disabled = changes > 0 && !synced;
+    go.disabled = false;
   } else if (runState === "complete" && changes === 0) {
     // Approved and the files exist. Offering to run again to approve would be wrong, and
     // pressing it would do nothing useful. Point at the results instead.
@@ -2723,28 +2964,43 @@ function drawActionBar(){
     $("askSummary").textContent = changes
       ? t("rerunEditedSummary", changes)
       : t("rerunSummary");
-    go.textContent = (changes && !synced) ? t("saveBeforeRun")
-      : (runState === "complete" ? t("rerunEdited") : t("rerunApproval"));
+    go.textContent = runState === "complete" ? t("rerunEdited") : t("rerunApproval");
     go.dataset.act = "run";
-    go.disabled = changes > 0 && !synced;
+    go.disabled = false;
   }
 }
+var gateActionInProgress = false;
 $("gateGo").addEventListener("click", function(){
   var button = this;
-  if (button.dataset.act === "export") { setStage("export"); drawActionBar(); return; }
-  if (!openGate) { startRun(button); return; }
-  button.disabled = true;
-  api("/api/bridge/gate", {method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({gate:openGate.gate, decision:"continue"})})
-  .then(function(res){
-    if (!res.ok || res.body.ok === false) {
-      toast((res.body && res.body.error) || t("answerFailed"));
-      button.disabled = false;
+  if (button.dataset.act === "export") { openExportSheet("results"); return; }
+  if (gateActionInProgress) return;
+  gateActionInProgress = true;
+  flushSaves().then(function(saved){
+    if (!saved.ok) {
+      toast(saved.error || t("saveFailed"));
+      gateActionInProgress = false;
       return;
     }
-    openGate = null;
-    setStage("run");
-    poll();
+    if (!openGate) {
+      gateActionInProgress = false;
+      startRun(button);
+      return;
+    }
+    var answeredGate = openGate.gate;
+    button.disabled = true;
+    api("/api/bridge/gate", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({gate:answeredGate, decision:"continue"})})
+    .then(function(res){
+      gateActionInProgress = false;
+      if (!res.ok || res.body.ok === false) {
+        toast((res.body && res.body.error) || t("answerFailed"));
+        button.disabled = false;
+        return;
+      }
+      openGate = null;
+      showStageProgress(answeredGate === "orientation" ? "orientation" : "cores");
+      poll();
+    });
   });
 });
 
@@ -2762,6 +3018,7 @@ function drawGrid(){
     gridEdits = {};
     pickedCore = "";
     gridSaved = null;
+    resetSaveScope("grid");
     (model.grid.savedCorrections || []).forEach(function(item){
       if (item && item.core) {
         gridEdits[item.core] = {action: item.action, centerX: item.centerX,
@@ -2777,9 +3034,6 @@ function drawGrid(){
   } else {
     requestAnimationFrame(drawGridOverlay);
   }
-  $("zoomHint").textContent = model.grid.editable
-    ? t("gridEditHint")
-    : t("gridEditUnavailable");
   var grid = model.grid;
   $("gridStrip").innerHTML =
     metric(grid.present == null ? "–" : grid.present, t("metricCoresFound"), "ok") +
@@ -2795,6 +3049,7 @@ function drawGrid(){
     li.querySelector("span").textContent = text;
     box.appendChild(li);
   });
+  paintGridTools();
 }
 $("zoomToggle").addEventListener("click", function(){
   var stage = $("gridStage");
@@ -2850,9 +3105,10 @@ function fitGridCanvas(){
   // Leave room for the padding the stage carries, so a fitted image never sits under its
   // own scrollbars.
   var room = 36;
+  var toolbarRoom = 108;
   var scale = zoomed ? 1 : Math.min(
     (stage.clientWidth - room) / img.naturalWidth,
-    (stage.clientHeight - room) / img.naturalHeight);
+    (stage.clientHeight - toolbarRoom) / img.naturalHeight);
   if (!(scale > 0)) {
     // The panel can still be display:none when this first runs, so the stage measures
     // zero. Try again on the next frame rather than leaving a collapsed image on screen.
@@ -2865,6 +3121,21 @@ function fitGridCanvas(){
   return scale;
 }
 
+var SVG_NS = "http://www.w3.org/2000/svg";
+// A ghost is drawn at the grid's own core size rather than at the twentieth-of-a-core
+// placeholder the run writes for an empty position. The placeholder is a marker in the
+// data, not a thing anybody can find and click on a whole-slide overview.
+function renderedDiameter(core){
+  if (core.missing) {
+    var nominal = nominalDiameter();
+    if (nominal > 0) return nominal;
+  }
+  return core.diameter;
+}
+// Four handles, not eight. At the fitted zoom of a 126-position slide a core is around
+// twenty rendered pixels across, and eight handles on that is a pile of overlapping
+// targets rather than a control.
+var RESIZE_DIRECTIONS = ["n", "e", "s", "w"];
 function drawGridOverlay(){
   var svg = $("gridOverlay"), img = $("gridImg");
   if (!svg || !img || !img.naturalWidth) return;
@@ -2875,28 +3146,100 @@ function drawGridOverlay(){
   if (!scale || !cores.length) return;
   var rect = img.getBoundingClientRect();
   svg.setAttribute("viewBox", "0 0 " + rect.width + " " + rect.height);
+  var picked = null;
   cores.forEach(function(raw){
     var core = coreNow(raw);
-    if (core.centerX == null || core.diameter == null) return;
-    var c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    var size = renderedDiameter(core);
+    if (core.centerX == null || size == null) return;
+    var r = Math.max(5, size * scale / 2);
+    var c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("class", "coreCircle");
     c.setAttribute("cx", (core.centerX * scale).toFixed(2));
     c.setAttribute("cy", (core.centerY * scale).toFixed(2));
-    c.setAttribute("r", Math.max(5, core.diameter * scale / 2).toFixed(2));
-    c.setAttribute("data-state", core.edited ? "edited" : (core.missing ? "missing" : "present"));
-    if (core.core === pickedCore) c.setAttribute("data-picked", "true");
+    c.setAttribute("r", r.toFixed(2));
+    c.setAttribute("data-state", core.missing ? "ghost" : "present");
+    if (core.edited) c.setAttribute("data-edited", "true");
+    if (core.core === pickedCore) { c.setAttribute("data-picked", "true"); picked = {core: core, r: r}; }
     c.dataset.core = core.core;
     svg.appendChild(c);
+  });
+  drawGridLabels(scale);
+  if (picked) drawResizeHandles(picked.core, picked.r, scale);
+}
+// The label rides in the same paint as its circle, so a drag carries it along. Below the
+// legible floor, labelling all 126 positions produces overlapping mush that is worse than
+// no label at all, so only the selected core keeps its name.
+function gridLabelFontSize(r){ return Math.min(15, r * 0.72); }
+function drawGridLabels(scale){
+  var svg = $("gridOverlay");
+  gridCores().forEach(function(raw){
+    var core = coreNow(raw);
+    var size = renderedDiameter(core);
+    if (core.centerX == null || size == null) return;
+    var r = Math.max(5, size * scale / 2);
+    var font = gridLabelFontSize(r);
+    var readable = font >= 8;
+    if (!readable && core.core !== pickedCore) return;
+    if (!readable) font = 11;
+    var cx = core.centerX * scale, cy = core.centerY * scale;
+    var text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("class", "coreLabel");
+    text.setAttribute("x", cx.toFixed(2));
+    // Centred inside the circle when the text fits, parked just above it when it does not.
+    text.setAttribute("y", (readable ? cy + font * 0.35 : cy - r - 4).toFixed(2));
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("font-size", font.toFixed(1));
+    text.setAttribute("data-state", core.missing ? "ghost" : "present");
+    if (core.core === pickedCore) text.setAttribute("data-picked", "true");
+    text.dataset.core = core.core;
+    text.textContent = core.core;
+    svg.appendChild(text);
+  });
+}
+function drawResizeHandles(core, r, scale){
+  var svg = $("gridOverlay");
+  var cx = core.centerX * scale, cy = core.centerY * scale;
+  var half = 4;
+  RESIZE_DIRECTIONS.forEach(function(direction){
+    var x = cx, y = cy;
+    if (direction === "n") y = cy - r;
+    else if (direction === "s") y = cy + r;
+    else if (direction === "e") x = cx + r;
+    else x = cx - r;
+    var handle = document.createElementNS(SVG_NS, "rect");
+    handle.setAttribute("class", "resizeHandle");
+    handle.setAttribute("x", (x - half).toFixed(2));
+    handle.setAttribute("y", (y - half).toFixed(2));
+    handle.setAttribute("width", String(half * 2));
+    handle.setAttribute("height", String(half * 2));
+    handle.setAttribute("rx", "2");
+    handle.setAttribute("data-direction", direction);
+    handle.dataset.core = core.core;
+    svg.appendChild(handle);
   });
 }
 function markPicked(){
   // Update the existing circles rather than rebuilding them. Selecting happens on
   // pointerdown, and a rebuild there would destroy the very element being dragged: the
-  // drag would end before it started, and the pointer capture would go with it.
-  var circles = $("gridOverlay").querySelectorAll("circle");
-  for (var i = 0; i < circles.length; i++) {
-    if (circles[i].dataset.core === pickedCore) circles[i].setAttribute("data-picked", "true");
-    else circles[i].removeAttribute("data-picked");
+  // drag would end before it started, and the pointer capture would go with it. The
+  // handles are the same hazard, so they are added beside the circle, never by re-render.
+  var svg = $("gridOverlay");
+  var marks = svg.querySelectorAll("circle, text");
+  for (var i = 0; i < marks.length; i++) {
+    if (marks[i].dataset.core === pickedCore) marks[i].setAttribute("data-picked", "true");
+    else marks[i].removeAttribute("data-picked");
   }
+  var stale = svg.querySelectorAll(".resizeHandle");
+  for (var j = 0; j < stale.length; j++) stale[j].remove();
+  var scale = gridScale();
+  var raw = gridCores().filter(function(c){ return c.core === pickedCore; })[0];
+  if (raw && scale) {
+    var core = coreNow(raw);
+    var size = renderedDiameter(core);
+    if (core.centerX != null && size != null)
+      drawResizeHandles(core, Math.max(5, size * scale / 2), scale);
+  }
+  paintGridTools();
 }
 function pickCore(name){
   pickedCore = name;
@@ -2913,37 +3256,107 @@ function pickCore(name){
   $("markMissing").hidden = core.missing;
   $("markPresent").hidden = !core.missing;
   $("undoCore").hidden = !core.edited;
+  paintDiameterControl(core);
   panel.hidden = false;
   markPicked();
 }
-function editCore(name, action, x, y) {
+// The grid payload carries slide pixels and no calibration, so this reads in pixels. The
+// arrange manifest's microns-per-pixel describes a tile cut at a downsample and would be
+// the wrong number here: quoting microns off it would be inventing a measurement.
+function diameterBounds(){
+  var nominal = nominalDiameter();
+  if (!(nominal > 0)) return null;
+  return {min: Math.round(nominal * 0.2), max: Math.round(nominal * 3), nominal: nominal};
+}
+function clampDiameter(value){
+  var bounds = diameterBounds();
+  var wanted = Number(value);
+  // Zero, a negative and a non-number are all rejected by the Groovy side, where they
+  // become a skipped correction and a silent no-op the operator never hears about.
+  if (!isFinite(wanted) || wanted <= 0) return null;
+  if (!bounds) return wanted;
+  return Math.min(bounds.max, Math.max(bounds.min, wanted));
+}
+function paintDiameterControl(core){
+  var control = $("diameterControl"), field = $("coreDiameter");
+  var bounds = diameterBounds();
+  var size = renderedDiameter(core);
+  control.hidden = !bounds || !(size > 0);
+  if (control.hidden) return;
+  field.min = String(bounds.min);
+  field.max = String(bounds.max);
+  field.step = "1";
+  if (document.activeElement !== field) field.value = String(Math.round(size));
+  $("coreDiameterUnit").textContent = t("diameterPixels");
+  $("coreDiameterRange").textContent =
+    t("diameterRange", bounds.min, bounds.max, t("diameterPixels"));
+}
+function editCore(name, action, x, y, diameter) {
   var raw = gridCores().filter(function(c){ return c.core === name; })[0];
   if (!raw) return;
   var base = coreNow(raw);
   var nominal = nominalDiameter();
+  var sized = diameter == null ? null : clampDiameter(diameter);
   gridEdits[name] = {
     action: action,
     centerX: x == null ? base.centerX : x,
     centerY: y == null ? base.centerY : y,
     // Bringing a position back into use means a core-sized circle, whatever the placeholder
     // it is replacing happened to be.
-    diameter: (action === "restore" || !(base.diameter > 0)) && nominal > 0
-      ? nominal : base.diameter
+    diameter: sized != null ? sized
+      : ((action === "restore" || !(base.diameter > 0)) && nominal > 0
+          ? nominal : base.diameter)
   };
+  markDirty("grid");
   pickCore(name);
   drawGridOverlay();
   markPicked();
   drawActionBar();
 }
+// Every tool says what it would do and, when it cannot, why. A control that disappears
+// when it is unavailable makes people hunt for it and doubt they ever saw it.
+function paintGridTools(){
+  var raw = pickedCore
+    ? gridCores().filter(function(c){ return c.core === pickedCore; })[0] : null;
+  var core = raw ? coreNow(raw) : null;
+  var editable = !!(model && model.grid && model.grid.editable);
+  var add = $("gridAddCore"), remove = $("gridRemoveCore"), reset = $("gridResetCore");
+  var reason = "";
+  add.disabled = !editable || !core || !core.missing;
+  remove.disabled = !editable || !core || core.missing;
+  reset.disabled = !editable || !core || !core.edited;
+  if (!editable) reason = t("gridEditUnavailable");
+  else if (!core) reason = t("noCoreSelected");
+  else if (core.missing) reason = t("removeAlreadyEmpty");
+  else if (!core.edited) reason = t("resetUnavailable");
+  else reason = t("addAlreadyPresent");
+  $("gridToolReason").textContent = reason;
+}
 $("gridOverlay").addEventListener("pointerdown", function(event){
   var target = event.target;
-  if (!target || target.tagName !== "circle") return;
+  if (!target) return;
+  var isHandle = target.classList && target.classList.contains("resizeHandle");
+  if (target.tagName !== "circle" && !isHandle) return;
   event.preventDefault();
-  pickCore(target.dataset.core);
   var scale = gridScale();
   if (!scale) return;
   var rect = $("gridImg").getBoundingClientRect();
-  gridDrag = {core: target.dataset.core, scale: scale, rect: rect, moved: false, node: target};
+  if (isHandle) {
+    // Resizing works about the circle's own centre, so the core does not walk across the
+    // slide while somebody is only trying to make it bigger.
+    var raw = gridCores().filter(function(c){ return c.core === target.dataset.core; })[0];
+    if (!raw) return;
+    var core = coreNow(raw);
+    gridDrag = {core: core.core, scale: scale, rect: rect, moved: false,
+                mode: "resize", centerX: core.centerX, centerY: core.centerY,
+                node: $("gridOverlay").querySelector('circle[data-core="' +
+                  (window.CSS && CSS.escape ? CSS.escape(core.core) : core.core) + '"]')};
+    target.setPointerCapture(event.pointerId);
+    return;
+  }
+  pickCore(target.dataset.core);
+  gridDrag = {core: target.dataset.core, scale: scale, rect: rect, moved: false,
+              mode: "move", node: target};
   target.classList.add("dragging");
   target.setPointerCapture(event.pointerId);
 });
@@ -2952,51 +3365,77 @@ $("gridOverlay").addEventListener("pointermove", function(event){
   var x = (event.clientX - gridDrag.rect.left) / gridDrag.scale;
   var y = (event.clientY - gridDrag.rect.top) / gridDrag.scale;
   gridDrag.moved = true;
+  if (gridDrag.mode === "resize") {
+    var dx = x - gridDrag.centerX, dy = y - gridDrag.centerY;
+    var wanted = clampDiameter(Math.sqrt(dx * dx + dy * dy) * 2);
+    if (wanted == null) return;
+    gridDrag.diameter = wanted;
+    if (gridDrag.node)
+      gridDrag.node.setAttribute("r", (wanted * gridDrag.scale / 2).toFixed(2));
+    return;
+  }
   gridDrag.node.setAttribute("cx", (x * gridDrag.scale).toFixed(2));
   gridDrag.node.setAttribute("cy", (y * gridDrag.scale).toFixed(2));
   gridDrag.at = {x: x, y: y};
 });
 $("gridOverlay").addEventListener("pointerup", function(){
   if (!gridDrag) return;
-  gridDrag.node.classList.remove("dragging");
-  if (gridDrag.moved && gridDrag.at) {
+  if (gridDrag.node) gridDrag.node.classList.remove("dragging");
+  var raw = gridCores().filter(function(c){ return c.core === gridDrag.core; })[0];
+  if (gridDrag.mode === "resize") {
+    // A resize never revives an empty position on its own: sizing a ghost is not the same
+    // statement as saying there is tissue there.
+    if (gridDrag.moved && gridDrag.diameter != null && raw) {
+      var current = coreNow(raw);
+      editCore(gridDrag.core, current.missing ? "mark_missing" : "move",
+               current.centerX, current.centerY, gridDrag.diameter);
+    }
+  } else if (gridDrag.moved && gridDrag.at) {
     // Dragging a circle onto tissue is a move; doing it to a position marked empty is
     // also a statement that there is tissue there after all.
-    var raw = gridCores().filter(function(c){ return c.core === gridDrag.core; })[0];
     var action = (raw && coreNow(raw).missing) ? "restore" : "move";
     editCore(gridDrag.core, action, gridDrag.at.x, gridDrag.at.y);
   }
   gridDrag = null;
 });
-$("markMissing").addEventListener("click", function(){ editCore(pickedCore, "mark_missing"); });
-$("markPresent").addEventListener("click", function(){ editCore(pickedCore, "restore"); });
-$("undoCore").addEventListener("click", function(){
+function resetPickedCore(){
+  if (!pickedCore) return;
   delete gridEdits[pickedCore];
+  markDirty("grid");
   pickCore(pickedCore);
   drawGridOverlay();
   markPicked();
   drawActionBar();
+}
+$("markMissing").addEventListener("click", function(){ editCore(pickedCore, "mark_missing"); });
+$("markPresent").addEventListener("click", function(){ editCore(pickedCore, "restore"); });
+$("undoCore").addEventListener("click", resetPickedCore);
+$("gridAddCore").addEventListener("click", function(){ editCore(pickedCore, "restore"); });
+$("gridRemoveCore").addEventListener("click", function(){ editCore(pickedCore, "mark_missing"); });
+$("gridResetCore").addEventListener("click", resetPickedCore);
+$("gridSelectTool").addEventListener("click", function(){ deselectCore(); });
+$("coreDiameter").addEventListener("change", function(){
+  var raw = gridCores().filter(function(c){ return c.core === pickedCore; })[0];
+  if (!raw) return;
+  var wanted = clampDiameter(this.value);
+  var core = coreNow(raw);
+  if (wanted == null) { paintDiameterControl(core); return; }
+  editCore(pickedCore, core.missing ? "mark_missing" : "move",
+           core.centerX, core.centerY, wanted);
 });
-$("saveGrid").addEventListener("click", function(){
-  var payload = Object.keys(gridEdits).map(function(name){
-    var edit = gridEdits[name];
-    return {core: name, action: edit.action, centerX: edit.centerX,
-            centerY: edit.centerY, diameter: edit.diameter};
-  });
-  var sentFingerprint = gridFingerprint();
-  setSaveState(t("saving"), "busy");
-  api("/api/grid-corrections", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({corrections: payload})})
-  .then(function(res){
-    if (!res.ok || res.body.ok === false) {
-      setSaveState(res.body.error || t("saveFailed"), "bad");
-      return;
-    }
-    gridSaved = sentFingerprint;
-    setSaveState(t("savedPositions", payload.length), "ok");
-    toast(t("gridSavedToast"));
-    drawActionBar();
-  });
+function deselectCore(){
+  pickedCore = "";
+  $("gridPicked").hidden = true;
+  markPicked();
+}
+document.addEventListener("keydown", function(event){
+  if (stage !== "cores" || !pickedCore) return;
+  var inField = /^(INPUT|TEXTAREA|SELECT)$/.test((event.target || {}).tagName || "");
+  if (event.key === "Escape") { deselectCore(); return; }
+  if (inField) return;
+  if (event.key === "Delete" || event.key === "Backspace") {
+    if (!$("gridRemoveCore").disabled) { event.preventDefault(); editCore(pickedCore, "mark_missing"); }
+  }
 });
 var gridSaved = null;
 
@@ -3036,7 +3475,6 @@ var arrangeTarget = 0;
 var arrangeShowAllChannels = false;
 var arrangeShowValues = true;
 var arrangeChannelSelected = null;
-var arrangeSaving = false;
 var arrangeRenderVersion = 0;
 var arrangeTileCache = new Map();
 var arrangeObserver = window.IntersectionObserver ? new IntersectionObserver(function(entries){
@@ -3066,12 +3504,13 @@ function resetArrange(){
   arrangeTarget = 0;
   arrangeShowAllChannels = false;
   arrangeChannelSelected = null;
-  arrangeSaving = false;
+  resetSaveScope("arrange");
   arrangeTileCache = new Map();
-  reached.arrange = false;
+  reached.figure = false;
   $("arrangeWorkspace").hidden = true;
   $("arrangeUnavailable").hidden = false;
   $("arrangeUnavailable").textContent = t("arrangeTilesUnavailable");
+  updateExportAvailability();
 }
 function loadArrange(project){
   if (arrangeLoading) return;
@@ -3079,7 +3518,7 @@ function loadArrange(project){
   arrangeLastCheck = Date.now();
   var requestedProject = project || attachedProjectKey();
   var projectChanged = !!requestedProject && requestedProject !== arrangeProject;
-  if (projectChanged) reached.arrange = false;
+  if (projectChanged) reached.figure = false;
   $("arrangeUnavailable").hidden = false;
   $("arrangeUnavailable").textContent = t("arrangeLoading");
   api("/api/arrange").then(function(res){
@@ -3089,11 +3528,12 @@ function loadArrange(project){
     var data = res.body || {};
     if (!res.ok || !data.available) {
       arrangeAvailable = false;
-      reached.arrange = false;
+      reached.figure = false;
       $("arrangeWorkspace").hidden = true;
       $("arrangeUnavailable").hidden = false;
       $("arrangeUnavailable").textContent = t("arrangeTilesUnavailable");
       paintStages();
+      updateExportAvailability();
       return;
     }
     arrangeAvailable = true;
@@ -3112,6 +3552,7 @@ function loadArrange(project){
       if (typeof figure.title !== "string") figure.title = "";
     });
     arrangeSaved = arrangeClone(arrangeDocument);
+    resetSaveScope("arrange");
     arrangeTileBase = String(data.tileBase || "qc/03-arrange/tiles");
     arrangeExportTileBase = String(data.exportTileBase || arrangeManifest.exportTileBase || "");
     arrangeTileVersion = arrangeManifest && arrangeManifest.createdAt
@@ -3120,11 +3561,14 @@ function loadArrange(project){
     arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
     arrangeShowAllChannels = false;
     arrangeChannelSelected = null;
-    reached.arrange = true;
+    reached.figure = true;
     $("arrangeUnavailable").hidden = true;
     $("arrangeWorkspace").hidden = false;
     paintStages();
     drawArrange();
+    updateExportAvailability();
+    if (runState === "complete" && stage === "orientation" && !openGate)
+      showStageEditor("figure");
   });
 }
 function arrangeFigure(){
@@ -3198,15 +3642,7 @@ function arrangeFingerprint(value){ return JSON.stringify(value || {}); }
 function arrangeEditsMatchSaved(){
   return arrangeFingerprint(arrangeDocument) === arrangeFingerprint(arrangeSaved);
 }
-function drawArrangeSaveState(){
-  if (!arrangeAvailable) return;
-  var synced = arrangeEditsMatchSaved();
-  $("saveArrange").disabled = arrangeSaving || synced;
-  if (arrangeSaving) setSaveState(t("saving"), "busy", $("arrangeSaveState"));
-  else setSaveState(t(synced ? "arrangeSaved" : "arrangeUnsaved"), synced ? "ok" : "",
-                    $("arrangeSaveState"));
-}
-function arrangeChanged(){ drawArrangeSaveState(); }
+function arrangeChanged(){ markDirty("arrange"); }
 function drawArrange(){
   if (!arrangeAvailable || !arrangeFigure()) return;
   $("arrangeUnavailable").hidden = true;
@@ -3222,7 +3658,6 @@ function drawArrange(){
   drawArrangeTable();
   drawArrangeChannelRail();
   drawArrangeMap();
-  drawArrangeSaveState();
 }
 function drawArrangeSwitcher(){
   var select = $("arrangeFigureSelect");
@@ -3964,7 +4399,7 @@ document.addEventListener("visibilitychange", function(){
 window.addEventListener("resize", function(){
   if (!arrangeAvailable) return;
   scheduleArrangeSweep();
-  if (stage === "arrange" && arrangeManifest) drawArrangeMap();
+  if (stage === "figure" && arrangeManifest) drawArrangeMap();
 });
 function renderArrangeCanvas(canvas){
   if (!canvas.isConnected || !arrangeFigure()) return;
@@ -4002,27 +4437,6 @@ function fillArrangeFromLayout(){
   arrangeTarget = arrangeFirstEmpty(figure, -1);
   drawArrangeCellsChanged();
   toast(t("arrangeFillReport", filled, failed));
-}
-function saveArrangement(){
-  if (arrangeSaving || arrangeEditsMatchSaved()) return;
-  var sent = arrangeClone(arrangeDocument);
-  var sentFingerprint = arrangeFingerprint(sent);
-  arrangeSaving = true;
-  drawArrangeSaveState();
-  api("/api/arrange", {method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({arrangement:sent})}).then(function(res){
-      arrangeSaving = false;
-      if (!res.ok || !res.body.ok) {
-        setSaveState(res.body.error || t("saveFailed"), "bad", $("arrangeSaveState"));
-        $("saveArrange").disabled = false;
-        return;
-      }
-      arrangeSaved = arrangeClone(res.body.arrangement || sent);
-      if (arrangeFingerprint(arrangeDocument) === sentFingerprint)
-        arrangeDocument = arrangeClone(arrangeSaved);
-      drawArrangeSaveState();
-      toast(t("arrangeSavedToast"));
-    });
 }
 function drawArrangeLabel(context, text, x, y, maxWidth, align){
   context.textAlign = align || "left";
@@ -4135,11 +4549,11 @@ function exportArrangementPng(){
     toast(t("arrangeExportFailed"));
   });
 }
-function previewArrangementPng(){
-  var button = $("previewArrange");
-  button.disabled = true;
+function renderFigurePreview(button){
+  if (!arrangeAvailable || !arrangeFigure()) return;
+  if (button) button.disabled = true;
   buildArrangeFigureCanvas().then(function(canvas){
-    button.disabled = false;
+    if (button) button.disabled = false;
     var holder = $("arrangePreviewBody");
     holder.textContent = "";
     // Hand over the canvas itself rather than a data URL: it is already in memory, it can be
@@ -4147,12 +4561,17 @@ function previewArrangementPng(){
     canvas.style.width = "100%";
     canvas.style.height = "auto";
     holder.appendChild(canvas);
+    holder.hidden = false;
+    $("exportFigureUnavailable").hidden = true;
+    $("arrangePreviewDownload").disabled = false;
     $("arrangePreviewSize").textContent = canvas.width + " x " + canvas.height;
-    $("arrangePreviewDialog").showModal();
   }).catch(function(){
-    button.disabled = false;
+    if (button) button.disabled = false;
     toast(t("arrangeExportFailed"));
   });
+}
+function previewArrangementPng(){
+  openExportSheet("figure");
 }
 
 $("arrangeFigureSelect").addEventListener("change", function(){
@@ -4178,6 +4597,7 @@ $("arrangeAddFigure").addEventListener("click", function(){
   arrangeChannelSelected = null;
   arrangeRenderVersion++;
   drawArrange();
+  arrangeChanged();
 });
 $("arrangeDuplicateFigure").addEventListener("click", function(){
   var source = arrangeFigure();
@@ -4192,6 +4612,7 @@ $("arrangeDuplicateFigure").addEventListener("click", function(){
   arrangeChannelSelected = null;
   arrangeRenderVersion++;
   drawArrange();
+  arrangeChanged();
 });
 // A nuclear stain is brighter than most markers, so in a combined panel it dominates and the
 // marker underneath is hard to judge. This makes the other half of the pair: the same cores in
@@ -4264,17 +4685,14 @@ $("arrangeChannelToggle").addEventListener("click", function(){
   arrangeShowAllChannels = !arrangeShowAllChannels;
   drawArrangeChannelRail();
 });
-$("saveArrange").addEventListener("click", saveArrangement);
 $("exportArrange").addEventListener("click", exportArrangementPng);
 $("previewArrange").addEventListener("click", previewArrangementPng);
-$("closeArrangePreview").addEventListener("click", function(){ $("arrangePreviewDialog").close(); });
 $("arrangePreviewDownload").addEventListener("click", function(){
-  $("arrangePreviewDialog").close();
   exportArrangementPng();
 });
 
 document.addEventListener("keydown", function(event){
-  if (stage !== "arrange" || !arrangeAvailable) return;
+  if (stage !== "figure" || !arrangeAvailable) return;
   var target = event.target || {};
   var tag = (target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || target.isContentEditable) return;
@@ -4304,6 +4722,7 @@ var EXPORT_FILTERS = [
   {key:"error",   labelKey:"filterError",   test:function(c){ return coreClassOf(c) === "error"; }},
   {key:"missing", labelKey:"filterMissing", test:function(c){ return coreClassOf(c) === "missing"; }}
 ];
+var RESULT_GROUP_KEYS = ["png", "ome-tiff", "tables", "grid-qc", "core-qc", "qupath"];
 var exportFilter = "all", exportVisible = [], exportDialogIndex = 0;
 var exportDrawnModel = null, exportProject = "", exportGroups = [];
 var exportGroupsDetailed = false, exportTableLoad = "idle", exportTableError = "";
@@ -4567,7 +4986,11 @@ function loadResultTable(){
 function drawDownloadGroups(groups){
   var list = $("groupList");
   list.textContent = "";
-  (groups || []).forEach(function(group){
+  var byKey = {};
+  (groups || []).forEach(function(group){ byKey[group.key] = group; });
+  RESULT_GROUP_KEYS.forEach(function(key){
+    var group = byKey[key] || {key:key, count:0, size:""};
+    var available = Number(group.count) > 0;
     var el = document.createElement("div");
     el.className = "group";
     el.innerHTML = '<div class="txt"><b></b><span></span></div><span class="cnt"></span>' +
@@ -4578,19 +5001,20 @@ function drawDownloadGroups(groups){
     });
     groupName = groupName.charAt(0).toUpperCase() + groupName.slice(1);
     el.querySelector("b").textContent = t("group" + groupName + "Title");
-    el.querySelector(".txt span").textContent = t("group" + groupName + "Note");
-    el.querySelector(".cnt").textContent = t("fileCount", group.count, group.size || "");
-    el.querySelector("button").addEventListener("click", function(){
+    el.querySelector(".txt span").textContent = available
+      ? t("group" + groupName + "Note") : t("resultGroupUnavailable");
+    el.querySelector(".cnt").textContent = available
+      ? t("fileCount", group.count, group.size || "") : "0";
+    var button = el.querySelector("button");
+    button.disabled = !available;
+    button.addEventListener("click", function(){
       window.location.href = "/api/download-zip?group=" + encodeURIComponent(group.key);
     });
     list.appendChild(el);
   });
-  if (!(groups || []).length) {
-    var note = document.createElement("p");
-    note.className = "emptyNote";
-    note.textContent = t("noResultFiles");
-    list.appendChild(note);
-  }
+  var any = (groups || []).some(function(group){ return Number(group.count) > 0; });
+  $("zipAll").disabled = !any;
+  $("zipAllReason").textContent = any ? "" : t("resultsUnavailable");
 }
 function drawExport(status){
   $("exportPath").textContent = status.project || "";
@@ -4644,11 +5068,11 @@ $("exportDialog").addEventListener("click", function(event){
   if (event.target === this) this.close();
 });
 $("exportDialog").addEventListener("close", function(){
-  if (stage === "export" && exportDialogSource && exportDialogSource.isConnected)
+  if (exportDialogSource && exportDialogSource.isConnected)
     exportDialogSource.focus();
 });
 document.addEventListener("keydown", function(event){
-  if (stage !== "export" || !$("exportDialog").open) return;
+  if (!$("exportDialog").open) return;
   if (event.key === "ArrowLeft") { event.preventDefault(); moveExportDialog(-1); }
   if (event.key === "ArrowRight") { event.preventDefault(); moveExportDialog(1); }
   if (event.key === "Escape") { event.preventDefault(); $("exportDialog").close(); }
@@ -4760,7 +5184,9 @@ function showPriorRun(){
   if (!model || !model.available) { banner.hidden = true; return; }
   // Results already exist here, so the review and results stages are worth opening even
   // though nothing is running. Reaching them is the whole point of attaching.
-  reached.review = true; reached.export = true; paintStages();
+  reached.cores = true;
+  reached.orientation = true;
+  paintStages();
   var counts = model.counts || {};
   $("priorRunNote").textContent = t("priorCounts", counts.positions || 0, counts.ok || 0,
     counts.review || 0, counts.missing || 0);
@@ -4815,6 +5241,13 @@ function renderProgress(log){
     if (tail === lastLogLine && lang === lastLogLanguage) return;
     lastLogLine = tail;
     lastLogLanguage = lang;
+    var gridWork = Math.max(log.lastIndexOf("Running 01_build_tma_grid"),
+      log.lastIndexOf("Running 03_review_correct"));
+    var orientationWork = Math.max(log.lastIndexOf("Running 02_auto_orient"),
+      log.lastIndexOf("COREALIGN_GATE_OPEN: orientation"));
+    processingStage = orientationWork > gridWork ? "orientation" : "cores";
+    if ((runState === "running" || runState === "starting") && !openGate)
+      showStageProgress(processingStage);
     // The drawer holds the raw log on purpose. The one line peeking out of it sits at the
     // bottom of every screen, though, so it gets the same treatment as the run step.
     $("logTail").textContent = tail ? stepWords(tail) : "";
@@ -4851,44 +5284,59 @@ function renderProgress(log){
 }
 function route(status, gateId){
   if (gateId === "grid") {
-    reached.review = true;
-    if (stage !== "grid") setStage("grid");
+    reached.cores = true;
+    showStageEditor("cores");
     drawActionBar();
     return;
   }
   if (gateId === "orientation") {
-    reached.review = true;
-    if (stage !== "review") setStage("review");
+    reached.cores = true;
+    reached.orientation = true;
+    showStageEditor("orientation");
     drawActionBar();
     return;
   }
   if (status.state === "running" || status.state === "starting") {
-    if (stage !== "run") setStage("run");
+    reached.cores = true;
+    showStageProgress(processingStage);
     $("actionBar").hidden = true;
     return;
   }
   if (status.state === "complete") {
-    reached.review = true; reached.export = true;
-    if (stage !== "export" && stage !== "review" && stage !== "arrange") setStage("export");
+    reached.cores = true;
+    reached.orientation = true;
+    if (arrangeAvailable) reached.figure = true;
+    var completeStage = stage === "cores" || stage === "orientation" || stage === "figure"
+      ? stage : (arrangeAvailable ? "figure" : "orientation");
+    if (!$("runView").hidden && arrangeAvailable) completeStage = "figure";
+    showStageEditor(completeStage);
     $("exportTitle").textContent = t("resultsReady");
     drawExport(status);
+    updateExportAvailability();
     drawActionBar();
     return;
   }
   if (status.state === "stopped" || status.state === "failed" || status.state === "cancelled") {
-    reached.export = true;
     if (model && model.available) {
-      reached.review = true;
+      reached.cores = true;
+      reached.orientation = true;
       // Results exist and nobody has approved them yet: the review screen is the useful one.
-      if (stage !== "review" && stage !== "export" && stage !== "grid" && stage !== "arrange")
-        setStage("review");
+      var restingStage = stage === "orientation" || stage === "cores" || stage === "figure"
+        ? stage : "orientation";
+      showStageEditor(restingStage);
+    } else if (!$("runView").hidden) {
+      showStageEditor(chosenSlide ? "tissue" : "slide");
     }
-    if (stage === "export") { $("exportTitle").textContent = t("resultsCurrent"); drawExport(status); }
+    $("exportTitle").textContent = t("resultsCurrent");
+    drawExport(status);
+    updateExportAvailability();
     drawActionBar();
     return;
   }
-  // Idle, but a folder with results can be attached: keep the bar on the review stage.
-  if (stage === "export") drawExport(status);
+  // Idle, but a folder with results can be attached: keep the last useful stage on screen.
+  if (!$("runView").hidden) showStageEditor(chosenSlide ? "tissue" : "slide");
+  if (hasResults()) drawExport(status);
+  updateExportAvailability();
   drawActionBar();
 }
 
@@ -4904,17 +5352,12 @@ window.addEventListener("resize", function(){ drawGridOverlay(); });
 function renderLanguage(){
   document.documentElement.lang = lang;
   applyStaticTranslations();
+  paintSaveState();
   buildStages();
   paintStages();
   if (browseData) drawBrowse(browseData);
   if (chosenSlide) $("slideName").textContent = chosenSlide.name;
 
-  var roleKeys = {nuclear:"roleNuclear", autofluorescence:"roleAutofluorescence", marker:"roleMarker"};
-  $("channelList").querySelectorAll(".role").forEach(function(role){
-    role.textContent = t(roleKeys[role.dataset.kind] || roleKeys.marker);
-  });
-  if ($("channelList").querySelectorAll("input").length) paintChannelSummary();
-  $("channelToggleWord").textContent = $("channelPanel").hidden ? t("change") : t("close");
   $("zoomToggle").textContent = $("gridStage").dataset.zoom === "true" ? t("zoomFit") : t("zoomFull");
 
   if (lastStatus) {
@@ -4931,16 +5374,18 @@ function renderLanguage(){
     drawGrid();
     if (pickedCore) pickCore(pickedCore);
   }
-  if (lastStatus && stage === "export") {
+  if (lastStatus && $("exportSheet").open && exportSheetTab === "results") {
     $("exportTitle").textContent = lastStatus.state === "complete"
       ? t("resultsReady") : t("resultsCurrent");
     drawExport(lastStatus);
   }
   if (arrangeAvailable) drawArrange();
+  updateExportAvailability();
   if (exportTableLoad === "loading") $("resultTableState").textContent = t("loadingResultTable");
   if (exportTableLoad === "failed") $("resultTableState").textContent = exportTableError === "404"
     ? t("resultTableMissing") : t("resultTableFailed");
   if ($("exportDialog").open) drawExportDialog();
+  if ($("exportSheet").open) selectExportSheetTab(exportSheetTab);
   renderProgress(lastLogText);
   drawActionBar();
 }
