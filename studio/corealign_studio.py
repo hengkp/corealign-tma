@@ -1033,6 +1033,19 @@ class Run:
                     return {"ok": False,
                             "error": f"Figure {figure_id} names unknown channel {index}."}
 
+                if "gamma" in channel:
+                    gamma = channel["gamma"]
+                    if (isinstance(gamma, bool) or not isinstance(gamma, (int, float))
+                            or not 0.2 <= gamma <= 5 or not math.isfinite(gamma)):
+                        return {"ok": False,
+                                "error": f"Figure {figure_id} channel {index} gamma must be between 0.2 and 5."}
+                if "opacity" in channel:
+                    opacity = channel["opacity"]
+                    if (isinstance(opacity, bool) or not isinstance(opacity, (int, float))
+                            or not 0 <= opacity <= 1 or not math.isfinite(opacity)):
+                        return {"ok": False,
+                                "error": f"Figure {figure_id} channel {index} opacity must be between 0 and 1."}
+
             cells = figure.get("cells") or []
             if not isinstance(cells, list):
                 return {"ok": False, "error": f"Figure {figure_id} cells must be a list."}

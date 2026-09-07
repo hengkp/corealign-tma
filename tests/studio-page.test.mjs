@@ -905,3 +905,94 @@ test("the studio names a run the way the bridge expects", () => {
   assert.match(workflow, /CoreAlignCorrectionBridge\.start\([\s\S]{0,200}orientationReviewKey/,
     "the bridge has to be started with that key");
 });
+
+// Windowing may produce fractional strengths. The lookup must preserve those before gamma
+// brightens the mid-tones, and every drawing path must use the same colour calculation.
+test("arrange gamma uses a windowed lookup before multiplying colour", () => {
+  const body = page.slice(page.indexOf("function arrangeComposite("),
+                          page.indexOf("function arrangeWantedToken("));
+  assert.match(body, /gamma:arrangeChannelGamma\(config\)/);
+  assert.match(body, /if \(gamma !== 1\) \{[\s\S]*value < 256/);
+  assert.match(body, /var windowed = Math.max\(0, Math.min\(255, \(value - black\) \* 255 \/ span\)\);\s*gammaTable\[value\] = 255 \* Math.pow\(windowed \/ 255, 1 \/ gamma\)/);
+  const pixels = body.slice(body.indexOf("for (var pixel"));
+  assert.match(pixels, /var strength = Math.max[\s\S]*if \(gamma !== 1\) strength = gammaTable\[pixels.data\[pixel\]\];\s*pixels.data\[pixel\] = Math.round\(strength \* rgb.r \/ 255\)/);
+  assert.ok(!pixels.includes("Math.pow"), "powers belong outside the pixel loop");
+});
+
+// Alpha belongs to the layer's screen draw, and must not leak into crops or later drawing.
+test("arrange opacity surrounds each screen layer draw and resets", () => {
+  const body = page.slice(page.indexOf("function arrangeComposite("),
+                          page.indexOf("function arrangeWantedToken("));
+  assert.match(body, /opacity:arrangeChannelOpacity\(config\)/);
+  assert.match(body, /globalCompositeOperation = "screen";\s*layers.forEach\(function\(layer, index\)\{\s*if \(!layer\) return;\s*context.globalAlpha = visibleChannels\[index\].opacity;\s*context.drawImage\(layer, 0, 0\);\s*context.globalAlpha = 1;\s*\}\);\s*context.globalCompositeOperation = "source-over"/);
+});
+
+// Old arrangements have neither field. Invalid values must also be neutral, without coercing
+// strings or booleans into settings that silently change a saved figure.
+test("arrange gamma and opacity accessors default to one and accept only valid numbers", () => {
+  const body = page.slice(page.indexOf("function arrangeChannelGamma("),
+                          page.indexOf("function arrangeChannelGain("));
+  const sandbox = {};
+  runInNewContext(body, sandbox);
+  for (const [key, accessor, low, high] of [
+    ["gamma", sandbox.arrangeChannelGamma, 0.2, 5],
+    ["opacity", sandbox.arrangeChannelOpacity, 0, 1],
+  ]) {
+    for (const config of [undefined, null, {}, ...[low - 0.01, high + 0.01,
+      NaN, Infinity, -Infinity, true, false, "0.5", null].map(value => ({[key]: value}))]) {
+      assert.equal(accessor(config), 1, `${key} must default to one`);
+    }
+    for (const value of [low, high, (low + high) / 2]) {
+      assert.equal(accessor({[key]: value}), value);
+    }
+  }
+});
+
+// The saved document is the source on reopening, so reject malformed display settings at
+// the server boundary while allowing arrangements from before the controls existed.
+test("save_arrangement validates optional gamma and opacity ranges", () => {
+  const body = server.slice(server.indexOf("    def save_arrangement("),
+                            server.indexOf("    GRID_ACTIONS"));
+  for (const [key, low, high] of [["gamma", "0.2", "5"], ["opacity", "0", "1"]]) {
+    assert.ok(body.includes(`if "${key}" in channel:`));
+    assert.ok(body.includes(`isinstance(${key}, bool) or not isinstance(${key}, (int, float))`));
+    assert.ok(body.includes(`not ${low} <= ${key} <= ${high} or not math.isfinite(${key})`));
+    assert.ok(body.includes(`Figure {figure_id} channel {index} ${key} must be between ${low} and ${high}.`));
+  }
+  assert.match(body, /clean = json.loads\(json.dumps\(arrangement\)\)/,
+    "validated settings must survive into the saved arrangement");
+});
+
+// Both languages need the same controls and accessible names.
+test("arrange gamma and opacity labels exist in English and Thai", () => {
+  for (const [key, english, thai] of [["arrangeGamma", "Gamma", "แกมมา"],
+    ["arrangeOpacity", "Opacity", "ความทึบ"]]) {
+    assert.equal([...page.matchAll(new RegExp(`${key}:`, "g"))].length, 2);
+    assert.ok(page.includes(`${key}:"${english}"`));
+    assert.ok(page.includes(`${key}:"${thai}"`));
+  }
+});
+
+// Keep display adjustments in the existing detail row layout and save every slider move.
+test("arrange display sliders restore settings and refresh and save on input", () => {
+  const body = page.slice(page.indexOf("    detail.appendChild(windowLine);"),
+                          page.indexOf('    var palette = document.createElement("div");'));
+  assert.match(body, /line.className = "arrangeGain"/);
+  assert.match(body, /input.setAttribute\("aria-label", t\(labelKey\) \+ " " \+ channel.name\)/);
+  assert.match(body, /document.createElement\("output"\)/);
+  assert.match(body, /value.toFixed\(2\) : Math.round\(value\) \+ "%"/);
+  assert.match(body, /\.gamma = value;[\s\S]*\.opacity = value \/ 100;\s*paintValue\(\);\s*refreshArrangeCanvases\(\);\s*arrangeChanged\(\)/);
+  assert.match(body, /displaySlider\("gamma", "arrangeGamma", "0.2", "5", "0.05",\s*arrangeChannelGamma\(config\)\)/);
+  assert.match(body, /displaySlider\("opacity", "arrangeOpacity", "0", "100", "1",\s*arrangeChannelOpacity\(config\) \* 100\)/);
+});
+
+// Autosave replaces the document, leaving the panel's captured figure stale. Every
+// control must look up the live figure so later edits still render and save.
+test("channel controls write to the live figure, not the one the panel was built with", () => {
+  const body = page.slice(page.indexOf("function makeArrangeLayer("),
+                          page.indexOf("function arrangeTile("));
+  assert.ok(body.includes("function liveFigure()"));
+  assert.ok(!body.includes("arrangeEnsureChannel(figure,"));
+  assert.ok(!body.includes("(figure.cells"));
+  assert.ok(body.includes("arrangeEnsureChannel(liveFigure(), channel.index)"));
+});

@@ -873,6 +873,7 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
 .arrangeGain{display:grid;grid-template-columns:auto minmax(120px,1fr) 48px;align-items:center;gap:10px;font-size:12.5px}
 .arrangeGain input{width:100%;accent-color:var(--accent)}
 .arrangeGain output{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.arrangeWindowLine{grid-template-columns:auto 1fr auto}
 .arrangePalette{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .arrangePalette button{width:24px;height:24px;border:2px solid var(--surface);border-radius:7px;box-shadow:0 0 0 1px var(--line-strong)}
 .arrangeHex{width:96px;height:30px;padding:4px 7px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
@@ -1535,6 +1536,11 @@ var EN = {
   arrangeGain:"Gain",
   arrangeBlackPoint:"Black point",
   arrangeWhitePoint:"White point",
+  arrangeGamma:"Gamma",
+  arrangeOpacity:"Opacity",
+  roleNuclear:"Nuclear",
+  roleMarker:"Markers",
+  roleAutofluorescence:"Autofluorescence",
   arrangeWindow:"Display window",
   arrangeFitWindow:"Fit to how the cores differ",
   arrangeFittedWindow:"{0} windowed to {1} to {2}, the range these cores span",
@@ -1847,6 +1853,11 @@ var TH = {
   arrangeGain:"ความสว่าง",
   arrangeBlackPoint:"จุดดำ",
   arrangeWhitePoint:"จุดขาว",
+  arrangeGamma:"แกมมา",
+  arrangeOpacity:"ความทึบ",
+  roleNuclear:"นิวเคลียส",
+  roleMarker:"มาร์กเกอร์",
+  roleAutofluorescence:"ออโตฟลูออเรสเซนซ์",
   arrangeWindow:"ช่วงที่แสดง",
   arrangeFitWindow:"ปรับช่วงตามที่ core ต่างกันจริง",
   arrangeFittedWindow:"ตั้งช่วงของ {0} เป็น {1} ถึง {2} ตามที่ core เหล่านี้กระจายอยู่",
@@ -4379,6 +4390,14 @@ function arrangeChannelWindow(config){
   if (Number.isFinite(gain) && gain > 0) return {black:0, white:255 / gain};
   return {black:0, white:255};
 }
+function arrangeChannelGamma(config){
+  var gamma = config && config.gamma;
+  return Number.isFinite(gamma) && gamma >= 0.2 && gamma <= 5 ? gamma : 1;
+}
+function arrangeChannelOpacity(config){
+  var opacity = config && config.opacity;
+  return Number.isFinite(opacity) && opacity >= 0 && opacity <= 1 ? opacity : 1;
+}
 function arrangeChannelGain(config){
   var gain = Number(config && config.gain);
   return Number.isFinite(gain) ? gain : 1;
@@ -4412,6 +4431,9 @@ function drawArrangeChannelRail(){
 }
 function makeArrangeLayer(channel){
   var figure = arrangeFigure(), config = arrangeChannelConfig(figure, channel.index);
+  // Autosave replaces the document object, so handlers must look up the figure
+  // when they fire, not when the panel was built.
+  function liveFigure(){ return arrangeFigure() || figure; }
   var layer = document.createElement("div");
   layer.className = "arrangeLayer";
   layer.dataset.selected = String(Number(arrangeChannelSelected) === Number(channel.index));
@@ -4423,7 +4445,7 @@ function makeArrangeLayer(channel){
   visibility.setAttribute("aria-label", channel.name);
   visibility.addEventListener("click", function(event){ event.stopPropagation(); });
   visibility.addEventListener("change", function(){
-    var item = arrangeEnsureChannel(figure, channel.index);
+    var item = arrangeEnsureChannel(liveFigure(), channel.index);
     item.visible = this.checked;
     arrangeChannelSelected = channel.index;
     drawArrangeChannelRail();
@@ -4468,7 +4490,7 @@ function makeArrangeLayer(channel){
       input.value = String(Math.round(current[key]));
       input.setAttribute("aria-label", t(labelKey) + " " + channel.name);
       input.addEventListener("input", function(){
-        var item = arrangeEnsureChannel(figure, channel.index);
+        var item = arrangeEnsureChannel(liveFigure(), channel.index);
         current[key] = Number(this.value);
         // A window with the ceiling at or below the floor renders nothing at all, which
         // looks like a broken screen rather than a setting the person can undo.
@@ -4489,7 +4511,9 @@ function makeArrangeLayer(channel){
     detail.appendChild(slider("black", "arrangeBlackPoint"));
     detail.appendChild(slider("white", "arrangeWhitePoint"));
     var windowLine = document.createElement("div");
-    windowLine.className = "arrangeGain";
+    // The window line ends in a button, not a 48px readout, so it needs its own last column
+    // or "Fit to how the cores differ" runs off the panel.
+    windowLine.className = "arrangeGain arrangeWindowLine";
     var windowLabel = document.createElement("span");
     windowLabel.textContent = t("arrangeWindow");
     paintReadout();
@@ -4506,7 +4530,7 @@ function makeArrangeLayer(channel){
       // run is nearly the whole scale, so windowing to it concentrates nothing; the six or
       // twelve cores a person actually put side by side span a narrow band, and that is the
       // band worth spending the output on. Fall back to the run when the figure is empty.
-      var placed = (figure.cells || []).map(function(cell){
+      var placed = (liveFigure().cells || []).map(function(cell){
         return arrangeCoreStat(cell.core, channel.index);
       }).filter(function(value){ return value != null; });
       var low = placed.length >= 2 ? Math.min.apply(null, placed) : Number(channel.coreP99Low);
@@ -4520,7 +4544,7 @@ function makeArrangeLayer(channel){
       };
       current.black = toTile(low);
       current.white = Math.max(toTile(high), current.black + 1);
-      var item = arrangeEnsureChannel(figure, channel.index);
+      var item = arrangeEnsureChannel(liveFigure(), channel.index);
       item.black = current.black; item.white = current.white;
       delete item.gain;
       arrangeRenderVersion++;
@@ -4531,6 +4555,36 @@ function makeArrangeLayer(channel){
     });
     windowLine.appendChild(windowLabel); windowLine.appendChild(readout); windowLine.appendChild(fit);
     detail.appendChild(windowLine);
+    function displaySlider(key, labelKey, min, max, step, value){
+      var line = document.createElement("label");
+      line.className = "arrangeGain";
+      var caption = document.createElement("span");
+      caption.textContent = t(labelKey);
+      var input = document.createElement("input");
+      input.type = "range"; input.min = min; input.max = max; input.step = step;
+      input.value = String(value);
+      input.setAttribute("aria-label", t(labelKey) + " " + channel.name);
+      var output = document.createElement("output");
+      function paintValue(){
+        output.textContent = key === "gamma" ? value.toFixed(2) : Math.round(value) + "%";
+      }
+      paintValue();
+      input.addEventListener("input", function(){
+        value = Number(this.value);
+        // Opacity is shown as a percent, but saved as the fraction used by canvas.
+        if (key === "gamma") arrangeEnsureChannel(liveFigure(), channel.index).gamma = value;
+        else arrangeEnsureChannel(liveFigure(), channel.index).opacity = value / 100;
+        paintValue();
+        refreshArrangeCanvases();
+        arrangeChanged();
+      });
+      line.appendChild(caption); line.appendChild(input); line.appendChild(output);
+      return line;
+    }
+    detail.appendChild(displaySlider("gamma", "arrangeGamma", "0.2", "5", "0.05",
+      arrangeChannelGamma(config)));
+    detail.appendChild(displaySlider("opacity", "arrangeOpacity", "0", "100", "1",
+      arrangeChannelOpacity(config) * 100));
     var palette = document.createElement("div");
     palette.className = "arrangePalette";
     ["#3D7BFF", "#FF4D4D", "#2FD477", "#E65CFF", "#31D9E8", "#FFD84D", "#FF943D", "#FFFFFF"]
@@ -4540,7 +4594,7 @@ function makeArrangeLayer(channel){
         choice.style.background = colour;
         choice.setAttribute("aria-label", t("arrangeUseColour", colour));
         choice.addEventListener("click", function(){
-          arrangeEnsureChannel(figure, channel.index).colour = colour;
+          arrangeEnsureChannel(liveFigure(), channel.index).colour = colour;
           drawArrangeChannelRail();
           refreshArrangeCanvases();
           arrangeChanged();
@@ -4556,7 +4610,7 @@ function makeArrangeLayer(channel){
     hex.addEventListener("input", function(){
       var value = this.value.trim();
       if (!/^#[0-9a-f]{6}$/i.test(value)) return;
-      arrangeEnsureChannel(figure, channel.index).colour = value.toUpperCase();
+      arrangeEnsureChannel(liveFigure(), channel.index).colour = value.toUpperCase();
       swatch.style.background = value;
       refreshArrangeCanvases();
       arrangeChanged();
@@ -4648,7 +4702,8 @@ function arrangeComposite(canvas, coreName, size, figure, token, tileBase){
   }).map(function(config){
     var manifest = arrangeChannelManifest(config.index);
     return {index:config.index, colour:arrangeChannelColour(config, manifest),
-            window:arrangeChannelWindow(config)};
+            window:arrangeChannelWindow(config), gamma:arrangeChannelGamma(config),
+            opacity:arrangeChannelOpacity(config)};
   });
   var jobs = visibleChannels.map(function(config){
     return arrangeTile(coreName, config.index, tileBase).then(function(image){
@@ -4674,8 +4729,18 @@ function arrangeComposite(canvas, coreName, size, figure, token, tileBase){
       var rgb = arrangeRgb(config.colour);
       var black = config.window.black;
       var span = Math.max(config.window.white - black, 1);
+      var gamma = config.gamma, gammaTable = [];
+      if (gamma !== 1) {
+        // Gamma above 1 brightens mid-tones. Index by the original byte so a fractional
+        // window keeps its precision, and the expensive power runs only once per value.
+        for (var value = 0; value < 256; value++) {
+          var windowed = Math.max(0, Math.min(255, (value - black) * 255 / span));
+          gammaTable[value] = 255 * Math.pow(windowed / 255, 1 / gamma);
+        }
+      }
       for (var pixel = 0; pixel < pixels.data.length; pixel += 4) {
         var strength = Math.max(0, Math.min(255, (pixels.data[pixel] - black) * 255 / span));
+        if (gamma !== 1) strength = gammaTable[pixels.data[pixel]];
         pixels.data[pixel] = Math.round(strength * rgb.r / 255);
         pixels.data[pixel + 1] = Math.round(strength * rgb.g / 255);
         pixels.data[pixel + 2] = Math.round(strength * rgb.b / 255);
@@ -4691,7 +4756,12 @@ function arrangeComposite(canvas, coreName, size, figure, token, tileBase){
     context.fillStyle = arrangeCss("--stage-bg");
     context.fillRect(0, 0, size, size);
     context.globalCompositeOperation = "screen";
-    layers.forEach(function(layer){ if (layer) context.drawImage(layer, 0, 0); });
+    layers.forEach(function(layer, index){
+      if (!layer) return;
+      context.globalAlpha = visibleChannels[index].opacity;
+      context.drawImage(layer, 0, 0);
+      context.globalAlpha = 1;
+    });
     context.globalCompositeOperation = "source-over";
     if (figure.crop === "epidermis") arrangeCropToBand(canvas, size, figure, tileBase);
     return canvas;
