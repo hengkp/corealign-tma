@@ -846,10 +846,14 @@ class Run:
             return {"available": False, "grid": grid,
                     "contactSheet": "", "cores": [], "corrections": {}}
 
-        base_run = ""
-        run_directory = str((report.get("outputs") or {}).get("runDirectory") or "")
-        if run_directory:
-            base_run = Path(run_directory).name
+        # The key the bridge checks every angle save against. CoreAlign.groovy starts the
+        # bridge with orientationReport.startedAt (falling back to gridHash, then "pending"),
+        # and REPORT.html's own page sends that same value back. This used to be the run
+        # directory's name, which the bridge has never accepted: at the orientation gate every
+        # angle save and every File > Save project answered 409 "This report does not match
+        # the current QuPath run", and a page with an unsaved edit could then never approve.
+        # Found by the v2.13.1 UAT on a real slide, 7 Sep 2026.
+        base_run = str(report.get("startedAt") or report.get("gridHash") or "pending")
 
         saved = self._read_json("corealign-review-corrections.json") or {}
         corrections = {}

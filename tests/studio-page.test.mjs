@@ -882,3 +882,26 @@ test("the menu bar gives the stage tracker its own row rather than widening the 
   assert.match(narrow, /\.topbar\{grid-template-columns:minmax\(0,1fr\) auto/);
   assert.match(narrow, /\.topbarCenter\{grid-row:2;grid-column:1\/-1\}/);
 });
+
+// Found on a real slide, 7 Sep 2026: at the orientation gate every angle save and every
+// File > Save project answered 409 "This report does not match the current QuPath run".
+// CoreAlign.groovy starts the bridge with the orientation report's startedAt as the run key
+// (gridHash, then "pending", when that is missing) and REPORT.html's own page sends the same
+// value back. The Studio sent the run directory's name instead, which the bridge has never
+// accepted, so a page holding an unsaved edit could never approve. The two sides must derive
+// the key by the same rule, so this test reads both.
+test("the studio names a run the way the bridge expects", () => {
+  const body = server.slice(server.indexOf("        report = self._read_json(\"qc/02-orientation/run_report.json\")"),
+                            server.indexOf("    # -- arrange"));
+  assert.match(body,
+    /base_run = str\(report\.get\("startedAt"\) or report\.get\("gridHash"\) or "pending"\)/,
+    "baseRun must be startedAt, then gridHash, then \"pending\", in that order");
+  assert.ok(!/runDirectory/.test(body),
+    "the run directory's name is not a key the bridge checks against");
+  const workflow = readFileSync(new URL("workflow/CoreAlign.groovy", root), "utf8");
+  assert.match(workflow,
+    /String orientationReviewKey = \(orientationReport\.startedAt \?: orientationReport\.gridHash \?: 'pending'\)\.toString\(\)/,
+    "CoreAlign.groovy must keep the same rule, or the studio's saves are rejected again");
+  assert.match(workflow, /CoreAlignCorrectionBridge\.start\([\s\S]{0,200}orientationReviewKey/,
+    "the bridge has to be started with that key");
+});
