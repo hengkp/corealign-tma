@@ -1542,6 +1542,7 @@ var EN = {
   roleMarker:"Markers",
   roleAutofluorescence:"Autofluorescence",
   arrangeWindow:"Display window",
+  arrangeWindowReadout:"{0} to {1}",
   arrangeFitWindow:"Fit to how the cores differ",
   arrangeFittedWindow:"{0} windowed to {1} to {2}, the range these cores span",
   arrangeNoSpread:"This run has no per-core measurements to fit to",
@@ -1859,6 +1860,7 @@ var TH = {
   roleMarker:"มาร์กเกอร์",
   roleAutofluorescence:"ออโตฟลูออเรสเซนซ์",
   arrangeWindow:"ช่วงที่แสดง",
+  arrangeWindowReadout:"{0} ถึง {1}",
   arrangeFitWindow:"ปรับช่วงตามที่ core ต่างกันจริง",
   arrangeFittedWindow:"ตั้งช่วงของ {0} เป็น {1} ถึง {2} ตามที่ core เหล่านี้กระจายอยู่",
   arrangeNoSpread:"การรันนี้ไม่มีค่าที่วัดรายcoreให้ใช้ปรับช่วง",
@@ -4478,7 +4480,8 @@ function makeArrangeLayer(channel){
     var current = arrangeChannelWindow(config);
     var readout = document.createElement("output");
     function paintReadout(){
-      readout.textContent = Math.round(current.black) + " to " + Math.round(current.white);
+      readout.textContent = t("arrangeWindowReadout", Math.round(current.black),
+        Math.round(current.white));
     }
     function slider(key, labelKey){
       var line = document.createElement("label");

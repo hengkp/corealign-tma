@@ -996,3 +996,14 @@ test("channel controls write to the live figure, not the one the panel was built
   assert.ok(!body.includes("(figure.cells"));
   assert.ok(body.includes("arrangeEnsureChannel(liveFigure(), channel.index)"));
 });
+
+// The window readout used to concatenate " to " by hand, so a Thai page read "60 to 255"
+// while every word around it was Thai. It goes through the dictionary like the rest.
+test("the display window readout is translated", () => {
+  const body = page.slice(page.indexOf("function paintReadout()"),
+                          page.indexOf("function slider(key, labelKey)"));
+  assert.match(body, /t\("arrangeWindowReadout", Math\.round\(current\.black\),\s*Math\.round\(current\.white\)\)/);
+  assert.ok(!body.includes('" to "'), "no hand-built English inside the readout");
+  assert.ok(page.includes('arrangeWindowReadout:"{0} to {1}"'));
+  assert.ok(page.includes('arrangeWindowReadout:"{0} ถึง {1}"'));
+});
