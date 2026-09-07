@@ -974,6 +974,9 @@ test("arrange gamma and opacity labels exist in English and Thai", () => {
 });
 
 // Keep display adjustments in the existing detail row layout and save every slider move.
+// Since the shared-settings switch, a slider move ends in arrangeDisplayChanged(), which
+// syncs the other figures, repaints and saves (its own test proves that order), so the
+// assertion names the helper rather than the refresh-and-save pair it replaced.
 test("arrange display sliders restore settings and refresh and save on input", () => {
   const body = page.slice(page.indexOf("    detail.appendChild(windowLine);"),
                           page.indexOf('    var palette = document.createElement("div");'));
@@ -981,7 +984,11 @@ test("arrange display sliders restore settings and refresh and save on input", (
   assert.match(body, /input.setAttribute\("aria-label", t\(labelKey\) \+ " " \+ channel.name\)/);
   assert.match(body, /document.createElement\("output"\)/);
   assert.match(body, /value.toFixed\(2\) : Math.round\(value\) \+ "%"/);
-  assert.match(body, /\.gamma = value;[\s\S]*\.opacity = value \/ 100;\s*paintValue\(\);\s*refreshArrangeCanvases\(\);\s*arrangeChanged\(\)/);
+  assert.match(body, /\.gamma = value;[\s\S]*\.opacity = value \/ 100;\s*paintValue\(\);\s*arrangeDisplayChanged\(liveFigure\(\)\)/);
+  const layer = page.slice(page.indexOf("function makeArrangeLayer("),
+                           page.indexOf("function arrangeTile("));
+  assert.ok((layer.match(/arrangeDisplayChanged\(liveFigure\(\)\)/g) || []).length >= 5,
+    "black/white, fit, gamma/opacity, palette and hex all go through the one helper");
   assert.match(body, /displaySlider\("gamma", "arrangeGamma", "0.2", "5", "0.05",\s*arrangeChannelGamma\(config\)\)/);
   assert.match(body, /displaySlider\("opacity", "arrangeOpacity", "0", "100", "1",\s*arrangeChannelOpacity\(config\) \* 100\)/);
 });
@@ -1006,4 +1013,102 @@ test("the display window readout is translated", () => {
   assert.ok(!body.includes('" to "'), "no hand-built English inside the readout");
   assert.ok(page.includes('arrangeWindowReadout:"{0} to {1}"'));
   assert.ok(page.includes('arrangeWindowReadout:"{0} ถึง {1}"'));
+});
+
+// Sharing copies display settings, including defaults, while marker figures retain visibility.
+test("shared channel display copies settings without changing visibility", () => {
+  const source = {channels:[{index:5, visible:true, colour:"#123456", black:12,
+    white:210, gamma:1.5, opacity:0.4}]};
+  const figures = [source, {channels:[{index:5, visible:false, colour:"#FFFFFF",
+    black:0, white:255, gain:2, gamma:2, opacity:1}]},
+  {channels:[{index:5, visible:true, colour:"#000000", black:20,
+    white:200, gain:3, gamma:3, opacity:0.8}]}];
+  const sandbox = {arrangeDocument:{sharedChannelDisplay:true, figures}};
+  const accessors = page.slice(page.indexOf("function arrangeChannelConfig("),
+                               page.indexOf("function arrangeChannelColour("));
+  const sync = page.slice(page.indexOf("function arrangeSyncSharedDisplay("),
+                          page.indexOf("function arrangeChannelGamma("));
+  runInNewContext(accessors + sync, sandbox);
+  sandbox.arrangeSyncSharedDisplay(source);
+  for (const [index, visible] of [[1, false], [2, true]]) {
+    const target = figures[index].channels[0];
+    for (const key of ["colour", "black", "white", "gamma", "opacity"]) {
+      assert.equal(target[key], source.channels[0][key], key);
+    }
+    assert.equal(Object.hasOwn(target, "gain"), false);
+    assert.equal(target.visible, visible);
+    assert.equal(target.index, 5);
+  }
+  const before = JSON.stringify(figures);
+  for (const flag of [false, undefined, "true"]) {
+    sandbox.arrangeDocument.sharedChannelDisplay = flag;
+    sandbox.arrangeSyncSharedDisplay({channels:[{index:5, colour:"#ABCDEF"}]});
+    assert.equal(JSON.stringify(figures), before);
+  }
+  sandbox.arrangeDocument.sharedChannelDisplay = true;
+  for (const invalid of [null, {}, {channels:{}}]) sandbox.arrangeSyncSharedDisplay(invalid);
+  assert.equal(JSON.stringify(figures), before);
+  figures[2].channels = [];
+  sandbox.arrangeSyncSharedDisplay(source);
+  assert.equal(figures[2].channels[0].visible, false);
+  assert.equal(figures[2].channels[0].colour, "#123456");
+  assert.deepEqual(source.channels[0], {index:5, visible:true, colour:"#123456",
+    black:12, white:210, gamma:1.5, opacity:0.4});
+  sandbox.arrangeDocument = null;
+  sandbox.arrangeSyncSharedDisplay(source);
+});
+
+// New figures must receive settings from the figure still on screen, before selection moves.
+test("figure creation shares display before selecting the new figure", () => {
+  for (const [id, next] of [["arrangeAddFigure", "arrangeDuplicateFigure"],
+    ["arrangeDuplicateFigure", "arrangeSplitMarkers"], ["arrangeSplitMarkers", "arrangeCropMode"]]) {
+    const body = page.slice(page.indexOf(`$("${id}").addEventListener`),
+                            page.indexOf(`$("${next}").addEventListener`));
+    const push = body.indexOf("arrangeDocument.figures.push(");
+    const sync = body.indexOf("arrangeSyncSharedDisplay(arrangeFigure())");
+    const select = body.indexOf("arrangeFigureIndex =");
+    assert.ok(push >= 0 && sync > push && select > sync, id);
+  }
+});
+
+// The document owns this opt-in, so repainting and reopening must restore the checkbox.
+test("shared channel display has translated markup and follows the document", () => {
+  const head = page.slice(page.indexOf('<div class="arrangeChannelsHead">'),
+                          page.indexOf('<div class="arrangeChannelRail"'));
+  assert.ok(head.includes('<label class="arrangeValuesToggle" id="arrangeShareDisplayLine"><input type="checkbox" id="arrangeShareDisplay"><span data-i18n="arrangeShareDisplay"></span></label>'));
+  assert.ok(head.indexOf('id="arrangeShareDisplayLine"') > head.indexOf('data-i18n="arrangeChannelsHint"'));
+  assert.equal([...page.matchAll(/arrangeShareDisplay:/g)].length, 2);
+  assert.ok(page.includes('arrangeShareDisplay:"Use these channel settings in every figure"'));
+  assert.ok(page.includes('arrangeShareDisplay:"ใช้ค่าปรับ channel นี้กับทุกรูป"'));
+  const draw = page.slice(page.indexOf("function drawArrange(){"),
+                          page.indexOf("function drawArrangeSwitcher("));
+  assert.ok(draw.includes('$("arrangeShareDisplay").checked = !!(arrangeDocument && arrangeDocument.sharedChannelDisplay)'));
+  const handler = page.slice(page.indexOf('$("arrangeShareDisplay").addEventListener'),
+                             page.indexOf('$("arrangeValuesToggle").addEventListener'));
+  assert.match(handler, /addEventListener\("change", function\(\)\{/);
+  assert.match(handler, /arrangeDocument.sharedChannelDisplay = this.checked;/);
+  assert.match(handler, /if \(this.checked\) \{\s*arrangeSyncSharedDisplay\(arrangeFigure\(\)\);\s*arrangeRenderVersion\+\+;\s*drawArrange\(\);\s*\}\s*arrangeChanged\(\);/);
+});
+
+// Older documents omit the flag; new documents must carry a real boolean at the boundary.
+test("save_arrangement rejects non-boolean shared channel display", () => {
+  const body = server.slice(server.indexOf("    def save_arrangement("),
+                            server.indexOf("    GRID_ACTIONS"));
+  assert.match(body, /if "sharedChannelDisplay" in arrangement and not isinstance\(arrangement\["sharedChannelDisplay"\], bool\):\s*return \{"ok": False, "error": "sharedChannelDisplay must be true or false\."\}/);
+});
+
+// Every display edit must synchronize before repainting and marking the arrangement dirty.
+test("arrange display changes synchronize then refresh and save", () => {
+  const body = page.slice(page.indexOf("function arrangeDisplayChanged("),
+                          page.indexOf("function drawArrange(){"));
+  const calls = [];
+  const source = {channels:[]};
+  const sandbox = {
+    arrangeSyncSharedDisplay: figure => { assert.equal(figure, source); calls.push("sync"); },
+    refreshArrangeCanvases: () => calls.push("refresh"),
+    arrangeChanged: () => calls.push("save")
+  };
+  runInNewContext(body, sandbox);
+  sandbox.arrangeDisplayChanged(source);
+  assert.deepEqual(calls, ["sync", "refresh", "save"]);
 });

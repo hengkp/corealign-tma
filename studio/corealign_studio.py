@@ -959,6 +959,9 @@ class Run:
         if not isinstance(arrangement, dict):
             return {"ok": False, "error": "The arrangement must be a JSON object."}
 
+        if "sharedChannelDisplay" in arrangement and not isinstance(arrangement["sharedChannelDisplay"], bool):
+            return {"ok": False, "error": "sharedChannelDisplay must be true or false."}
+
         manifest = available["manifest"]
         channel_indices = {channel.get("index") for channel in (manifest.get("channels") or [])
                            if isinstance(channel, dict)}

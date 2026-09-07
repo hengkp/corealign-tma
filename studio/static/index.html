@@ -1298,6 +1298,7 @@ button.arrangeSeat:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--a
               <div class="arrangeChannelsHead">
                 <h2 data-i18n="arrangeChannels"></h2>
                 <p class="lede" data-i18n="arrangeChannelsHint"></p>
+                <label class="arrangeValuesToggle" id="arrangeShareDisplayLine"><input type="checkbox" id="arrangeShareDisplay"><span data-i18n="arrangeShareDisplay"></span></label>
               </div>
               <div class="arrangeChannelRail" id="arrangeChannelRail"></div>
               <button class="arrangeChannelToggle" id="arrangeChannelToggle" type="button" data-i18n="arrangeShowAllChannels"></button>
@@ -1548,6 +1549,7 @@ var EN = {
   arrangeNoSpread:"This run has no per-core measurements to fit to",
   arrangeCoreValue:"Measured {0}",
   arrangeShowValues:"Show measured values",
+  arrangeShareDisplay:"Use these channel settings in every figure",
   arrangeCrop:"Show",
   arrangeCropCore:"The whole core",
   arrangeCropEpidermis:"The epidermis only",
@@ -1866,6 +1868,7 @@ var TH = {
   arrangeNoSpread:"การรันนี้ไม่มีค่าที่วัดรายcoreให้ใช้ปรับช่วง",
   arrangeCoreValue:"วัดได้ {0}",
   arrangeShowValues:"แสดงค่าที่วัดได้",
+  arrangeShareDisplay:"ใช้ค่าปรับ channel นี้กับทุกรูป",
   arrangeCrop:"แสดง",
   arrangeCropCore:"ทั้ง core",
   arrangeCropEpidermis:"เฉพาะหนังกำพร้า",
@@ -4028,11 +4031,17 @@ function arrangeEditsMatchSaved(){
   return arrangeFingerprint(arrangeDocument) === arrangeFingerprint(arrangeSaved);
 }
 function arrangeChanged(){ markDirty("arrange"); }
+function arrangeDisplayChanged(source){
+  arrangeSyncSharedDisplay(source);
+  refreshArrangeCanvases();
+  arrangeChanged();
+}
 function drawArrange(){
   if (!arrangeAvailable || !arrangeFigure()) return;
   $("arrangeUnavailable").hidden = true;
   $("arrangeWorkspace").hidden = false;
   drawArrangeSwitcher();
+  $("arrangeShareDisplay").checked = !!(arrangeDocument && arrangeDocument.sharedChannelDisplay);
   $("arrangeTitle").value = arrangeFigure().title;
   // The crop belongs to the figure, so the controls have to follow whichever figure is on
   // screen rather than keeping whatever the last one was set to.
@@ -4392,6 +4401,22 @@ function arrangeChannelWindow(config){
   if (Number.isFinite(gain) && gain > 0) return {black:0, white:255 / gain};
   return {black:0, white:255};
 }
+function arrangeSyncSharedDisplay(source){
+  if (!arrangeDocument || arrangeDocument.sharedChannelDisplay !== true ||
+      !source || !Array.isArray(source.channels)) return;
+  var keys = ["colour", "black", "white", "gain", "gamma", "opacity"];
+  source.channels.forEach(function(config){
+    arrangeDocument.figures.forEach(function(other){
+      if (other === source) return;
+      var target = arrangeEnsureChannel(other, config.index);
+      // Visibility stays per figure so one figure per marker keeps its own channels.
+      keys.forEach(function(key){
+        if (config[key] !== undefined) target[key] = config[key];
+        else delete target[key];
+      });
+    });
+  });
+}
 function arrangeChannelGamma(config){
   var gamma = config && config.gamma;
   return Number.isFinite(gamma) && gamma >= 0.2 && gamma <= 5 ? gamma : 1;
@@ -4505,8 +4530,7 @@ function makeArrangeLayer(channel){
         item.black = current.black; item.white = current.white;
         delete item.gain;
         paintReadout();
-        refreshArrangeCanvases();
-        arrangeChanged();
+        arrangeDisplayChanged(liveFigure());
       });
       line.appendChild(caption); line.appendChild(input);
       return line;
@@ -4552,7 +4576,7 @@ function makeArrangeLayer(channel){
       delete item.gain;
       arrangeRenderVersion++;
       drawArrange();
-      arrangeChanged();
+      arrangeDisplayChanged(liveFigure());
       toast(t("arrangeFittedWindow", channel.name,
         Math.round(current.black), Math.round(current.white)));
     });
@@ -4578,8 +4602,7 @@ function makeArrangeLayer(channel){
         if (key === "gamma") arrangeEnsureChannel(liveFigure(), channel.index).gamma = value;
         else arrangeEnsureChannel(liveFigure(), channel.index).opacity = value / 100;
         paintValue();
-        refreshArrangeCanvases();
-        arrangeChanged();
+        arrangeDisplayChanged(liveFigure());
       });
       line.appendChild(caption); line.appendChild(input); line.appendChild(output);
       return line;
@@ -4599,8 +4622,7 @@ function makeArrangeLayer(channel){
         choice.addEventListener("click", function(){
           arrangeEnsureChannel(liveFigure(), channel.index).colour = colour;
           drawArrangeChannelRail();
-          refreshArrangeCanvases();
-          arrangeChanged();
+          arrangeDisplayChanged(liveFigure());
         });
         palette.appendChild(choice);
       });
@@ -4615,8 +4637,7 @@ function makeArrangeLayer(channel){
       if (!/^#[0-9a-f]{6}$/i.test(value)) return;
       arrangeEnsureChannel(liveFigure(), channel.index).colour = value.toUpperCase();
       swatch.style.background = value;
-      refreshArrangeCanvases();
-      arrangeChanged();
+      arrangeDisplayChanged(liveFigure());
     });
     palette.appendChild(hex); detail.appendChild(palette); layer.appendChild(detail);
   }
@@ -5036,6 +5057,7 @@ $("arrangeTitle").addEventListener("input", function(){
 });
 $("arrangeAddFigure").addEventListener("click", function(){
   arrangeDocument.figures.push(arrangeNewFigureObject());
+  arrangeSyncSharedDisplay(arrangeFigure());
   arrangeFigureIndex = arrangeDocument.figures.length - 1;
   arrangeTarget = 0;
   arrangeShowAllChannels = false;
@@ -5051,6 +5073,7 @@ $("arrangeDuplicateFigure").addEventListener("click", function(){
   copy.id = arrangeUniqueId(String(source.id || "figure") + "-copy");
   copy.title = (source.title || t("arrangeUntitledFigure")) + " · " + t("arrangeCopySuffix");
   arrangeDocument.figures.push(copy);
+  arrangeSyncSharedDisplay(arrangeFigure());
   arrangeFigureIndex = arrangeDocument.figures.length - 1;
   arrangeTarget = arrangeFirstEmpty(copy, -1);
   arrangeShowAllChannels = false;
@@ -5084,6 +5107,7 @@ $("arrangeSplitMarkers").addEventListener("click", function(){
     arrangeDocument.figures.push(copy);
     made++;
   });
+  arrangeSyncSharedDisplay(arrangeFigure());
   arrangeFigureIndex = arrangeDocument.figures.length - markers.length;
   arrangeTarget = arrangeFirstEmpty(arrangeFigure(), -1);
   arrangeShowAllChannels = false;
@@ -5108,6 +5132,15 @@ $("arrangeCropDepth").addEventListener("change", function(){
   this.value = String(figure.cropDepthUm);
   arrangeRenderVersion++;
   drawArrange();
+  arrangeChanged();
+});
+$("arrangeShareDisplay").addEventListener("change", function(){
+  arrangeDocument.sharedChannelDisplay = this.checked;
+  if (this.checked) {
+    arrangeSyncSharedDisplay(arrangeFigure());
+    arrangeRenderVersion++;
+    drawArrange();
+  }
   arrangeChanged();
 });
 $("arrangeValuesToggle").addEventListener("change", function(){
