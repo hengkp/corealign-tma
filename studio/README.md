@@ -124,6 +124,42 @@ is on screen: the circles, the counts, `overviewWidth`/`overviewHeight` and
 `slideWidth`/`slideHeight` for the mapping, and the grid hash. Studio takes positions from that
 and the QC commentary from step 3's file when it exists.
 
+## Saving angle edits: the file is the whole set, not the diff
+
+`corealign-review-corrections.json` is replaced whole every time it is written, by the bridge
+and by Studio alike, and step 2 folds each core's web angle into that core's checkpoint
+signature. Those two facts together mean the file has to name **every** web angle for the run,
+not only the ones edited since the last save: a core that drops out of the file no longer
+matches its checkpoint and is reprocessed without its correction. The page only knows about
+pending edits, which is the right thing for a page to know. The server therefore builds the
+file from the report's applied angles (`webRotationAdjustmentDeg`) plus the page's edits; an
+edit wins for the same core, and an angle of zero takes a correction back
+(`Run.complete_corrections`).
+
+Until 13 Sep 2026 Studio sent only the pending edits. The first edit round worked, because
+nothing had been applied yet; the second round silently reverted the first. The legacy
+REPORT.html page never had the fault, because it sends every card's angle.
+
+**A write that changes nothing is not made.** CoreAlign compares the file's timestamp before
+and after the orientation gate and takes a newer file as "reprocess and ask again", so an
+identical rewrite costs a full extra gate round. Both the autosave and File > Save project
+compare the angle set against the file on disk first (`corrections_on_disk`) and leave it
+alone when it already says the same thing. The 7 Sep 2026 UAT log shows what that looked like
+before: `Angle corrections were saved; reprocessing` followed by `Web review corrections
+loaded: 0` and a second, identical gate.
+
+## Editing the grid on a project opened again
+
+Step 3 is the only reader of `corealign-grid-corrections.json`, and it runs after the grid gate
+is answered. On a project whose grid a person has already approved, CoreAlign skips that gate,
+so a grid edit made in Studio afterwards was never read: the page said Saved, the run reported
+"already approved by a person", and the circle stayed where it was. The main flow now treats a
+correction file made against the grid on screen as a pending correction, exactly like a
+`TMA correction` annotation drawn in QuPath, and reopens the gate. The cores stage offers
+"Run again with grid edits" in that state rather than a disabled "Waiting...", and a grid on
+disk opens the Cores tab even before any core has been rotated, so a run that stopped at the
+grid check can be looked at and corrected before it is resumed.
+
 ## How fast a run is: workers come from the allocation
 
 Cores are independent of each other, so orientation processes them on a thread pool.
