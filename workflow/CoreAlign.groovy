@@ -4256,12 +4256,31 @@ def correctionIsPending = { ->
         return !applied.contains(signature)
     }
 }
+// The Studio page has no QuPath window to draw in. Its grid edits arrive as
+// corealign-grid-corrections.json, and step 3 turns them into the same annotations the
+// check above looks for. Step 3 only runs once this gate is answered, though, so on a
+// project opened again after its grid was approved the file was never read: the reviewer
+// moved a circle, pressed Run again, and got the approved grid back with nothing said.
+// A file made against the grid on screen is a correction waiting to be applied, exactly
+// like an annotation. One made against an older grid is stale, and step 3 says so.
+def studioCorrectionIsPending = { String gridNowHash ->
+    File studioFile = new File(workflowDir, 'corealign-grid-corrections.json')
+    if (!studioFile.isFile()) return false
+    try {
+        def sent = new Gson().fromJson(studioFile.getText('UTF-8'), Map.class) ?: [:]
+        def sentList = (sent.corrections instanceof List) ? sent.corrections : []
+        String sentBase = sent.baseGridHash?.toString() ?: ''
+        return !sentList.isEmpty() && !sentBase.isEmpty() && sentBase == gridNowHash
+    } catch (Throwable ignored) { return false }
+}
 if (savedApproval != null && savedApproval.status == 'APPROVED' &&
         savedApproval.approvalMode == 'human' && approvalUsesCurrentDetector) {
     String gridNowHash = approvalGridSignature(imageData.getHierarchy().getTMAGrid())
     if (!gridNowHash.isEmpty() && savedApproval.gridHash == gridNowHash) {
         if (correctionIsPending()) {
             println 'A correction is waiting to be applied, so the grid still needs review.'
+        } else if (studioCorrectionIsPending(gridNowHash)) {
+            println 'Grid corrections from the Studio page are waiting to be applied, so the grid still needs review.'
         } else {
             println "Grid ${gridNowHash.take(12)} was already approved by a person on " +
                 "${savedApproval.approvedAt ?: 'an earlier run'}; not asking again."

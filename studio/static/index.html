@@ -1707,6 +1707,10 @@ var EN = {
   rerunSummary:"Review the results at any time · run again to approve · completed cores will not be repeated",
   rerunEdited:"Run again with angle edits",
   rerunApproval:"Run again for approval",
+  rerunGridEdited:"Run again with grid edits",
+  rerunGridEditedSummary:"Edited {0} positions · run again and CoreAlign shows the corrected grid for a second look, then every core is processed again",
+  rerunGridSummary:"Run again and CoreAlign opens the grid check where it left off · move a circle first if one is off",
+  gridApprovedSummary:"Move a circle or mark a position empty if the grid needs another check",
   answerFailed:"Could not send the answer",
   metricCoresFound:"Cores found",
   metricEmptyPositions:"Empty positions",
@@ -2026,6 +2030,10 @@ var TH = {
   rerunSummary:"ดูผลได้ตามสบาย · กดเพื่อรันอีกครั้งแล้วอนุมัติ · core ที่ทำไว้แล้วจะไม่ทำซ้ำ",
   rerunEdited:"รันใหม่ด้วยมุมที่แก้",
   rerunApproval:"รันอีกครั้งเพื่ออนุมัติ",
+  rerunGridEdited:"รันใหม่ด้วยกริดที่แก้",
+  rerunGridEditedSummary:"แก้ไว้ {0} ตำแหน่ง · รันอีกครั้งแล้ว CoreAlign จะแสดงกริดที่แก้ให้ดูซ้ำก่อน จากนั้นประมวลผลทุก core ใหม่",
+  rerunGridSummary:"รันอีกครั้งแล้ว CoreAlign จะเปิดขั้นตอนตรวจกริดต่อจากที่ค้างไว้ · ถ้าวงไหนเบี้ยวให้ลากแก้ก่อน",
+  gridApprovedSummary:"ถ้ากริดต้องตรวจซ้ำ ให้ลากวงหรือทำเครื่องหมายตำแหน่งว่างก่อน",
   answerFailed:"ส่งคำตอบไม่สำเร็จ",
   metricCoresFound:"core ที่พบ",
   metricEmptyPositions:"ตำแหน่งว่าง",
@@ -3064,13 +3072,24 @@ function acceptSave(scope, snapshot, result){
       savedEdits[item.core] = item.rotationAdjustmentDeg;
     });
     savedVia = result.body.via || "";
+    // The server leaves the file alone when it already holds these angles, so there is
+    // nothing to announce: a toast for a write that did not happen would be a lie.
+    if (result.body.unchanged) return;
     toast(t(savedVia === "file" ? "savedAnglesForNextRun" : "savedAngles",
       snapshot.payload.length));
     return;
   }
   arrangeSaved = arrangeClone(result.body.arrangement || snapshot.document);
-  if (arrangeFingerprint(arrangeDocument) === arrangeFingerprint(snapshot.document))
-    arrangeDocument = arrangeClone(arrangeSaved);
+  // Take the server's stamp into the document that is on screen; never swap the document
+  // for a clone. Every input the figure stage has drawn holds a reference into this
+  // object (a row, a column, a channel), and a fresh clone leaves all of them writing to
+  // a document nothing reads any more: the second keystroke into a label after an
+  // autosave reached the screen and never the file. The channel panel had the same fault
+  // in v2.13 and worked around it with liveFigure(); keeping identity fixes the class.
+  if (arrangeDocument && arrangeSaved) {
+    if ("createdAt" in arrangeSaved) arrangeDocument.createdAt = arrangeSaved.createdAt;
+    if ("image" in arrangeSaved) arrangeDocument.image = arrangeSaved.image;
+  }
 }
 function startSave(scope){
   var state = saveScopes[scope];
@@ -3311,13 +3330,50 @@ function drawActionBar(){
 
   if (stage === "cores") {
     var gridChanges = Object.keys(gridEdits).length;
-    $("askTitle").textContent = openGate
-      ? (gridChanges ? t("editedPositions", gridChanges) : gateTitle(openGate))
-      : t("waitingGridReview");
-    $("askSummary").textContent = openGate ? gateSummary(openGate) : "";
-    go.textContent = openGate ? gateButton(openGate) : t("waiting");
-    go.dataset.act = "gate";
-    go.disabled = !openGate;
+    if (openGate) {
+      $("askTitle").textContent = gridChanges ? t("editedPositions", gridChanges) : gateTitle(openGate);
+      $("askSummary").textContent = gateSummary(openGate);
+      go.textContent = gateButton(openGate);
+      go.dataset.act = "gate";
+      go.disabled = false;
+      return;
+    }
+    var resting = runState !== "running" && runState !== "starting";
+    var gridOnScreen = !!(model && model.grid && model.grid.cores && model.grid.cores.length);
+    if (!resting || !gridOnScreen) {
+      $("askTitle").textContent = t("waitingGridReview");
+      $("askSummary").textContent = "";
+      go.textContent = t("waiting");
+      go.dataset.act = "gate";
+      go.disabled = true;
+      return;
+    }
+    // Nothing is running and a grid is on screen: a project opened again, or a run that
+    // stopped. The only way forward is to run CoreAlign again, and it opens the grid check
+    // where it left off: with the edits made here waiting to be applied, if there are any.
+    // A disabled "Waiting..." here left a reviewer with a moved circle, a Saved tick, and
+    // no button that would ever do anything with it.
+    if (gridChanges) {
+      $("askTitle").textContent = t("editedPositions", gridChanges);
+      $("askSummary").textContent = t("rerunGridEditedSummary", gridChanges);
+      go.textContent = t("rerunGridEdited");
+      go.dataset.act = "run";
+      go.disabled = false;
+      return;
+    }
+    if (runState === "complete") {
+      $("askTitle").textContent = t("approvedTitle");
+      $("askSummary").textContent = t("gridApprovedSummary");
+      go.textContent = t("goToResults");
+      go.dataset.act = "export";
+      go.disabled = false;
+      return;
+    }
+    $("askTitle").textContent = t("finishedTitle");
+    $("askSummary").textContent = t("rerunGridSummary");
+    go.textContent = t("rerunApproval");
+    go.dataset.act = "run";
+    go.disabled = false;
     return;
   }
 
@@ -3352,7 +3408,7 @@ function drawActionBar(){
     $("askSummary").textContent = changes
       ? t("rerunEditedSummary", changes)
       : t("rerunSummary");
-    go.textContent = runState === "complete" ? t("rerunEdited") : t("rerunApproval");
+    go.textContent = changes ? t("rerunEdited") : t("rerunApproval");
     go.dataset.act = "run";
     go.disabled = false;
   }
@@ -5593,9 +5649,13 @@ function poll(){
     if (res.ok) paintStatus(res.body);
   });
 }
+var previousRunState = "";
 function paintStatus(status){
   lastStatus = status;
+  var wasRunning = previousRunState === "running" || previousRunState === "starting";
   runState = status.state || "idle";
+  previousRunState = runState;
+  var cameToRest = wasRunning && runState !== "running" && runState !== "starting";
   var gate = status.gate;
   var waiting = !!(gate && gate.gate);
   var text = STATE_TEXT[status.state] || ["", "idle"];
@@ -5616,6 +5676,14 @@ function paintStatus(status){
   if (status.project && (status.project !== arrangeProject ||
       (!arrangeAvailable && Date.now() - arrangeLastCheck > 5000)))
     loadArrange(status.project);
+  else if (cameToRest && arrangeAvailable && status.project === arrangeProject) {
+    // The run that just ended cut the tiles again, and the manifest carries a new stamp.
+    // Without a reload the figure stage keeps drawing last run's tiles from the browser
+    // cache: a core whose angle was just corrected still shows the old rotation until
+    // somebody reloads the page. Let a pending figure save land first, so nothing typed
+    // during the run is thrown away by the reload.
+    startSave("arrange").then(function(){ loadArrange(status.project); });
+  }
   paintProgress();
   showAbandoned(status);
 
@@ -5636,6 +5704,14 @@ function paintStatus(status){
     model = next;
     if (model.available) { reviewKey = model.baseRun; drawReview(fresh); }
     if (model.grid) drawGrid();
+    // A grid on disk is worth opening even before any core has been rotated: a project
+    // that stopped at the grid check has circles to look at and to move, and the run
+    // that continues it applies those edits. Without this the tab stayed disabled and
+    // the only way to see the grid again was to start the run blind.
+    if (model.grid && model.grid.cores && model.grid.cores.length) {
+      reached.cores = true;
+      paintStages();
+    }
     showPriorRun();
     route(status, gateId);
   });

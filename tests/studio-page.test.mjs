@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { execFileSync } from "node:child_process";
 
 const root = new URL("../", import.meta.url);
 const page = await readFile(new URL("studio/static/index.html", root), "utf8");
@@ -1111,4 +1112,83 @@ test("arrange display changes synchronize then refresh and save", () => {
   runInNewContext(body, sandbox);
   sandbox.arrangeDisplayChanged(source);
   assert.deepEqual(calls, ["sync", "refresh", "save"]);
+});
+
+// The corrections file is replaced whole by the bridge and by the studio alike, and step 2
+// folds each core's web angle into that core's checkpoint signature. A file naming only the
+// cores edited this time therefore drops every angle a previous pass applied, and those
+// cores are reprocessed without their correction. Seen in the v2.13.2 UAT log (7 Sep 2026):
+// "Angle corrections were saved; reprocessing" with "Web review corrections loaded: 0".
+test("the corrections file carries every applied angle, and an unchanged set is not rewritten", () => {
+  const output = execFileSync("python3", [new URL("studio-corrections.py", import.meta.url).pathname],
+    { encoding: "utf8" });
+  assert.match(output, /STUDIO_CORRECTIONS_OK/, output);
+  assert.ok(page.includes("if (result.body.unchanged) return;"),
+    "the page must not announce a save that changed nothing on disk");
+});
+
+test("save project only flushes angles when the file would change", () => {
+  const body = server.slice(server.indexOf("    def project_save_result("),
+                            server.indexOf("    def resolve_in_project("));
+  assert.match(body, /wanted = RUN\.complete_corrections\(model, pending\)/,
+    "the flush must send the complete angle set, never the file-scoped view");
+  assert.match(body, /if RUN\.corrections_on_disk\(model\) != RUN\.angle_map\(wanted\):/,
+    "a file that already says this must not be rewritten: its timestamp costs a gate round");
+});
+
+// Every input the figure stage draws holds a reference into arrangeDocument. Swapping the
+// document for a clone after an autosave left those inputs writing to a dead object: the
+// text after the first pause reached the screen and never the file.
+test("an arrange autosave keeps the document the inputs are bound to", () => {
+  const body = page.slice(page.indexOf("function acceptSave("), page.indexOf("function startSave("));
+  assert.ok(!/arrangeDocument = arrangeClone\(/.test(body),
+    "acceptSave must not replace arrangeDocument");
+  assert.match(body, /arrangeDocument\.createdAt = arrangeSaved\.createdAt/,
+    "the server's stamp is copied into the live document instead");
+});
+
+// A project opened again after approval, or a run that stopped at the grid check, has a grid
+// on screen and nothing running. The only way forward is to run CoreAlign again; a disabled
+// "Waiting..." left a reviewer with a moved circle, a Saved tick and no button.
+test("the cores stage offers a rerun when nothing is running", () => {
+  const body = page.slice(page.indexOf("function drawActionBar("), page.indexOf("var gateActionInProgress"));
+  const cores = body.slice(body.indexOf('if (stage === "cores")'), body.indexOf("var changes = pendingEdits()"));
+  assert.match(cores, /go\.dataset\.act = "run"/, "a resting grid stage must be able to start a run");
+  assert.match(cores, /t\("rerunGridEdited"\)/, "with grid edits the button says so");
+  assert.match(cores, /t\("rerunApproval"\)/, "without edits it resumes the review");
+  assert.match(cores, /runState === "complete"[\s\S]*?go\.dataset\.act = "export"/,
+    "an approved grid with no edits points at the results instead of a pointless rerun");
+  const dictionaries = ["EN", "TH"].map((name) => {
+    const start = page.indexOf(`var ${name} = {`);
+    return page.slice(start, page.indexOf("\n};", start));
+  });
+  for (const key of ["rerunGridEdited", "rerunGridEditedSummary", "rerunGridSummary", "gridApprovedSummary"]) {
+    for (const [index, dictionary] of dictionaries.entries()) {
+      assert.ok(dictionary.includes(`${key}:`), `${key} is missing from the ${["EN", "TH"][index]} dictionary`);
+    }
+  }
+});
+
+// Step 3 is the only reader of the studio's grid corrections, and it only runs once the grid
+// gate is answered. On a project whose grid a person already approved the gate was skipped,
+// so a correction file made against that approved grid was never read.
+test("a studio grid correction reopens the grid gate on an approved project", () => {
+  const workflow = readFileSync(new URL("workflow/CoreAlign.groovy", root), "utf8");
+  const body = workflow.slice(workflow.indexOf("def studioCorrectionIsPending"),
+                              workflow.indexOf("while (!gridApproved)"));
+  assert.match(body, /new File\(workflowDir, 'corealign-grid-corrections\.json'\)/,
+    "the check reads the same file step 3 applies");
+  assert.match(body, /sentBase == gridNowHash/,
+    "only a file made against the grid on screen counts; a stale one is step 3's to report");
+  assert.match(body, /else if \(studioCorrectionIsPending\(gridNowHash\)\)/,
+    "the skip-approval branch must consult it alongside the annotation check");
+});
+
+// A run that just ended cut the tiles again. Without a reload the figure stage keeps drawing
+// last run's tiles from the browser cache until somebody reloads the page.
+test("the figure stage reloads its manifest when a run comes to rest", () => {
+  const body = page.slice(page.indexOf("function paintStatus("), page.indexOf("var GATE_WORDS"));
+  assert.match(body, /cameToRest && arrangeAvailable && status\.project === arrangeProject/);
+  assert.match(body, /startSave\("arrange"\)\.then\(function\(\)\{ loadArrange\(status\.project\); \}\)/,
+    "a pending figure save lands before the reload replaces the document");
 });

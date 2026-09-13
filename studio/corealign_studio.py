@@ -1148,15 +1148,38 @@ class Run:
             return {"ok": False, "error": f"Could not write the grid corrections: {error}"}
         return {"ok": True, "saved": len(clean)}
 
-    def save_corrections(self, edits: list) -> dict:
-        """Send angle changes to CoreAlign's bridge.
+    @staticmethod
+    def complete_corrections(model: dict, edits: list) -> list:
+        """Every web angle for this run: what CoreAlign already applied, plus these edits.
 
-        The page sends core names and angles only. Which run they belong to is decided
-        here from the report, so a stale tab cannot write corrections onto a different run.
+        The corrections file is replaced whole, never merged, by the bridge and by this
+        process alike, and step 2 folds each core's web angle into that core's checkpoint
+        signature. So a file that names only the cores edited *this time* silently drops
+        every angle a previous pass already applied: their signatures no longer match,
+        they are reprocessed without their correction, and the reviewer watches a core
+        they fixed an hour ago flip back. The page only knows about pending edits, which
+        is right for the page; the file has to carry the whole set, and the report is
+        where the applied set lives (webRotationAdjustmentDeg, surfaced as adjustmentDeg).
+        An edit wins over the applied value for the same core, and an angle of zero drops
+        the core: that is how a reviewer takes a correction back.
         """
-        model = self.review()
-        if not model.get("available"):
-            return {"ok": False, "error": "There is nothing to review yet."}
+        merged: dict[str, tuple[str, float]] = {}
+        for core in model.get("cores") or []:
+            name = str(core.get("core") or "")
+            try:
+                applied = float(core.get("adjustmentDeg") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if name and math.isfinite(applied) and abs(applied) >= 0.05:
+                merged[name.lower()] = (name, round(applied, 1))
+        for item in edits:
+            name = str(item["core"])
+            merged[name.lower()] = (name, float(item["rotationAdjustmentDeg"]))
+        return [{"core": name, "rotationAdjustmentDeg": angle}
+                for name, angle in merged.values() if abs(angle) >= 0.05]
+
+    def validate_corrections(self, model: dict, edits: list) -> tuple[list, str]:
+        """The page's edits, checked against the run, or a sentence saying what is wrong."""
         allowed = {str(core["core"]).lower() for core in model["cores"]}
         clean = []
         seen = set()
@@ -1166,27 +1189,80 @@ class Run:
             try:
                 angle = float((item or {}).get("rotationAdjustmentDeg"))
             except (TypeError, ValueError):
-                return {"ok": False, "error": f"{name or 'A core'} has no usable angle."}
+                return [], f"{name or 'A core'} has no usable angle."
             if not name or key not in allowed:
-                return {"ok": False, "error": f"{name or 'A core'} is not a core in this run."}
+                return [], f"{name or 'A core'} is not a core in this run."
             if key in seen:
-                return {"ok": False, "error": f"{name} was sent twice."}
-            if not -180.0 <= angle <= 180.0:
-                return {"ok": False,
-                        "error": f"{name}: an angle has to be between -180 and 180, not {angle:g}."}
+                return [], f"{name} was sent twice."
+            if not math.isfinite(angle) or not -180.0 <= angle <= 180.0:
+                return [], f"{name}: an angle has to be between -180 and 180, not {angle:g}."
             seen.add(key)
             clean.append({"core": name, "rotationAdjustmentDeg": round(angle, 1)})
+        return clean, ""
 
-        document = {
+    @staticmethod
+    def angle_map(corrections: list) -> dict:
+        return {str(item["core"]).lower(): round(float(item["rotationAdjustmentDeg"]), 1)
+                for item in corrections}
+
+    def corrections_document(self, model: dict, corrections: list) -> dict:
+        return {
             "schemaVersion": 1,
             "image": model["image"],
             "baseRun": model["baseRun"],
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "corrections": clean,
+            "corrections": corrections,
         }
+
+    def corrections_on_disk(self, model: dict) -> dict:
+        """The angle set the file beside the slide holds right now, core (lower) to angle.
+
+        Empty when there is no file, or when the file names another slide: step 2 ignores
+        such a file, so it is no answer for this one. The run the file names is
+        deliberately not checked: CoreAlign reads the angles and the image name, never
+        baseRun, and the bridge only checks baseRun on what comes in. A file from the
+        previous pass that already holds exactly these angles is the same instruction,
+        and rewriting it only moves its timestamp, which is the one thing that costs a
+        gate round.
+        """
+        saved = self._read_json("corealign-review-corrections.json")
+        if not isinstance(saved, dict) or str(saved.get("image") or "") != str(model.get("image") or ""):
+            return {}
+        angles = {}
+        for item in saved.get("corrections") or []:
+            name = str((item or {}).get("core") or "").strip().lower()
+            try:
+                angle = round(float((item or {}).get("rotationAdjustmentDeg")), 1)
+            except (TypeError, ValueError):
+                continue
+            if name and abs(angle) >= 0.05:
+                angles[name] = angle
+        return angles
+
+    def save_corrections(self, edits: list) -> dict:
+        """Send angle changes to CoreAlign's bridge.
+
+        The page sends core names and angles only. Which run they belong to is decided
+        here from the report, so a stale tab cannot write corrections onto a different run.
+        """
+        model = self.review()
+        if not model.get("available"):
+            return {"ok": False, "error": "There is nothing to review yet."}
+        clean, problem = self.validate_corrections(model, edits)
+        if problem:
+            return {"ok": False, "error": problem}
+
+        wanted = self.complete_corrections(model, clean)
+        document = self.corrections_document(model, wanted)
         payload = json.dumps(document).encode("utf-8")
 
         url = self.bridge_url("save")
+        if self.corrections_on_disk(model) == self.angle_map(wanted):
+            # The file already says this. Writing it again would only move its timestamp,
+            # and CoreAlign takes a newer timestamp at the gate as "reprocess and ask
+            # again" even when no angle changed.
+            return {"ok": True, "saved": len(clean), "unchanged": True,
+                    "via": "bridge" if url else "file"}
         if not url:
             # No bridge means no run is waiting, which is the normal state when someone
             # opens a finished project to look at it. The bridge only ever writes this one
@@ -1573,36 +1649,42 @@ class Handler(BaseHTTPRequestHandler):
                              "finishes. Resume the run first if it has stopped."}, 409
 
         model = RUN.review()
-        corrections = []
-        for core, angle in (model.get("corrections") or {}).items():
-            try:
-                value = float(angle)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(value):
-                corrections.append({"core": core, "rotationAdjustmentDeg": value})
-        bridge_payload = {
-            "schemaVersion": 1,
-            "image": model.get("image") or (RUN.slide.name if RUN.slide else ""),
-            "baseRun": model.get("baseRun") or "pending",
-            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "corrections": corrections,
-        }
-        request = urllib.request.Request(
-            url, data=json.dumps(bridge_payload).encode("utf-8"), method="POST",
-            headers={"Content-Type": "text/plain;charset=UTF-8"})
-        try:
-            with urllib.request.urlopen(request, timeout=15) as response:
-                answer = json.loads(response.read().decode("utf-8", "replace") or "{}")
-        except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, OSError,
-                ValueError):
-            return {"ok": False,
-                    "error": "CoreAlign could not save the project right now. Wait for the "
-                             "current step to finish, then try again."}, 409
-        if not isinstance(answer, dict) or not answer.get("ok"):
-            return {"ok": False,
-                    "error": "CoreAlign could not save the project right now. Wait for the "
-                             "current step to finish, then try again."}, 409
+        if model.get("available"):
+            # Flush the operator's angles through the bridge, but only when the file beside
+            # the slide does not already say the same thing. Every write the bridge makes
+            # bumps the file's timestamp, and CoreAlign reads that timestamp when the gate
+            # is answered: newer file, reprocess, ask again. Posting here on every Save
+            # project meant one more full gate round that changed nothing, and posting the
+            # file-scoped view of the corrections (empty once a pass had applied them)
+            # meant the round that followed undid every angle already applied. Measured on
+            # the v2.13.2 UAT run, 7 Sep 2026: "Angle corrections were saved; reprocessing"
+            # with "Web review corrections loaded: 0".
+            pending = []
+            for core, angle in (model.get("corrections") or {}).items():
+                try:
+                    value = float(angle)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(value):
+                    pending.append({"core": core, "rotationAdjustmentDeg": round(value, 1)})
+            wanted = RUN.complete_corrections(model, pending)
+            if RUN.corrections_on_disk(model) != RUN.angle_map(wanted):
+                bridge_payload = RUN.corrections_document(model, wanted)
+                request = urllib.request.Request(
+                    url, data=json.dumps(bridge_payload).encode("utf-8"), method="POST",
+                    headers={"Content-Type": "text/plain;charset=UTF-8"})
+                try:
+                    with urllib.request.urlopen(request, timeout=15) as response:
+                        answer = json.loads(response.read().decode("utf-8", "replace") or "{}")
+                except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, OSError,
+                        ValueError):
+                    return {"ok": False,
+                            "error": "CoreAlign could not save the project right now. Wait for "
+                                     "the current step to finish, then try again."}, 409
+                if not isinstance(answer, dict) or not answer.get("ok"):
+                    return {"ok": False,
+                            "error": "CoreAlign could not save the project right now. Wait for "
+                                     "the current step to finish, then try again."}, 409
         # The bridge flushes the operator's edits; it does not build the QuPath project. That
         # is written when the run reaches the project step. Re-read the folder rather than
         # trusting the bridge's ok: reporting success here would name an empty folder and
