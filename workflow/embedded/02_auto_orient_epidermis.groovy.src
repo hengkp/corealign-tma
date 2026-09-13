@@ -108,8 +108,21 @@ int AVAILABLE_CPUS = Math.max(1, Runtime.getRuntime().availableProcessors())
 int AUTO_PARALLEL_WORKERS = Math.max(1, Math.min(16, AVAILABLE_CPUS - 1))
 int PARALLEL_WORKERS = REQUESTED_PARALLEL_WORKERS <= 0 ? AUTO_PARALLEL_WORKERS :
     Math.max(1, Math.min(32, REQUESTED_PARALLEL_WORKERS))
-// The Bio-Formats OME-TIFF writer is not thread safe, so research output stays serial.
-if (SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF)
+// Bio-Formats is not thread safe *per instance*: its own guidance is one reader or writer
+// instance per thread, never one instance shared. The rotated multichannel export already
+// builds a fresh OMETiffWriter, OMEXMLService and metadata store inside the worker for
+// every core (writeRotatedMultichannelOme), which is exactly that arrangement, so it runs on
+// the full pool. Until 13 Sep 2026 this line dropped the whole step to one worker whenever
+// that output was on, and since v2.13.0 it is always on: the same 117-core slide went from
+// 10:51 at 23 workers to 4:59:14 at one. Measured per core in that mode, the OME-TIFF write
+// was 52 s of 116 s, so serialising only the write would still have left the run at over
+// an hour and a half. The check that this is safe is tests/compare-orientation-runs.groovy:
+// the same approved grid written serially and on the full pool, every plane of every
+// OME-TIFF compared byte for byte, along with the angles and the PNG exports.
+//
+// The native export goes through QuPath's OMEPyramidWriter over the one shared server and
+// has never been run in parallel here, so it keeps the serial cap. Studio never asks for it.
+if (SAVE_NATIVE_OME_TIFF)
     PARALLEL_WORKERS = 1
 def PRESENTATION_CHANNEL_TOKENS = cfgTokens('tma.presentation.channelTokens', '')
 double DISPLAY_LOW_PERCENTILE = cfgDouble('tma.presentation.lowPercentile', 0.50d)
@@ -1705,8 +1718,10 @@ def findCropOverride = { String coreName, double cx, double cy, double radius ->
 def records = Collections.synchronizedList([])
 def partialCsvLock = new Object()
 println "Orientation workers: ${PARALLEL_WORKERS} of ${AVAILABLE_CPUS} CPUs" +
-    ((SAVE_NATIVE_OME_TIFF || SAVE_ROTATED_MULTICHANNEL_OME_TIFF) ?
-        ' (research OME-TIFF safety mode)' : ' (bounded parallel processing)')
+    (SAVE_NATIVE_OME_TIFF ? ' (native OME-TIFF safety mode)' :
+        (SAVE_ROTATED_MULTICHANNEL_OME_TIFF ?
+            ' (bounded parallel processing; one OME-TIFF writer per core)' :
+            ' (bounded parallel processing)'))
 
 def recordsCsvText = { rows ->
     def sb = new StringBuilder()

@@ -181,14 +181,46 @@ worth 1.49x and doubling again is worth a further 1.17x · diminishing, but real
 Peak memory tracked about **5 GB per worker** at every point, not the 2 GB the guard assumed,
 which is why it would let a job ask for far more workers than its allocation could hold.
 `orientation_workers()` takes the smaller of the CPU allocation less one, the memory allocation
-less 8 GB of JVM headroom divided by 5 GB per worker, and a ceiling of 32 · which is also the
-AppHub template's CPU limit. The model reproduces each measured-safe point: 12 CPUs and 48 GB
-gives exactly 8.
+less 8 GB of JVM headroom divided by the per-worker figure, and a ceiling of 32 · which is also
+the AppHub template's CPU limit.
 
-The AppHub default is **24 CPUs and 128 GB**, which lands on 23 workers.
+**The per-worker figure is 8 GB since 13 Sep 2026, not 5.** The 5 GB points above are
+presentation-mode runs. Every Studio run also writes the rotated multichannel OME-TIFF set,
+and the first time that export ran on the full pool, 23 workers in a 128 GB job were killed by
+the cgroup at **about 130 GB** (sacct MaxRSS 129,617,140 K, job 8559): the 70% heap cap
+(91.75 GB) was full and close to 40 GB sat outside it, in Bio-Formats reader and writer buffers
+and the per-channel rotation temporaries of 23 cores in flight. The same slide at 17 workers in
+the same job peaked at **118.5 GB** (job 8561): 6.5 GB per worker over the base, with 9.5 GB to
+spare. The model takes 8 GB rather than the measured 6.5, because that margin was one larger
+core away from a second kill and a killed step costs a whole rerun.
 
-Research OME-TIFF output still runs one core at a time, because the Bio-Formats writer is not
-thread safe.
+The AppHub default is **24 CPUs and 128 GB**, which lands on **15 workers**; 12 CPUs and 64 GB
+gives 7.
+
+Measured on 13 Sep 2026, the 117-core reference slide, research output on, 24 CPUs and 128 GB:
+
+| Workers | Step 2 | Peak RSS |
+|---|---|---|
+| 1 (v2.13.0 to v2.16.0) | **4:59:14** | – |
+| 17 | **48:48** | 118.5 GB |
+
+The 17-worker figure is conservative: a one-worker run and an NFS-heavy comparison were
+sharing the node and the NAS at the time. The comparison itself (`tests/compare-orientation-runs.groovy`)
+read every plane of the 117 OME-TIFFs from both runs, all 126 checkpoints and 234 PNGs, and
+found no difference.
+
+🔴 **Until 13 Sep 2026 none of this table applied to a Studio run.** Step 2 dropped to one
+worker whenever it wrote the rotated multichannel OME-TIFF set, and since v2.13.0 every Studio
+run writes it: the same 117-core slide took **4:59:14** on 7 Sep 2026 against **10:51** in the
+presentation-only run of 28 Aug. Measured per core in that mode, 58 s of analysis, 6 s of PNGs
+and 52 s for the 108 MB OME-TIFF. The cap was there because "the Bio-Formats writer is not
+thread safe", but Bio-Formats' own guidance is one writer instance per thread, and the export
+already built a fresh writer inside the worker for every core. The cap now applies only to the
+native OME-TIFF export, which goes through QuPath's pyramid writer over the shared server and
+which Studio never asks for. The proof that the parallel files are the serial files is
+`tests/compare-orientation-runs.groovy`: the same approved grid written serially and at 23
+workers, every plane of every OME-TIFF compared byte for byte along with the angles and the
+PNG exports: 117 files, 2,223 planes, no difference, 13 Sep 2026.
 
 ### Where the rest of the time goes, and why 3 to 5 minutes is not reachable here
 
@@ -305,6 +337,7 @@ PORT=8848 python3 corealign_studio.py
 | `COREALIGN_WORKFLOW` | `/opt/corealign/CoreAlign.groovy` |
 | `COREALIGN_STUDIO_ROOTS` | the person's `$HOME`, plus any mounted NAS share |
 | `COREALIGN_STUDIO_BIND` | `0.0.0.0` |
+| `APPHUB_CPUS`, `APPHUB_MEMORY_MB` | what AppHub's runner passes in; outside AppHub set them to the job's allocation, or `orientation_workers()` sizes the pool from `os.cpu_count()` (32 workers on a 112-core node, whatever the memory) |
 
 Standard library only, on purpose: the image is QuPath plus a Python interpreter and nothing that
 needs a package index at build time.

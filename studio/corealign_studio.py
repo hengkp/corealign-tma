@@ -297,7 +297,18 @@ def allocated_memory_mb() -> int:
 #
 # Peak memory tracked ~5 GB per worker at every point, not the 2 GB this once assumed · which
 # is why the guard used to let a job ask for far more workers than its allocation could hold.
-WORKER_MEMORY_MB = 5120
+#
+# Those numbers are presentation-mode runs. Every Studio run writes the rotated multichannel
+# OME-TIFF set as well, and on 13 Sep 2026, the first time that export ran on the full pool,
+# 23 workers in a 128 GB job were killed by the cgroup at about 130 GB (sacct MaxRSS
+# 129,617,140 K, job 8559): the 70% heap cap (91.75 GB) was full and close to 40 GB sat
+# outside it, in the Bio-Formats reader and writer buffers and the per-channel rotation
+# temporaries of 23 cores in flight. The same slide at 17 workers in the same job peaked at
+# 118.5 GB (job 8561), which is 6.5 GB per worker over the 8 GB base with 9.5 GB to spare.
+# The model is set at 8 GB rather than 7: the margin at 7 was one larger core away from a
+# second kill, and a killed step costs a whole rerun. 15 workers in a 128 GB job, 7 in 64 GB,
+# 3 in 32 GB.
+WORKER_MEMORY_MB = 8192
 JVM_HEADROOM_MB = 8192
 MAX_WORKERS = int(os.environ.get("COREALIGN_MAX_WORKERS") or 32)
 

@@ -128,3 +128,26 @@ test("a flip that does not help is reverted, images and all", () => {
   assert.match(block, /rotatedSupport = rotateImageAround\(rgbSupport, rotateRad/,
     "and the images are re-rendered from it, or they would disagree with the angle");
 });
+
+// Since v2.13.0 every Studio run writes the rotated multichannel OME-TIFF set, and step 2
+// used to drop to one worker whenever it did: the same 117-core slide went from 10:51 at 23
+// workers to 4:59:14 at one. Bio-Formats asks for one writer instance per thread, which is
+// what writeRotatedMultichannelOme already builds inside the worker for every core, so only
+// the native export (QuPath's pyramid writer over the shared server) keeps the serial cap.
+test("the rotated multichannel export runs on the full worker pool", () => {
+  const cap = step2.slice(step2.indexOf("int PARALLEL_WORKERS ="),
+                          step2.indexOf("def PRESENTATION_CHANNEL_TOKENS"));
+  assert.match(cap, /if \(SAVE_NATIVE_OME_TIFF\)\s*\n\s*PARALLEL_WORKERS = 1/,
+    "the native export keeps the serial cap");
+  assert.ok(!/SAVE_ROTATED_MULTICHANNEL_OME_TIFF\)\s*\n\s*PARALLEL_WORKERS = 1/.test(cap)
+    && !/SAVE_NATIVE_OME_TIFF \|\| SAVE_ROTATED_MULTICHANNEL_OME_TIFF\)\s*\n\s*PARALLEL_WORKERS = 1/.test(cap),
+    "the rotated multichannel export must not cap the pool");
+  const writer = step2.slice(step2.indexOf("def writeRotatedMultichannelOme"),
+                             step2.indexOf("def scaleForPreview"));
+  assert.match(writer, /def writer = new OMETiffWriter\(\)/,
+    "one writer instance per core, built inside the call");
+  assert.match(writer, /new ServiceFactory\(\)\.getInstance\(OMEXMLService\.class\)/,
+    "one service and metadata store per core as well");
+  assert.match(writer, /finally \{\s*\n\s*try \{ writer\.close\(\) \}/,
+    "every writer is closed on its own thread");
+});
